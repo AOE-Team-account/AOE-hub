@@ -1,0 +1,1529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AOEhub — prototype</title>
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@500;600&family=Inter:wght@400;500&family=Outfit:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600&family=Architects+Daughter&family=Cormorant+Garamond:wght@400;500;600&family=Quicksand:wght@400;500;600&family=Jua&family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&family=Roboto+Condensed:wght@400;500;600&family=Instrument+Sans:wght@400;500;600&family=Source+Serif+4:wght@400;500;600&family=Albert+Sans:wght@400;500;600&family=Manrope:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --content-max: 640px;
+    --bg: #F5F7F2; --card: #FFFFFF; --text: #2B2B27; --text-secondary: #6B6D63; --text-muted: #97998E;
+    --border: #E1E3D9; --accent: #3F6B4F; --accent-text: #FFFFFF;
+    --pin-bg: #FBF2DE; --pin-border: #E8CE8D; --pin-text: #7A5A0E;
+  }
+  @media (min-width: 900px)  { :root { --content-max: 860px; } }
+  @media (min-width: 1300px) { :root { --content-max: 1040px; } }
+  .app.dark {
+    --bg: #1C1D1A; --card: #26271F; --text: #F0F0EA; --text-secondary: #ADAF9F; --text-muted: #767869;
+    --border: #3A3B31; --pin-bg: #332C15; --pin-border: #5C4C1C; --pin-text: #E8CE8D;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .app { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 0 0 3rem; min-height: 400px; position: relative; }
+  h1, h2, h3, .serif { font-family: 'Lora', serif; }
+  .shell { max-width: var(--content-max); margin: 0 auto; padding: 0 1rem; }
+
+  .demo-switch { display: flex; gap: 6px; justify-content: center; padding: 10px; background: #EDEBE3; }
+  .demo-switch button { font-family: inherit; font-size: 12.5px; padding: 6px 12px; border-radius: 20px; border: 1px solid #C9C6B9; background: #fff; color: #55534A; cursor: pointer; }
+  .demo-switch button.active { background: #2B2B27; color: #fff; border-color: #2B2B27; }
+
+  .topbar { border-bottom: 1px solid var(--border); background: var(--card); position: relative; }
+  .topbar-inner { display: flex; align-items: center; flex-wrap: wrap; row-gap: 8px; column-gap: 10px; padding: 12px 1rem; max-width: var(--content-max); margin: 0 auto; }
+  .brand { display: flex; align-items: center; gap: 6px; font-family: 'Lora', serif; font-weight: 600; font-size: 16px; flex-shrink: 0; cursor: pointer; }
+  .search-wrap { flex: 1 1 140px; position: relative; min-width: 100px; }
+  @media (max-width: 480px) {
+    .search-wrap { flex: 0 1 44px; min-width: 44px; transition: flex-basis 0.15s ease; }
+    .search-wrap:has(input:focus) { flex: 1 1 200px; min-width: 160px; }
+    .search-wrap input::placeholder { color: transparent; }
+    .search-wrap:has(input:focus) input::placeholder { color: var(--text-muted); }
+  }
+  .search-wrap svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); width: 15px; height: 15px; }
+  .search-wrap input { width: 100%; padding-left: 32px; }
+  .header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
+  .icon-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; position: relative; padding: 4px; display: flex; }
+  .plus-btn { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--border); background: var(--card); color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; position: relative; }
+  .dot { position: absolute; top: 2px; right: 2px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); border: 1.5px solid var(--card); }
+  .avatar-wrap, .plus-wrap { position: relative; }
+  .avatar-btn { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--accent-text); border: none; font-family: 'Lora', serif; font-weight: 600; font-size: 12px; cursor: pointer; }
+  .dropdown { display: none; position: absolute; right: 0; top: 38px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 6px; min-width: 190px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); z-index: 10; }
+  .dropdown.open { display: block; }
+  .dropdown button { display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; background: none; border: none; padding: 8px 10px; font-family: inherit; font-size: 13.5px; color: var(--text); border-radius: 6px; cursor: pointer; }
+  .dropdown button:hover { background: var(--bg); }
+  .dropdown hr { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+  .dropdown .notif-item { display: block; padding: 8px 10px; font-size: 12.5px; color: var(--text-secondary); border-radius: 6px; line-height: 1.4; }
+  .admin-tag { font-size: 10px; color: var(--text-muted); }
+
+  .loggedout-actions { display: flex; gap: 8px; }
+  .app.logged-out .signedin-only { display: none !important; }
+  .app:not(.logged-out) .loggedout-only { display: none !important; }
+  .app.logged-out .gated-tab { display: none !important; }
+  .app.logged-out .hide-loggedout { display: none !important; }
+
+  .primary-tabs { display: flex; gap: 4px; padding: 10px 1rem 0; max-width: var(--content-max); margin: 0 auto; overflow-x: auto; }
+  .primary-tabs button { background: none; border: none; font-family: inherit; font-size: 14px; color: var(--text-secondary); padding: 8px 4px; cursor: pointer; border-bottom: 2px solid transparent; font-weight: 500; white-space: nowrap; }
+  .primary-tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+
+  .page-body { padding-top: 1rem; }
+  .page { display: none; }
+  .page.visible { display: block; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.1rem; margin-bottom: 12px; }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .between { justify-content: space-between; }
+  .wrap { flex-wrap: wrap; }
+  .muted { color: var(--text-secondary); font-size: 13.5px; margin: 0; }
+  .tiny { color: var(--text-muted); font-size: 12px; }
+  .title { font-size: 16px; font-weight: 600; margin: 0 0 4px; font-family: 'Lora', serif; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 20px; background: color-mix(in srgb, var(--accent) 15%, var(--card)); color: var(--accent); font-weight: 500; }
+  .badge.warn { background: color-mix(in srgb, #b5471f 15%, var(--card)); color: #b5471f; }
+  .badge.neutral { background: var(--bg); color: var(--text-secondary); border: 1px solid var(--border); }
+  .author-link { cursor: pointer; font-weight: 500; }
+  .author-link:hover { text-decoration: underline; }
+
+  .more-btn { background: none; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 2px 6px; line-height: 1; margin-left: auto; }
+
+  .file-card { padding: 0; overflow: hidden; cursor: pointer; }
+  .preview-img { height: 110px; background: var(--bg); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--text-muted); gap: 6px; font-size: 12px; }
+  .preview-img.large { height: 160px; }
+  .file-card .body { padding: 12px 14px; }
+
+  .chip-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .chip { font-family: inherit; font-size: 13px; padding: 6px 13px; border-radius: 20px; border: 1px solid var(--border); background: var(--card); color: var(--text-secondary); cursor: pointer; }
+  .chip.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+
+  .start-here { border: 1px solid var(--border); background: var(--card); border-radius: 12px; padding: 14px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+
+  input, select, textarea { font-family: inherit; font-size: 14px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; width: 100%; }
+  textarea { min-height: 90px; resize: vertical; }
+  label.field-label { display: block; font-size: 13px; font-weight: 500; margin: 14px 0 6px; }
+  label.field-label:first-child { margin-top: 0; }
+  button.btn { font-family: inherit; font-size: 13.5px; font-weight: 500; border-radius: 8px; padding: 8px 14px; cursor: pointer; border: 1px solid var(--border); background: var(--card); color: var(--text); }
+  button.btn.primary { background: var(--accent); color: var(--accent-text); border: none; }
+  button.btn.danger { color: #b5471f; border-color: #e3b39d; }
+  button.btn.small { padding: 5px 11px; font-size: 12.5px; }
+  .back-link { background: none; border: none; color: var(--text-secondary); font-family: inherit; font-size: 13.5px; cursor: pointer; padding: 0; margin-bottom: 14px; display: flex; align-items: center; gap: 5px; }
+
+  .pin { background: var(--pin-bg); border: 1px solid var(--pin-border); color: var(--pin-text); border-radius: 12px; padding: 1rem 1.1rem; margin-bottom: 16px; }
+  .reply { background: var(--bg); border-radius: 8px; padding: 8px 10px; margin: 8px 0 0 16px; }
+
+  .swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; flex-shrink: 0; }
+  .swatch.active { border-color: var(--text); }
+  .swatch.pending { background: repeating-linear-gradient(45deg, var(--border), var(--border) 3px, var(--card) 3px, var(--card) 6px); cursor: not-allowed; opacity: 0.7; }
+  .toggle { width: 40px; height: 22px; border-radius: 20px; background: var(--border); position: relative; cursor: pointer; border: none; flex-shrink: 0; }
+  .toggle.on { background: var(--accent); }
+  .toggle .knob { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: left 0.15s; }
+  .toggle.on .knob { left: 20px; }
+  .seg { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; width: fit-content; }
+  .seg button { border: none; background: var(--card); color: var(--text-secondary); padding: 7px 16px; font-family: inherit; font-size: 13.5px; cursor: pointer; }
+  .seg button.active { background: var(--accent); color: var(--accent-text); }
+  section.settings-block { margin-bottom: 20px; }
+  section.settings-block > p.label { font-weight: 500; margin: 0 0 8px; font-size: 14px; }
+
+  .reveal { opacity: 0; transform: translateY(18px); transition: opacity 0.6s ease-out, transform 0.6s ease-out; }
+  .reveal.visible { opacity: 1; transform: none; }
+
+  .landing-hero { text-align: center; padding: 2rem 1rem 0.5rem; }
+  .logo-mark { margin: 0 auto 10px; display: block; }
+  @keyframes logoFadeIn { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: none; } }
+  @keyframes growStem { from { stroke-dashoffset: 60; } to { stroke-dashoffset: 0; } }
+  @keyframes unfurl { from { opacity: 0; transform: scale(0.4); } to { opacity: 1; transform: scale(1); } }
+  .logo-book { opacity: 0; transform-origin: 60px 90px; animation: logoFadeIn 0.5s ease-out 0s forwards; }
+  .logo-tree-l { opacity: 0; transform-origin: 25px 70px; animation: logoFadeIn 0.5s ease-out 0.25s forwards; }
+  .logo-tree-r { opacity: 0; transform-origin: 95px 70px; animation: logoFadeIn 0.5s ease-out 0.4s forwards; }
+  .logo-mark .stem { stroke-dasharray: 36; stroke-dashoffset: 36; animation: growStem 0.9s ease-out 0.7s forwards; }
+  .logo-mark .leaf { transform-origin: center; opacity: 0; animation: unfurl 0.5s ease-out forwards; }
+  .logo-mark .leaf-l { animation-delay: 1.3s; }
+  .logo-mark .leaf-r { animation-delay: 1.5s; }
+  .landing-hero .tagline { font-size: 12.5px; letter-spacing: 0.03em; color: var(--accent); font-weight: 500; margin: 0 0 10px; }
+  .landing-hero h1 { font-size: 24px; font-weight: 600; margin: 0 0 12px; line-height: 1.4; }
+  .landing-hero p { color: var(--text-secondary); font-size: 15px; max-width: 430px; margin: 0 auto 14px; line-height: 1.65; }
+  .landing-cta { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .hero-pullquote { font-family: 'Lora', serif; font-style: italic; font-size: 16px; color: var(--text); max-width: 380px; margin: 18px auto 6px; }
+  .hero-tagline-small { font-size: 12px; color: var(--text-muted); max-width: 420px; margin: 0 auto 8px; line-height: 1.6; }
+
+  .feature-row { max-width: 480px; margin: 2.5rem auto; text-align: center; padding: 0 0.5rem; }
+  .feature-icon-wrap { width: 84px; height: 84px; border-radius: 50%; background: var(--pin-bg); color: var(--accent); display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
+  .feature-eyebrow { font-size: 11.5px; letter-spacing: 0.04em; color: var(--accent); font-weight: 600; margin: 0 0 6px; text-transform: uppercase; }
+  .feature-title { font-size: 19px; font-weight: 600; margin: 0 0 8px; }
+  .feature-desc { color: var(--text-secondary); font-size: 14px; line-height: 1.7; margin: 0; }
+
+  .hero-bottom-cta { text-align: center; padding: 1.5rem 1rem 0.5rem; }
+  .site-footer { border-top: 1px solid var(--border); margin-top: 2rem; padding: 1.5rem 1rem; }
+  .site-footer .footer-link { font-size: 13px; color: var(--text-secondary); text-decoration: none; }
+  .site-footer .footer-link:hover { color: var(--accent); }
+
+  .ai-fab-fixed { position: fixed; top: 130px; right: 14px; z-index: 20; touch-action: none; }
+  .ai-fab-fixed button#ai-fab-btn { width: 46px; height: 46px; border-radius: 50%; background: var(--accent); color: var(--accent-text); border: none; cursor: grab; display: flex; align-items: center; justify-content: center; box-shadow: 0 3px 10px rgba(0,0,0,0.15); touch-action: none; }
+  .ai-fab-fixed button#ai-fab-btn:active { cursor: grabbing; }
+  .chat-panel { display: none; position: absolute; top: 54px; right: 0; width: min(320px, calc(100vw - 28px)); background: var(--card); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); overflow: hidden; }
+  .chat-panel.open { display: flex; flex-direction: column; }
+  .chat-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13.5px; font-weight: 500; }
+  .chat-header button { background: none; border: none; font-size: 18px; color: var(--text-muted); cursor: pointer; line-height: 1; padding: 0 2px; }
+  .chat-messages { display: flex; flex-direction: column; padding: 12px; gap: 8px; max-height: 260px; overflow-y: auto; }
+  .chat-msg { max-width: 85%; padding: 8px 12px; border-radius: 12px; font-size: 13px; line-height: 1.5; }
+  .chat-msg.ai { background: var(--bg); color: var(--text); align-self: flex-start; }
+  .chat-msg.user { background: var(--accent); color: var(--accent-text); align-self: flex-end; }
+  .chat-input-row { display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--border); }
+  .chat-input-row input { flex: 1; }
+
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.35); align-items: center; justify-content: center; z-index: 50; padding: 1rem; }
+  .modal-overlay.open { display: flex; }
+  .modal-box { background: var(--card); border-radius: 14px; padding: 1.5rem; max-width: 340px; width: 100%; }
+  .modal-box .row { margin-top: 14px; }
+  .compose-inline { background: var(--bg); border-radius: 8px; padding: 10px; margin-top: 10px; display: none; }
+  .compose-inline.open { display: block; }
+  .check-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; }
+  .check-item svg { color: var(--accent); flex-shrink: 0; }
+  .stat-block { min-width: 60px; }
+</style>
+</head>
+<body>
+
+<div class="demo-switch">
+  <button data-view="landing" class="active">Logged-out view</button>
+  <button data-view="app">Signed-in view</button>
+</div>
+
+<div class="app" id="app">
+
+  <div id="zoom-wrap">
+  <div class="topbar">
+   <div class="topbar-inner">
+    <div class="brand" data-page="home">AOEhub</div>
+    <div class="search-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input id="search-input" placeholder="Search files, experiences, groups...">
+    </div>
+    <div class="header-actions">
+      <div class="plus-wrap signedin-only">
+        <button class="plus-btn" id="plus-btn" aria-label="Create">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+        <div class="dropdown" id="plus-dropdown">
+          <button data-page="upload-form">Upload a file</button>
+          <button data-page="experience-form">Share an experience</button>
+          <button data-page="announcement-form">Post an announcement <span class="admin-tag">admin only</span></button>
+        </div>
+      </div>
+      <div class="avatar-wrap signedin-only">
+        <button class="icon-btn" id="notif-btn" aria-label="Notifications">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+          <span class="dot"></span>
+        </button>
+        <div class="dropdown" id="notif-dropdown">
+          <div class="notif-item"><strong>Sarah M.</strong>, who you follow, posted a new file: "Nature journal template"</div>
+          <hr>
+          <div class="notif-item">Jamie R. asked a question on your phonics workbook</div>
+          <hr>
+          <div class="notif-item">Owen P. replied to your comment in the Experience Board</div>
+        </div>
+      </div>
+      <div class="avatar-wrap signedin-only">
+        <button class="avatar-btn" id="avatar-btn">SM</button>
+        <div class="dropdown" id="avatar-dropdown">
+          <button data-page="profile">Profile</button>
+          <button data-page="settings">Settings</button>
+          <button data-page="admin">Admin dashboard <span class="admin-tag">admin only</span></button>
+          <hr>
+          <button>Sign out</button>
+        </div>
+      </div>
+      <div class="loggedout-actions loggedout-only">
+        <select id="lang-select-loggedout" style="width:auto; padding:8px 10px; font-size:13px;">
+          <option>English</option>
+          <option>中文（简体）</option>
+          <option>中文（繁體）</option>
+        </select>
+        <button class="btn" id="header-login">Log in</button>
+        <button class="btn primary" id="header-signup">Sign up</button>
+      </div>
+    </div>
+   </div>
+  </div>
+
+  <div class="primary-tabs" id="primary-tabs">
+    <button data-page="experience" class="active">Experience board</button>
+    <button data-page="files" class="hide-loggedout">File board</button>
+    <button data-page="groups" class="gated-tab">Groups</button>
+  </div>
+
+  <div class="shell page-body">
+
+    <!-- HOME -->
+    <div class="page" id="page-home">
+      <div class="landing-hero">
+        <svg class="logo-mark" width="110" height="92" viewBox="0 0 120 100" fill="none">
+          <path class="logo-book" d="M6,88 Q30,74 60,86 Q90,74 114,88 L114,94 Q90,82 60,92 Q30,82 6,94 Z" fill="var(--card)" stroke="var(--text)" stroke-width="2"/>
+          <path class="logo-tree-l" d="M8,46 C6,38 12,30 20,31 C21,23 30,19 37,24 C43,18 53,21 54,29 C61,28 66,35 63,42 C67,46 64,53 58,53 L14,53 C7,53 4,50 8,46 Z" fill="var(--text)"/>
+          <rect class="logo-tree-l" x="33" y="52" width="4" height="34" fill="var(--text)"/>
+          <path class="logo-tree-r" d="M112,46 C114,38 108,30 100,31 C99,23 90,19 83,24 C77,18 67,21 66,29 C59,28 54,35 57,42 C53,46 56,53 62,53 L106,53 C113,53 116,50 112,46 Z" fill="var(--text)"/>
+          <rect class="logo-tree-r" x="83" y="52" width="4" height="34" fill="var(--text)"/>
+          <path class="stem" d="M60,86 L60,54" stroke="#3F6B4F" stroke-width="2.5" stroke-linecap="round"/>
+          <path class="leaf leaf-l" d="M60,60c-6-1.5-9-7.5-7.5-12 6,0.5 9,6 7.5,12z" fill="#5C8B6C"/>
+          <path class="leaf leaf-r" d="M60,56c6-1.5 9-7 7.5-11.5-6,0.5-9,6-7.5,11.5z" fill="#6FA37E"/>
+        </svg>
+        <p class="tagline" id="hero-tagline-eyebrow">AOEhub (Alpha Omega Education) — for homeschool, unschool, and school families alike</p>
+        <h1 id="hero-h1">Education isn't something you copy.<br>It's something you walk.</h1>
+        <p id="hero-subhead">A free home for the philosophy, the honest experience, and the curriculum behind education — shared by families who started the walk before you, for families just starting now.</p>
+        <div class="landing-cta">
+          <button class="btn primary" id="hero-signup">Sign up free</button>
+          <button class="btn" id="hero-login">Log in</button>
+        </div>
+        <p class="tiny"><span id="t-browse-pre">Or just</span> <a href="#" id="hero-browse" style="color:var(--accent);"><span id="t-browse-link">browse the File Board</span></a><span id="t-browse-post"> and the Experience Board — no account needed to look around.</span></p>
+        <p class="tiny"><span id="t-signup-pre">Want to download a file, post something, or leave a comment?</span> <strong id="t-signup-strong">Sign up or log in — it's free.</strong></p>
+        <p class="hero-pullquote reveal" id="hero-pullquote-text">"Education is an atmosphere, a discipline, and a life."</p>
+        <p class="hero-tagline-small reveal" id="hero-tagline-small-text">Always free · No ads · No scams · Built by those who've walked this path, are walking it now, and are just starting.</p>
+      </div>
+
+      <div class="feature-row reveal">
+        <div class="feature-icon-wrap"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="13" height="9" rx="3"/><path d="M6 13l-1 3 4-2"/><rect x="8" y="11" width="13" height="9" rx="3"/><path d="M18 20l1 3-4-2"/></svg></div>
+        <p class="feature-eyebrow">Experience Board</p>
+        <h3 class="feature-title">Real stories, and the philosophy behind them</h3>
+        <p class="feature-desc">What worked, what didn't, and what they'd do differently — plus honest reflections on why we educate at all, from the Bible, Charlotte Mason <span class="tiny">(a 19th-century educator known for her living-books, nature-study approach)</span>, Karl Witte <span class="tiny">(a 19th-century writer known for his early-education philosophy)</span>, and everyone here who has their own thoughts to share. This isn't just the admins' philosophy — it's everybody's, filed under its own tag so it's easy to find.</p>
+      </div>
+
+      <div class="feature-row reveal">
+        <div class="feature-icon-wrap"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg></div>
+        <p class="feature-eyebrow">File Board</p>
+        <h3 class="feature-title">Free curriculum, books, cards, games, and printables</h3>
+        <p class="feature-desc">Download, use, and remix anything — always at no cost, and always credited back to whoever made it first.</p>
+      </div>
+
+      <div class="feature-row reveal">
+        <div class="feature-icon-wrap"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="6" cy="7" r="3"/><circle cx="18" cy="7" r="3"/><circle cx="12" cy="17" r="3"/><path d="M8.5 9 10 15M15.5 9 14 15M9 6h6"/></svg></div>
+        <p class="feature-eyebrow">Groups</p>
+        <h3 class="feature-title">Find or start a circle of families</h3>
+        <p class="feature-desc">Some groups are public and searchable, some are private and invite-only — either way, a real place to talk with people on the same path.</p>
+      </div>
+
+      <div class="hero-bottom-cta">
+        <button class="btn primary" id="hero-signup-bottom">Sign up free</button>
+      </div>
+
+      <div class="site-footer">
+        <div class="row wrap" style="gap:18px; justify-content:center;">
+          <a href="#" class="footer-link">About</a>
+          <a href="#" class="footer-link">Contact</a>
+          <a href="#" class="footer-link">Privacy Policy</a>
+        </div>
+        <p class="tiny" style="text-align:center; margin-top:10px;">© AOEhub</p>
+      </div>
+    </div>
+
+    <!-- ONBOARDING -->
+    <div class="page" id="page-onboarding">
+      <p class="title" style="margin-bottom:4px;">Welcome to AOEhub</p>
+      <p class="muted" style="margin-bottom:20px;">Two quick questions — totally optional, just helps us show you the right things first.</p>
+
+      <p class="field-label" style="margin-top:0;">New to homeschooling, or been at it a while?</p>
+      <div class="chip-row" id="onboard-q1">
+        <button class="chip" data-val="new">New to this</button>
+        <button class="chip" data-val="some">Some experience</button>
+        <button class="chip" data-val="years">Years of experience</button>
+      </div>
+
+      <p class="field-label">What brought you here?</p>
+      <div class="chip-row" id="onboard-q2">
+        <button class="chip" data-val="curriculum">Curriculum ideas</button>
+        <button class="chip" data-val="community">Community &amp; support</button>
+        <button class="chip" data-val="philosophy">Philosophy &amp; the big picture</button>
+        <button class="chip" data-val="notsure">Not sure yet</button>
+      </div>
+
+      <button class="btn primary" id="onboard-continue" style="width:100%; margin-top:20px;">Continue</button>
+      <button class="btn" id="onboard-skip" style="width:100%; margin-top:8px;">Skip for now</button>
+    </div>
+
+    <!-- EXPERIENCE BOARD -->
+    <div class="page visible" id="page-experience">
+      <div class="pin">
+        <div class="row" style="gap:6px; margin-bottom:6px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 17v5M8 3h8l-1 6 3 3H6l3-3z"/></svg>
+          <span style="font-size:12px; font-weight:500;">pinned announcement</span><span class="badge">admin</span>
+        </div>
+        <p class="title" style="margin:0 0 4px;">Remix attribution is now live</p>
+        <p class="muted">You can now remix any file on the board — the original creator is linked automatically.</p>
+      </div>
+      <div class="chip-row">
+        <button class="chip active">All</button><button class="chip">Philosophy</button><button class="chip">Starting out</button><button class="chip">Milestones</button>
+        <button class="chip">Struggles &amp; lessons</button><button class="chip">Curriculum reviews</button><button class="chip">Reflections</button>
+      </div>
+      <div class="card post-open" data-return="experience">
+        <div class="row wrap" style="gap:6px; margin-bottom:6px;">
+          <span class="author-link" data-stop="1">Lin H.</span><span class="badge">Philosophy</span><span class="tiny">2 weeks ago</span>
+          <button class="more-btn report-btn">⋯</button>
+        </div>
+        <p class="title" style="margin:0 0 4px;">On formation, not just information</p>
+        <p class="muted" id="t-lin-post">"Education is an atmosphere, a discipline, a life." Charlotte Mason's words changed how I think about our homeschool days — not lessons to check off, but a way of living together.</p>
+        <button class="btn small translate-btn" data-target="t-lin-post" style="margin-bottom:4px;">🌐 Translate</button>
+        <p class="tiny">218 views · 42 replies</p>
+      </div>
+      <div class="card post-open" data-return="experience">
+        <div class="row wrap" style="gap:6px; margin-bottom:6px;">
+          <span class="author-link" data-stop="1">Grace W.</span><span class="badge">Philosophy</span><span class="tiny">1 week ago</span>
+          <button class="more-btn report-btn">⋯</button>
+        </div>
+        <p class="title" style="margin:0 0 4px;">Why we stopped grading narration</p>
+        <p class="muted">A reflection on separating assessment from genuine understanding, and what changed for our family once we let go of grades entirely.</p>
+        <p class="tiny">96 views · 15 replies</p>
+      </div>
+      <div class="card post-open" data-return="experience">
+        <div class="row wrap" style="gap:6px; margin-bottom:6px;">
+          <span class="author-link" data-stop="1">Maria T.</span><span class="tiny">5 days ago</span>
+          <button class="more-btn report-btn">⋯</button>
+        </div>
+        <p class="muted">We took a full year off "formal" lessons and just read together every day. I was terrified. It turned out to be the best decision — she reads three grade levels ahead now.</p>
+        <p class="tiny">340 views · 18 replies</p>
+      </div>
+      <div class="card post-open" data-return="experience">
+        <div class="row wrap" style="gap:6px; margin-bottom:6px;">
+          <span class="author-link" data-stop="1">Owen P.</span><span class="badge">admin</span><span class="tiny">1 week ago</span>
+          <button class="more-btn report-btn">⋯</button>
+        </div>
+        <p class="muted">Something I wish I knew starting out: the curriculum matters less than you think. The relationship you build around learning matters more.</p>
+        <p class="tiny">512 views · 31 replies</p>
+      </div>
+    </div>
+
+    <!-- FILE BOARD -->
+    <div class="page" id="page-files">
+      <div id="search-type-switcher" style="display:none;">
+        <p class="tiny" style="margin-bottom:6px;">Search in:</p>
+        <div class="seg" id="content-type-seg" style="margin-bottom:16px;">
+          <button data-content="files" class="active">Files</button>
+          <button data-content="experiences">Experiences</button>
+          <button data-content="groups">Groups</button>
+        </div>
+      </div>
+
+      <div id="results-files">
+        <div class="start-here">
+          <div><p class="title" style="margin:0 0 2px; font-size:14.5px;">New here? Start with these</p><p class="tiny">A short, admin-picked path for families just getting started.</p></div>
+          <button class="btn">Browse</button>
+        </div>
+
+        <div class="chip-row">
+          <button class="chip active">All</button><button class="chip">Curriculum</button><button class="chip">Games</button>
+          <button class="chip">Books</button><button class="chip">Cards</button><button class="chip">Songs</button>
+          <button class="chip">Art projects</button><button class="chip">Printables</button><button class="chip">Apps</button>
+        </div>
+
+        <p class="tiny" style="margin-bottom:6px;">Filter by type</p>
+        <div class="chip-row">
+          <button class="chip active">All types</button><button class="chip">Video</button><button class="chip">Audio</button>
+          <button class="chip">Image</button><button class="chip">Document</button><button class="chip">Game / App</button>
+        </div>
+
+        <div class="row between" style="margin-bottom:12px;">
+          <p class="title" id="files-heading" style="margin:0;">Recommended for you</p>
+          <select><option>Most relevant</option><option>Newest</option><option>Most discussed</option></select>
+        </div>
+
+        <div class="card file-card" data-file="phonics">
+          <div class="preview-img"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>preview image</div>
+          <div class="body">
+            <div class="row between"><p class="title" style="margin:0;">Early reading phonics workbook, weeks 1-8</p><span class="badge">original</span></div>
+            <p class="muted">A gentle, low-pressure phonics sequence with short daily lessons. Includes 3 language versions.</p>
+            <div class="row tiny wrap" style="gap:12px;"><span class="author-link" data-stop="1">Sarah M.</span><span>2,140 views</span><span>posted 3 weeks ago</span>
+              <button class="more-btn report-btn" data-stop="1" style="margin-left:auto;">⋯</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card file-card" data-file="songs">
+          <div class="preview-img"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="5" width="14" height="14" rx="2"/><path d="M17 9l4-2v10l-4-2"/></svg>preview video</div>
+          <div class="body">
+            <div class="row between"><p class="title" style="margin:0;">Phonics songs &amp; read-along video, set 1</p><span class="badge">remix</span></div>
+            <p class="muted">Remixed from Sarah M.'s workbook — added a read-along video for auditory learners.</p>
+            <div class="row tiny wrap" style="gap:12px;"><span class="author-link" data-stop="1">David K.</span><span>410 views</span><span>posted 4 days ago</span>
+              <button class="more-btn report-btn" data-stop="1" style="margin-left:auto;">⋯</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="results-experiences" style="display:none;">
+        <div class="card">
+          <div class="row wrap" style="gap:6px; margin-bottom:6px;"><span style="font-weight:500; font-size:14px;">Maria T.</span><span class="tiny">5 days ago</span></div>
+          <p class="muted">We took a full year off "formal" lessons and just read together every day. I was terrified. It turned out to be the best decision.</p>
+          <p class="tiny">340 views · 18 replies</p>
+        </div>
+      </div>
+
+      <div id="results-groups" style="display:none;">
+        <div class="card row between">
+          <div><p class="title" style="margin:0 0 2px;">Charlotte Mason study circle</p><p class="tiny">public · 24 members</p></div>
+          <div class="row" style="gap:4px;"><button class="btn primary join-btn">Join</button><button class="more-btn report-btn">⋯</button></div>
+        </div>
+        <div class="card row between">
+          <div><p class="title" style="margin:0 0 2px;">Special needs homeschool support</p><p class="tiny">public · 61 members</p></div>
+          <div class="row" style="gap:4px;"><button class="btn primary join-btn">Join</button><button class="more-btn report-btn">⋯</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FILE DETAIL -->
+    <div class="page" id="page-file-detail">
+      <button class="back-link" onclick="showPage('files')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg> Back to File Board
+      </button>
+      <div class="card" style="padding:0; overflow:hidden;">
+        <div class="preview-img large"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>preview image</div>
+        <div style="padding:1rem 1.1rem;">
+          <div class="row wrap" style="gap:8px; margin-bottom:8px;">
+            <span class="badge">original</span><span class="tiny">posted by</span><span class="author-link" data-stop="1">Sarah M.</span>
+            <button class="more-btn report-btn" style="margin-left:auto;">⋯</button>
+          </div>
+          <p class="title" style="margin:0 0 8px;">Early reading phonics workbook, weeks 1-8</p>
+          <p class="muted" id="t-file-desc" style="margin-bottom:6px;">A gentle, low-pressure phonics sequence I built for my daughter when she was 5. Short daily lessons, no worksheets she'd dread. Posted in three language versions below.</p>
+          <button class="btn small translate-btn" data-target="t-file-desc" style="margin-bottom:12px;">🌐 Translate</button>
+          <div class="row tiny wrap" style="gap:16px; margin-bottom:6px;"><span>2,140 views</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="title" style="margin-bottom:4px;">Files in this post</p>
+        <p class="tiny" style="margin-bottom:10px;">Titles and descriptions are translated automatically. The files themselves are shown exactly as uploaded — the hub can't translate what's inside them.</p>
+        <div class="row between" style="padding:8px 0; border-top:1px solid var(--border);">
+          <div><p style="font-weight:500;font-size:14px;margin:0;">English version</p><p class="tiny">PDF · 210 downloads</p></div>
+          <button class="btn primary small download-btn">Download</button>
+        </div>
+        <div class="row between" style="padding:8px 0; border-top:1px solid var(--border);">
+          <div><p style="font-weight:500;font-size:14px;margin:0;">繁體中文版 · Traditional Chinese</p><p class="tiny">PDF · 96 downloads</p></div>
+          <button class="btn primary small download-btn">Download</button>
+        </div>
+        <div class="row between" style="padding:8px 0; border-top:1px solid var(--border);">
+          <div><p style="font-weight:500;font-size:14px;margin:0;">简体中文版 · Simplified Chinese</p><p class="tiny">PDF · 134 downloads</p></div>
+          <button class="btn primary small download-btn">Download</button>
+        </div>
+        <button class="btn" id="remix-btn" style="width:100%; margin-top:12px;">Remix this post</button>
+      </div>
+
+      <div class="card">
+        <p class="title" style="margin-bottom:12px;">Discussion</p>
+        <div style="border-top:1px solid var(--border); padding-top:10px;">
+          <div class="row wrap" style="gap:6px; margin-bottom:4px;">
+            <span class="badge neutral">question</span><span class="author-link" data-stop="1" style="font-size:13px;">Jamie R.</span><span class="tiny">2 days ago</span>
+          </div>
+          <p class="muted" style="margin-bottom:8px;" id="t-comment-1">Did this work for a kid who already knows most letter sounds?</p>
+          <button class="btn small translate-btn" data-target="t-comment-1" style="margin-bottom:8px;">🌐 Translate</button>
+          <div class="reply">
+            <div class="row" style="gap:6px; margin-bottom:2px;"><span style="font-size:12px; font-weight:500;">Sarah M.</span><span class="badge" style="font-size:10px;">author</span></div>
+            <p class="muted" style="margin:0; font-size:13px;">Yes, we started around week 4 for that reason. Feel free to skip ahead.</p>
+          </div>
+        </div>
+        <button class="btn" id="ask-question-btn" style="width:100%; margin-top:12px;">Ask a question</button>
+        <div class="compose-inline" id="ask-question-compose">
+          <select style="margin-bottom:8px;"><option>Question</option><option>Suggestion</option><option>Just sharing</option></select>
+          <textarea placeholder="Ask Sarah M. something about this file..."></textarea>
+          <button class="btn primary" style="margin-top:8px;" onclick="document.getElementById('ask-question-compose').classList.remove('open')">Post</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- GENERIC POST DETAIL -->
+    <div class="page" id="page-post-detail">
+      <button class="back-link" id="post-detail-back">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg> <span id="post-detail-back-label">Back</span>
+      </button>
+      <div class="card">
+        <div class="row wrap" style="gap:8px; margin-bottom:8px;">
+          <span class="author-link" data-stop="1" id="post-detail-author">Maria T.</span><span class="tiny" id="post-detail-time">5 days ago · 340 views</span>
+          <button class="more-btn report-btn" style="margin-left:auto;">⋯</button>
+        </div>
+        <p class="muted" id="post-detail-body">We took a full year off "formal" lessons and just read together every day. I was terrified. It turned out to be the best decision — she reads three grade levels ahead now.</p>
+      </div>
+      <div class="card">
+        <p class="title" style="margin-bottom:12px;">Discussion</p>
+        <div style="border-top:1px solid var(--border); padding-top:10px; margin-bottom:10px;">
+          <div class="row wrap" style="gap:6px; margin-bottom:4px;">
+            <span class="badge neutral">question</span><span class="author-link" data-stop="1" style="font-size:13px;">Lin H.</span><span class="tiny">2 days ago</span>
+          </div>
+          <p class="muted">Did the reading time replace math too, or just the "formal" part?</p>
+        </div>
+        <div style="border-top:1px solid var(--border); padding-top:10px;">
+          <div class="row wrap" style="gap:6px; margin-bottom:4px;">
+            <span class="badge neutral">just sharing</span><span class="author-link" data-stop="1" style="font-size:13px;">Priya N.</span><span class="tiny">1 day ago</span>
+          </div>
+          <p class="muted">This is exactly what I needed to read today. Thank you for being honest about it.</p>
+        </div>
+        <button class="btn" id="add-comment-btn" style="width:100%; margin-top:12px;">Add a comment</button>
+        <div class="compose-inline" id="add-comment-compose">
+          <select style="margin-bottom:8px;"><option>Question</option><option>Suggestion</option><option>Just sharing</option></select>
+          <textarea placeholder="Add your comment..."></textarea>
+          <button class="btn primary" style="margin-top:8px;" onclick="document.getElementById('add-comment-compose').classList.remove('open')">Post</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- USER PROFILE (public) -->
+    <div class="page" id="page-user-profile">
+      <button class="back-link" onclick="showPage('experience')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg> Back
+      </button>
+      <div class="card row between">
+        <div class="row" style="gap:14px;">
+          <div style="width:52px;height:52px;border-radius:50%;background:var(--accent);color:var(--accent-text);display:flex;align-items:center;justify-content:center;font-weight:600;font-family:'Lora',serif;flex-shrink:0;">SM</div>
+          <div><p class="title" style="margin:0;" id="up-name">Sarah M.</p><p class="tiny">member since March 2025 · 1,842 points · 312 followers</p></div>
+        </div>
+        <button class="btn primary" id="follow-btn">Follow</button>
+      </div>
+      <p class="label" style="font-weight:500; margin: 18px 0 8px;">Recent posts</p>
+      <div class="card">
+        <p style="font-weight:500; font-size:14px; margin:0 0 2px;">Early reading phonics workbook</p>
+        <p class="tiny">File board · 2,140 views</p>
+      </div>
+      <div class="card">
+        <p style="font-weight:500; font-size:14px; margin:0 0 2px;">Why I stopped comparing my kids' pace to their friends'</p>
+        <p class="tiny">Experience board · 22 replies</p>
+      </div>
+    </div>
+
+    <!-- UPLOAD FORM -->
+    <div class="page" id="page-upload-form">
+      <button class="back-link" onclick="showPage('files')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg> Cancel
+      </button>
+      <p class="title" style="margin-bottom:14px;">Upload a file</p>
+      <label class="field-label">Title</label>
+      <input placeholder="e.g. Early reading phonics workbook">
+      <label class="field-label">Description</label>
+      <textarea placeholder="What is this, and who is it for?"></textarea>
+      <label class="field-label">Media type</label>
+      <div class="chip-row" id="media-type-chips">
+        <button class="chip active">Document</button><button class="chip">Image</button><button class="chip">Audio</button>
+        <button class="chip">Video</button><button class="chip">Game</button><button class="chip">App</button>
+      </div>
+      <label class="field-label">Section</label>
+      <select><option>Curriculum</option><option>Games</option><option>Books</option><option>Cards</option><option>Songs</option><option>Art projects</option><option>Printables</option><option>Apps</option></select>
+      <label class="field-label">Is this your original work?</label>
+      <div class="seg" id="authorship-seg">
+        <button data-auth="original" class="active">Original</button>
+        <button data-auth="remix">Remix</button>
+        <button data-auth="notmine">Not my work</button>
+      </div>
+      <div id="remix-source-field" style="display:none; margin-top:10px;">
+        <input placeholder="Link or title of the original file being remixed">
+      </div>
+      <label class="field-label">Preview picture or video</label>
+      <p class="tiny" style="margin-bottom:6px;">Shown on the card before someone opens the file — a photo of the finished pages, a screenshot, or a short clip works well.</p>
+      <button class="btn">Choose preview image or video</button> <span class="tiny">no preview chosen</span>
+      <label class="field-label">Files</label>
+      <p class="tiny" style="margin-bottom:8px;">Add every file that belongs together in one post — different languages, different subjects, or a chapter-by-chapter curriculum. Each one gets its own label and its own download button.</p>
+      <div id="file-rows">
+        <div class="row" style="gap:8px; margin-bottom:8px;">
+          <input placeholder="Label, e.g. 'English version' or 'Chapter 3 - Fractions'" style="flex:1;">
+          <button class="btn small">Choose file</button>
+        </div>
+      </div>
+      <button class="btn small" id="add-file-row">+ Add another file</button>
+      <div class="card" style="background:var(--bg); border-style:dashed; margin-top:18px;">
+        <p class="muted" style="margin-bottom:10px;">Everything you post here is free, forever — anyone can view it, download it, and remix it. Are you aware of that?</p>
+        <button class="btn" id="ack-upload">I'm aware, continue</button>
+      </div>
+      <button class="btn primary" id="submit-upload" style="width:100%; margin-top:14px; opacity:0.5; cursor:not-allowed;" disabled onclick="showPage('files')">Post to the File Board</button>
+    </div>
+
+    <!-- EXPERIENCE FORM -->
+    <div class="page" id="page-experience-form">
+      <button class="back-link" onclick="showPage('experience')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg> Cancel
+      </button>
+      <p class="title" style="margin-bottom:14px;">Share an experience</p>
+      <label class="field-label">What kind of post is this?</label>
+      <select><option>Starting out</option><option>Milestones</option><option>Struggles & lessons</option><option>Curriculum reviews</option><option>Philosophy</option><option>Reflections</option><option>Just sharing</option></select>
+      <label class="field-label">Your story</label>
+      <textarea placeholder="What happened, what did you try, what did you learn?" style="min-height:140px;"></textarea>
+      <div class="card" style="background:var(--bg); border-style:dashed; margin-top:18px;">
+        <p class="muted" style="margin-bottom:10px;">What you share here is public and free to everyone — anyone can read it, quote it, and learn from it. Are you aware of that?</p>
+        <button class="btn" id="ack-experience">I'm aware, continue</button>
+      </div>
+      <button class="btn primary" id="submit-experience" style="width:100%; margin-top:14px; opacity:0.5; cursor:not-allowed;" disabled onclick="showPage('experience')">Post to the Experience Board</button>
+    </div>
+
+    <!-- ANNOUNCEMENT FORM -->
+    <div class="page" id="page-announcement-form">
+      <button class="back-link" onclick="showPage('experience')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg> Cancel
+      </button>
+      <p class="title" style="margin-bottom:4px;">Post an announcement</p>
+      <p class="tiny" style="margin-bottom:14px;">This pins to the top of the Experience Board for everyone signed in.</p>
+      <label class="field-label">Title</label>
+      <input placeholder="e.g. New feature, policy update, maintenance notice">
+      <label class="field-label">Message</label>
+      <textarea placeholder="What do people need to know?"></textarea>
+      <button class="btn primary" style="width:100%; margin-top:18px;" onclick="showPage('experience')">Post &amp; pin announcement</button>
+    </div>
+
+    <!-- GROUPS -->
+    <div class="page" id="page-groups">
+      <div class="seg" id="groups-seg" style="margin-bottom:14px;">
+        <button data-groupview="discover" class="active">Discover</button>
+        <button data-groupview="mine">My groups</button>
+      </div>
+      <div id="groups-discover">
+        <div class="card row between">
+          <div><p class="title" style="margin:0 0 2px;">Charlotte Mason study circle</p><p class="tiny">public · 24 members</p></div>
+          <div class="row" style="gap:4px;"><button class="btn primary join-btn">Join</button><button class="more-btn report-btn">⋯</button></div>
+        </div>
+        <div class="card row between">
+          <div><p class="title" style="margin:0 0 2px;">Special needs homeschool support</p><p class="tiny">public · 61 members</p></div>
+          <div class="row" style="gap:4px;"><button class="btn primary join-btn">Join</button><button class="more-btn report-btn">⋯</button></div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <p class="title" style="margin-bottom:4px;">Joining a private group</p>
+          <p class="muted" style="margin-bottom:10px;">Private groups aren't listed here — ask a member to send you an invite link or code.</p>
+          <div class="row" style="gap:8px;">
+            <input placeholder="Enter invite code" style="flex:1;">
+            <button class="btn primary">Join</button>
+          </div>
+        </div>
+
+        <button class="btn" id="create-group-btn" style="width:100%; margin-top:16px;">+ Create a group</button>
+      </div>
+      <div id="groups-mine" style="display:none;">
+        <div class="card" style="margin-bottom:16px;">
+          <div class="row between">
+            <div class="row" style="gap:8px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+              <span class="title" style="margin:0;">Charlotte Mason study circle</span>
+            </div>
+            <div class="row" style="gap:4px;"><span class="badge">private · 24 members</span><button class="more-btn report-btn">⋯</button></div>
+          </div>
+          <p class="tiny" style="margin:6px 0 10px;">Only visible to members. Discussion only — no file uploads here, and no points.</p>
+          <div class="row" style="gap:8px;">
+            <button class="btn small" id="invite-btn">Invite someone</button>
+            <button class="btn small danger" id="leave-group-btn">Leave group</button>
+          </div>
+          <div class="compose-inline" id="invite-compose">
+            <p class="tiny" style="margin-bottom:6px;">Share this link — it only works once.</p>
+            <div class="row" style="gap:8px;">
+              <input readonly value="hub.example/join/8f3k2p" style="flex:1;">
+              <button class="btn small">Copy</button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="row wrap" style="gap:6px; margin-bottom:6px;"><span style="font-weight:500; font-size:14px;">Lin H.</span><span class="tiny">yesterday</span></div>
+          <p class="muted">Has anyone tried narration with a very wiggly 6 year old? Looking for what actually worked, not the ideal version.</p>
+          <div class="reply">
+            <div class="row" style="gap:6px; margin-bottom:2px;"><span style="font-size:12.5px; font-weight:500;">Grace W.</span></div>
+            <p class="muted" style="margin:0; font-size:13px;">Oral narration while walking, not sitting still. Movement helped mine enormously.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CREATE GROUP FORM -->
+    <div class="page" id="page-create-group">
+      <button class="back-link" onclick="showPage('groups')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg> Cancel
+      </button>
+      <p class="title" style="margin-bottom:14px;">Create a group</p>
+      <div class="card" style="background:var(--bg);">
+        <p class="tiny" style="margin-bottom:8px; font-weight:500;">Eligibility to create a group:</p>
+        <div class="check-item"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg> 500+ points (you have 1,842)</div>
+        <div class="check-item"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg> Account older than 90 days</div>
+        <div class="check-item"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg> No unresolved reports</div>
+      </div>
+      <label class="field-label">Group name</label>
+      <input placeholder="e.g. Only children homeschool support">
+      <label class="field-label">Description</label>
+      <textarea placeholder="What's this group for?"></textarea>
+      <label class="field-label">Visibility</label>
+      <div class="seg" id="group-visibility-seg">
+        <button data-vis="public" class="active">Public</button>
+        <button data-vis="private">Private</button>
+      </div>
+      <p class="tiny" style="margin-top:10px;">Even private groups stay visible to admins for moderation — "private" means private from other members, not from the hub.</p>
+      <button class="btn primary" style="width:100%; margin-top:18px;" onclick="showPage('groups')">Create group</button>
+    </div>
+
+    <!-- PROFILE -->
+    <div class="page" id="page-profile">
+      <div class="card row between">
+        <div class="row" style="gap:14px;">
+          <div style="width:52px;height:52px;border-radius:50%;background:var(--accent);color:var(--accent-text);display:flex;align-items:center;justify-content:center;font-weight:600;font-family:'Lora',serif;flex-shrink:0;">SM</div>
+          <div><p class="title" style="margin:0;">Sarah M.</p><p class="tiny">member since March 2025</p></div>
+        </div>
+        <button class="btn small" id="edit-profile-btn">Edit profile</button>
+      </div>
+      <div class="compose-inline" id="edit-profile-form">
+        <label class="field-label" style="margin-top:0;">Profile picture</label>
+        <button class="btn small">Choose new picture</button>
+        <label class="field-label">Name</label>
+        <input value="Sarah M.">
+        <label class="field-label">Display name</label>
+        <input placeholder="How you'd like to appear on posts, e.g. 'Sarah's Homeschool'">
+        <button class="btn primary small" style="margin-top:12px;" onclick="document.getElementById('edit-profile-form').classList.remove('open')">Save</button>
+      </div>
+
+      <div class="card row wrap" style="gap:18px;">
+        <div class="stat-block"><p class="tiny" style="margin:0;">points</p><p class="title" style="margin:0;">1,842</p></div>
+        <div class="stat-block"><p class="tiny" style="margin:0;">files</p><p class="title" style="margin:0;">6</p></div>
+        <div class="stat-block"><p class="tiny" style="margin:0;">groups</p><p class="title" style="margin:0;">2</p></div>
+        <div class="stat-block"><p class="tiny" style="margin:0;">followers</p><p class="title" style="margin:0;">312</p></div>
+        <div class="stat-block"><p class="tiny" style="margin:0;">following</p><p class="title" style="margin:0;">48</p></div>
+      </div>
+      <button class="btn small" id="points-info-btn" style="margin-bottom:16px;">ⓘ How points work</button>
+
+      <p class="label" style="font-weight:500; margin: 0 0 8px;">My files</p>
+      <div class="card row between">
+        <div><p style="font-weight:500; font-size:14px; margin:0 0 2px;">Early reading phonics workbook</p><p class="tiny">2,140 views · updated 3 days ago</p></div>
+        <div class="row" style="gap:6px;"><button class="btn small">Update</button><button class="btn small danger" onclick="if(confirm('Delete this file? This cannot be undone.')) this.closest('.card').remove();">Delete</button></div>
+      </div>
+
+      <p class="label" style="font-weight:500; margin: 18px 0 8px;">My posts</p>
+      <div class="card row between">
+        <div><p style="font-weight:500; font-size:14px; margin:0 0 2px;">Why I stopped comparing my kids' pace to their friends'</p><p class="tiny">340 views · 22 replies</p></div>
+        <div class="row" style="gap:6px;"><button class="btn small">Update</button><button class="btn small danger" onclick="if(confirm('Delete this post? This cannot be undone.')) this.closest('.card').remove();">Delete</button></div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="page" id="page-settings">
+      <section class="settings-block">
+        <p class="label">Appearance</p>
+        <div class="seg" id="theme-seg" style="margin-bottom:14px;"><button data-theme="light" class="active">Light</button><button data-theme="dark">Dark</button></div>
+        <p class="tiny" style="margin-bottom:8px; font-weight:500;">Theme</p>
+        <div class="row wrap" style="gap:8px; margin-bottom:8px;" id="swatches">
+          <button class="swatch active" data-theme-key="default" style="background:#3F6B4F;" title="Default"></button>
+          <button class="swatch" data-theme-key="clay" style="background:oklch(0.6171 0.1375 39.0427);" title="Clay"></button>
+          <button class="swatch" data-theme-key="meadow" style="background:oklch(0.6411 0.0666 130.1256);" title="Meadow"></button>
+          <button class="swatch" data-theme-key="plumcream" style="background:oklch(0.4597 0.0629 289.5561);" title="Plum Cream"></button>
+          <button class="swatch" data-theme-key="rose" style="background:oklch(0.7508 0.1610 2.6024);" title="Rose"></button>
+          <button class="swatch" data-theme-key="stone" style="background:oklch(0.3012 0 0);" title="Stone"></button>
+          <button class="swatch" data-theme-key="sketch" style="background:oklch(0 0 0);" title="Sketch"></button>
+          <button class="swatch" data-theme-key="amber" style="background:oklch(0.8512 0.1254 73.9788);" title="Amber"></button>
+          <button class="swatch" data-theme-key="citrus" style="background:oklch(0.7116 0.1812 22.8389);" title="Citrus"></button>
+          <button class="swatch" data-theme-key="bubblegum" style="background:oklch(0.8502 0.0851 6.1876);" title="Bubblegum"></button>
+          <button class="swatch" data-theme-key="marigold" style="background:oklch(0.8480 0.1563 82.4419);" title="Marigold"></button>
+          <button class="swatch" data-theme-key="brick" style="background:oklch(0.5665 0.1006 14.1906);" title="Brick"></button>
+          <button class="swatch" data-theme-key="harvest" style="background:oklch(0.5930 0.1524 52.0222);" title="Harvest"></button>
+          <button class="swatch" data-theme-key="olive" style="background:oklch(0.6819 0.0308 120.1873);" title="Olive"></button>
+          <button class="swatch" data-theme-key="espresso" style="background:oklch(0.2184 0.0079 274.5602);" title="Espresso"></button>
+          <button class="swatch" data-theme-key="caramel" style="background:oklch(0.6351 0.1052 63.8590);" title="Caramel"></button>
+        </div>
+        <p class="tiny">All 16 tweakcn.com links added — one turned out to be a duplicate of Citrus, so there are 15 distinct themes here. Hover any swatch for its name.</p>
+      </section>
+      <section class="settings-block">
+        <p class="label">Text size</p>
+        <div class="seg" id="textsize-seg">
+          <button data-zoom="0.9" style="font-size:12px;">A</button>
+          <button data-zoom="1" class="active" style="font-size:15px;">A</button>
+          <button data-zoom="1.15" style="font-size:18px;">A</button>
+          <button data-zoom="1.3" style="font-size:21px;">A</button>
+        </div>
+        <p class="tiny" style="margin-top:6px;">Makes everything on the hub bigger — text, buttons, spacing.</p>
+      </section>
+      <section class="settings-block">
+        <p class="label">Language</p>
+        <select id="lang-select-settings" style="width:auto; max-width:260px;"><option>English</option><option>中文（简体）Simplified Chinese</option><option>中文（繁體）Traditional Chinese</option></select>
+        <p class="tiny" style="margin-top:6px;">Post titles and descriptions are shown in your chosen language when available. Downloaded files are not translated.</p>
+      </section>
+      <section class="settings-block">
+        <p class="label">Notifications</p>
+        <div class="card row between"><p class="muted" style="margin:0;">Notify me about replies and comments</p><button class="toggle on" id="notif-toggle"><span class="knob"></span></button></div>
+      </section>
+    </div>
+
+    <!-- ADMIN DASHBOARD -->
+    <div class="page" id="page-admin">
+      <p class="tiny" style="margin-bottom:14px;">Visible only to the four admin accounts.</p>
+      <p class="label" style="font-weight:500; margin-bottom:8px;">Reports queue</p>
+      <div class="card">
+        <div class="row between wrap" style="gap:8px; margin-bottom:6px;"><span class="badge warn">scam / money request</span><span class="tiny">reported 2 hours ago</span></div>
+        <p class="muted">Post in "Homeschool co-op meetup" group asking members to send payment for "guaranteed curriculum access."</p>
+        <div class="row wrap" style="gap:8px; margin-top:10px;">
+          <button class="btn">View original ↗</button><button class="btn danger">Remove content</button><button class="btn">Warn user</button><button class="btn">Dismiss</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="row between wrap" style="gap:8px; margin-bottom:6px;"><span class="badge warn">off-topic</span><span class="tiny">reported yesterday</span></div>
+        <p class="muted">File upload unrelated to education or homeschooling.</p>
+        <div class="row wrap" style="gap:8px; margin-top:10px;">
+          <button class="btn">View original ↗</button><button class="btn danger">Remove content</button><button class="btn">Warn user</button><button class="btn">Dismiss</button>
+        </div>
+      </div>
+
+      <p class="label" style="font-weight:500; margin:20px 0 8px;">Groups oversight</p>
+      <p class="tiny" style="margin-bottom:10px;">A group only appears here when it's been reported, or when you search for it by name.</p>
+      <input id="group-search" placeholder="Search groups by name">
+      <div class="card row between" style="margin-top:10px;">
+        <div><p style="font-weight:500; font-size:14px; margin:0 0 2px;">Homeschool co-op meetup</p><p class="tiny">flagged by the report above · public · 8 members</p></div>
+        <div class="row" style="gap:8px;"><button class="btn">View</button><button class="btn danger">Delete</button></div>
+      </div>
+      <div class="card row between" id="group-search-result" style="display:none;">
+        <div><p style="font-weight:500; font-size:14px; margin:0 0 2px;">Charlotte Mason study circle</p><p class="tiny">private · 24 members</p></div>
+        <div class="row" style="gap:8px;"><button class="btn">View</button><button class="btn danger">Delete</button></div>
+      </div>
+
+      <p class="label" style="font-weight:500; margin:20px 0 8px;">Users</p>
+      <p class="tiny" style="margin-bottom:10px;">Same rule — an account only shows up here if it's been reported, or if you search for it directly.</p>
+      <input id="user-search" placeholder="Search by name, email, or phone">
+      <div class="card row between" style="margin-top:10px;">
+        <div><p style="font-weight:500; font-size:14px; margin:0 0 2px;">Jordan B.</p><p class="tiny">joined Jan 2026 · 1 report on file</p></div>
+        <div class="row" style="gap:8px;"><button class="btn">View profile</button><button class="btn danger">Delete account</button></div>
+      </div>
+      <div class="card row between" id="user-search-result" style="display:none;">
+        <div><p style="font-weight:500; font-size:14px; margin:0 0 2px;">Priya N.</p><p class="tiny">joined Aug 2025 · no reports</p></div>
+        <div class="row" style="gap:8px;"><button class="btn">View profile</button><button class="btn danger">Delete account</button></div>
+      </div>
+    </div>
+
+  </div>
+  </div>
+
+  <div class="ai-fab-fixed" id="ai-fab">
+    <button aria-label="Ask the hub AI" id="ai-fab-btn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a5 5 0 0 0-5 5v2a5 5 0 0 0 10 0V7a5 5 0 0 0-5-5Z"/><path d="M8 14v1a4 4 0 0 0 8 0v-1M12 19v3"/></svg></button>
+    <div class="chat-panel" id="chat-panel">
+      <div class="chat-header">
+        <span>Ask the hub AI</span>
+        <button id="chat-close" aria-label="Close">×</button>
+      </div>
+      <div class="chat-messages" id="chat-messages">
+        <div class="chat-msg ai">Hi! I can help you find files, point you to a philosophy idea, or explain how something on the hub works. What are you looking for?</div>
+      </div>
+      <div class="chat-input-row">
+        <input id="chat-input" placeholder="Ask a question...">
+        <button class="btn primary small" id="chat-send">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="signin-modal">
+    <div class="modal-box">
+      <p class="title">Sign in to continue</p>
+      <p class="muted">Browsing is always free. Downloading, posting, uploading, remixing, commenting, following, reporting, and joining groups need an account.</p>
+      <div class="row" style="gap:8px;"><button class="btn primary" id="modal-signup">Sign up free</button><button class="btn" id="modal-close">Cancel</button></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="report-modal">
+    <div class="modal-box">
+      <p class="title">Report this</p>
+      <p class="muted" style="margin-bottom:10px;">What's the issue?</p>
+      <select style="margin-bottom:10px;">
+        <option>Scam or asking for money</option>
+        <option>Off-topic / not education related</option>
+        <option>Inappropriate content</option>
+        <option>Paywalled or costs money</option>
+        <option>Copyright — not their work</option>
+        <option>Something else</option>
+      </select>
+      <textarea placeholder="Add any details (optional)" style="min-height:60px;"></textarea>
+      <div class="row" style="gap:8px;">
+        <button class="btn primary" id="report-submit">Submit report</button>
+        <button class="btn" id="report-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="points-modal">
+    <div class="modal-box">
+      <p class="title">How points work</p>
+      <p class="muted" style="margin-bottom:8px;">Points come from real activity on the File Board and Experience Board:</p>
+      <p class="muted" style="margin-bottom:4px;">• 1 point per view (counted once per person per day)</p>
+      <p class="muted" style="margin-bottom:4px;">• 5 points per download</p>
+      <p class="muted" style="margin-bottom:4px;">• 3 points per question or comment someone leaves on your post</p>
+      <p class="muted" style="margin-bottom:10px;">• 10 points when someone remixes your file</p>
+      <p class="tiny">Search ranking uses a compressed version of these numbers, so one huge hit doesn't bury everything else — but your profile total is always a simple, honest sum.</p>
+      <div class="row" style="gap:8px;"><button class="btn primary" id="points-modal-close">Got it</button></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  var lastShownPage = 'home';
+  var pendingReturnPage = null;
+
+  function showPage(name) {
+    document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('visible'); });
+    var el = document.getElementById('page-' + name);
+    if (el) el.classList.add('visible');
+    document.querySelectorAll('#primary-tabs button').forEach(function(b){ b.classList.toggle('active', b.dataset.page === name); });
+    if (name !== 'onboarding') lastShownPage = name;
+  }
+
+  function setSignedInState(signedIn) {
+    document.getElementById('app').classList.toggle('logged-out', !signedIn);
+    document.querySelectorAll('.demo-switch button').forEach(function(b){
+      b.classList.toggle('active', (b.dataset.view === 'app') === signedIn);
+    });
+  }
+
+  function goSignedIn(page) {
+    setSignedInState(true);
+    if (page) showPage(page);
+  }
+
+  function startSignupFlow() {
+    setSignedInState(true);
+    showPage('onboarding');
+  }
+
+  function finishOnboarding() {
+    var target = pendingReturnPage || 'experience';
+    pendingReturnPage = null;
+    showPage(target);
+    if (target === 'experience') {
+      var q1 = document.querySelector('#onboard-q1 .chip.active');
+      if (q1 && q1.dataset.val === 'new') showNewcomerWelcome();
+    }
+  }
+
+  function showNewcomerWelcome() {
+    if (document.getElementById('newcomer-welcome')) return;
+    var pin = document.querySelector('#page-experience .pin');
+    var card = document.createElement('div');
+    card.className = 'card';
+    card.id = 'newcomer-welcome';
+    card.style.background = 'var(--pin-bg)';
+    card.style.borderColor = 'var(--pin-border)';
+    card.innerHTML = '<p class="title" style="margin-bottom:4px;">Welcome — glad you\'re here</p><p class="muted">Since you\'re just starting out, a couple of good places to begin: try the <strong>Philosophy</strong> tag right here on the Experience Board for the "why," or the File Board\'s <a href="#" style="color:var(--accent);" onclick="showPage(\'files\')">beginner picks</a> for the "how."</p>';
+    pin.parentNode.insertBefore(card, pin);
+  }
+
+  function requireAuth() {
+    if (document.getElementById('app').classList.contains('logged-out')) {
+      pendingReturnPage = lastShownPage;
+      document.getElementById('signin-modal').classList.add('open');
+      return false;
+    }
+    return true;
+  }
+
+  var ALL_DROPDOWNS = ['plus-dropdown','notif-dropdown','avatar-dropdown'];
+  function closeDropdowns(except) {
+    ALL_DROPDOWNS.forEach(function(id){
+      if (id !== except) document.getElementById(id).classList.remove('open');
+    });
+  }
+  function toggleDropdown(id) {
+    var el = document.getElementById(id);
+    var willOpen = !el.classList.contains('open');
+    closeDropdowns(id);
+    el.classList.toggle('open', willOpen);
+  }
+
+  document.getElementById('primary-tabs').addEventListener('click', function(e){
+    var btn = e.target.closest('button[data-page]'); if (!btn) return; showPage(btn.dataset.page);
+  });
+  document.querySelector('.brand').addEventListener('click', function(){
+    showPage(document.getElementById('app').classList.contains('logged-out') ? 'home' : 'experience');
+  });
+
+  ['avatar-dropdown','plus-dropdown'].forEach(function(id){
+    document.getElementById(id).addEventListener('click', function(e){
+      var btn = e.target.closest('button[data-page]'); if (!btn) return;
+      showPage(btn.dataset.page);
+      document.getElementById(id).classList.remove('open');
+    });
+  });
+  document.getElementById('avatar-btn').addEventListener('click', function(e){ e.stopPropagation(); toggleDropdown('avatar-dropdown'); });
+  document.getElementById('plus-btn').addEventListener('click', function(e){ e.stopPropagation(); toggleDropdown('plus-dropdown'); });
+  document.getElementById('notif-btn').addEventListener('click', function(e){ e.stopPropagation(); toggleDropdown('notif-dropdown'); });
+  document.addEventListener('click', function(){ closeDropdowns(); });
+
+  document.getElementById('search-input').addEventListener('input', function(){
+    var heading = document.getElementById('files-heading');
+    var switcher = document.getElementById('search-type-switcher');
+    if (this.value.trim() === '') {
+      heading.textContent = 'Recommended for you';
+      switcher.style.display = 'none';
+    } else {
+      heading.textContent = 'Results for "' + this.value + '"';
+      switcher.style.display = 'block';
+    }
+    showPage('files');
+  });
+
+  document.getElementById('content-type-seg').addEventListener('click', function(e){
+    var btn = e.target.closest('button[data-content]'); if (!btn) return;
+    document.querySelectorAll('#content-type-seg button').forEach(function(b){ b.classList.remove('active'); }); btn.classList.add('active');
+    ['files','experiences','groups'].forEach(function(k){
+      document.getElementById('results-' + k).style.display = (k === btn.dataset.content) ? 'block' : 'none';
+    });
+  });
+
+  document.getElementById('results-files').addEventListener('click', function(e){
+    if (e.target.closest('[data-stop]')) return;
+    var card = e.target.closest('.file-card'); if (!card) return;
+    showPage('file-detail');
+  });
+
+  document.getElementById('remix-btn').addEventListener('click', requireAuth);
+  document.querySelectorAll('.download-btn').forEach(function(btn){ btn.addEventListener('click', requireAuth); });
+  document.getElementById('ask-question-btn').addEventListener('click', function(){
+    if (requireAuth()) document.getElementById('ask-question-compose').classList.toggle('open');
+  });
+  document.getElementById('add-comment-btn').addEventListener('click', function(){
+    if (requireAuth()) document.getElementById('add-comment-compose').classList.toggle('open');
+  });
+
+  document.getElementById('follow-btn').addEventListener('click', function(){
+    if (!requireAuth()) return;
+    var following = this.textContent.trim() === 'Unfollow';
+    if (following) { this.textContent = 'Follow'; this.classList.add('primary'); }
+    else { this.textContent = 'Unfollow'; this.classList.remove('primary'); }
+  });
+
+  document.getElementById('create-group-btn').addEventListener('click', function(){
+    if (requireAuth()) showPage('create-group');
+  });
+  document.getElementById('leave-group-btn').addEventListener('click', function(){
+    if (confirm('Leave this group?')) { this.textContent = 'Left ✓'; this.disabled = true; }
+  });
+
+  document.querySelectorAll('.join-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      if (!requireAuth()) return;
+      var joined = this.textContent.trim() === 'Leave';
+      if (joined) { this.textContent = 'Join'; this.classList.add('primary'); }
+      else { this.textContent = 'Leave'; this.classList.remove('primary'); }
+    });
+  });
+
+  document.querySelectorAll('.report-btn').forEach(function(btn){
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      if (requireAuth()) document.getElementById('report-modal').classList.add('open');
+    });
+  });
+  document.getElementById('report-cancel').addEventListener('click', function(){ document.getElementById('report-modal').classList.remove('open'); });
+  document.getElementById('report-submit').addEventListener('click', function(){ document.getElementById('report-modal').classList.remove('open'); });
+
+  document.querySelectorAll('.post-open').forEach(function(card){
+    card.addEventListener('click', function(e){
+      if (e.target.closest('[data-stop]')) return;
+      var returnTo = card.dataset.return;
+      document.getElementById('post-detail-back-label').textContent = 'Back to Experience Board';
+      document.getElementById('post-detail-back').onclick = function(){ showPage(returnTo); };
+      showPage('post-detail');
+    });
+  });
+
+  document.querySelectorAll('.author-link').forEach(function(el){
+    el.addEventListener('click', function(e){ e.stopPropagation(); showPage('user-profile'); });
+  });
+
+  document.getElementById('invite-btn').addEventListener('click', function(){
+    document.getElementById('invite-compose').classList.toggle('open');
+  });
+  document.getElementById('edit-profile-btn').addEventListener('click', function(){
+    document.getElementById('edit-profile-form').classList.toggle('open');
+  });
+
+  document.getElementById('points-info-btn').addEventListener('click', function(){ document.getElementById('points-modal').classList.add('open'); });
+  document.getElementById('points-modal-close').addEventListener('click', function(){ document.getElementById('points-modal').classList.remove('open'); });
+
+  document.getElementById('authorship-seg').addEventListener('click', function(e){
+    var btn = e.target.closest('button[data-auth]'); if (!btn) return;
+    document.querySelectorAll('#authorship-seg button').forEach(function(b){ b.classList.remove('active'); }); btn.classList.add('active');
+    document.getElementById('remix-source-field').style.display = btn.dataset.auth === 'remix' ? 'block' : 'none';
+  });
+  document.getElementById('media-type-chips').addEventListener('click', function(e){
+    var btn = e.target.closest('button.chip'); if (!btn) return;
+    this.querySelectorAll('.chip').forEach(function(c){ c.classList.remove('active'); }); btn.classList.add('active');
+  });
+
+  document.getElementById('add-file-row').addEventListener('click', function(){
+    var wrap = document.getElementById('file-rows');
+    var row = wrap.children[0].cloneNode(true);
+    row.querySelectorAll('input').forEach(function(inp){ inp.value = ''; });
+    wrap.appendChild(row);
+  });
+
+  document.getElementById('group-visibility-seg').addEventListener('click', function(e){
+    var btn = e.target.closest('button[data-vis]'); if (!btn) return;
+    this.querySelectorAll('button').forEach(function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+  });
+
+  function wireAck(ackId, submitId) {
+    var ackBtn = document.getElementById(ackId);
+    var submitBtn = document.getElementById(submitId);
+    ackBtn.addEventListener('click', function(){
+      submitBtn.disabled = false;
+      submitBtn.style.opacity = '1';
+      submitBtn.style.cursor = 'pointer';
+      ackBtn.textContent = '✓ Acknowledged';
+      ackBtn.disabled = true;
+    });
+  }
+  wireAck('ack-upload', 'submit-upload');
+  wireAck('ack-experience', 'submit-experience');
+
+  document.getElementById('groups-seg').addEventListener('click', function(e){
+    var btn = e.target.closest('button[data-groupview]'); if (!btn) return;
+    document.querySelectorAll('#groups-seg button').forEach(function(b){ b.classList.remove('active'); }); btn.classList.add('active');
+    document.getElementById('groups-discover').style.display = btn.dataset.groupview === 'discover' ? 'block' : 'none';
+    document.getElementById('groups-mine').style.display = btn.dataset.groupview === 'mine' ? 'block' : 'none';
+  });
+
+  document.getElementById('theme-seg').addEventListener('click', function(e){
+    var btn = e.target.closest('button[data-theme]'); if (!btn) return;
+    document.querySelectorAll('#theme-seg button').forEach(function(b){ b.classList.remove('active'); }); btn.classList.add('active');
+    document.getElementById('app').classList.toggle('dark', btn.dataset.theme === 'dark');
+    applyTheme(currentThemeKey);
+  });
+  document.getElementById('textsize-seg').addEventListener('click', function(e){
+    var btn = e.target.closest('button[data-zoom]'); if (!btn) return;
+    document.querySelectorAll('#textsize-seg button').forEach(function(b){ b.classList.remove('active'); }); btn.classList.add('active');
+    document.getElementById('zoom-wrap').style.zoom = btn.dataset.zoom;
+  });
+  var THEMES = {
+    clay: {
+      font: "'Outfit', sans-serif",
+      light: { bg:'oklch(0.9818 0.0054 95.0986)', card:'oklch(0.9665 0.0067 97.3521)', text:'oklch(0.3438 0.0269 95.7226)', textSecondary:'oklch(0.5341 0.0078 97.4503)', textMuted:'oklch(0.5341 0.0078 97.4503)', border:'oklch(0.8847 0.0069 97.3627)', accent:'oklch(0.6171 0.1375 39.0427)', accentText:'oklch(1.0000 0 0)' },
+      dark: { bg:'oklch(0.2679 0.0036 106.6427)', card:'oklch(0.2928 0.0018 106.5092)', text:'oklch(0.9576 0.0027 106.4494)', textSecondary:'oklch(0.7713 0.0169 99.0657)', textMuted:'oklch(0.7713 0.0169 99.0657)', border:'oklch(0.3618 0.0101 106.8928)', accent:'oklch(0.6724 0.1308 38.7559)', accentText:'oklch(0.1908 0.0020 106.5859)' }
+    },
+    meadow: {
+      font: "'Plus Jakarta Sans', sans-serif",
+      light: { bg:'oklch(0.9940 0 0)', card:'oklch(0.9940 0 0)', text:'oklch(0 0 0)', textSecondary:'oklch(0.6234 0 0)', textMuted:'oklch(0.6234 0 0)', border:'oklch(0.9300 0.0094 286.2156)', accent:'oklch(0.6411 0.0666 130.1256)', accentText:'oklch(0.9850 0.0010 106.4230)' },
+      dark: { bg:'oklch(0.1173 0.0090 73.4751)', card:'oklch(0.1609 0.0115 80.9823)', text:'oklch(0.9796 0.0017 67.8026)', textSecondary:'oklch(0.6511 0.0081 80.7132)', textMuted:'oklch(0.6511 0.0081 80.7132)', border:'oklch(0.2806 0.0246 82.6847)', accent:'oklch(0.7830 0.0384 132.7370)', accentText:'oklch(0.0986 0.0063 72.5271)' }
+    },
+    plumcream: {
+      font: "Geist, sans-serif",
+      light: { bg:'oklch(0.9699 0.0113 71.8999)', card:'oklch(0.9870 0.0107 76.6004)', text:'oklch(0.4597 0.0629 289.5561)', textSecondary:'oklch(0.5768 0.0458 291.0006)', textMuted:'oklch(0.5768 0.0458 291.0006)', border:'oklch(0.8431 0.0060 333.9975)', accent:'oklch(0.4597 0.0629 289.5561)', accentText:'oklch(0.9699 0.0113 71.8999)' },
+      dark: { bg:'oklch(0.2134 0.0255 291.1310)', card:'oklch(0.2413 0.0322 289.1359)', text:'oklch(0.9088 0.0299 289.9690)', textSecondary:'oklch(0.6539 0.0444 291.2325)', textMuted:'oklch(0.6539 0.0444 291.2325)', border:'oklch(0.3717 0.0358 291.0973)', accent:'oklch(0.9088 0.0299 289.9690)', accentText:'oklch(0.2134 0.0255 291.1310)' }
+    },
+    rose: {
+      font: "Inter, system-ui, sans-serif",
+      light: { bg:'oklch(0.9859 0.0076 48.6568)', card:'oklch(1.0000 0 0)', text:'oklch(0.4279 0.0265 46.6194)', textSecondary:'oklch(0.6608 0.0272 49.5764)', textMuted:'oklch(0.6608 0.0272 49.5764)', border:'oklch(0.9138 0.0146 50.7928)', accent:'oklch(0.7508 0.1610 2.6024)', accentText:'oklch(1.0000 0 0)' },
+      dark: { bg:'oklch(0.1979 0.0107 39.2759)', card:'oklch(0.2379 0.0124 44.5317)', text:'oklch(0.9135 0.0123 43.2722)', textSecondary:'oklch(0.6608 0.0272 49.5764)', textMuted:'oklch(0.6608 0.0272 49.5764)', border:'oklch(0.2937 0.0152 45.3658)', accent:'oklch(0.7508 0.1610 2.6024)', accentText:'oklch(0.1979 0.0107 39.2759)' }
+    },
+    stone: {
+      font: "'Google Sans Flex', ui-sans-serif, sans-serif, system-ui",
+      light: { bg:'oklch(0.9195 0.0169 88.0030)', card:'oklch(0.9530 0.0156 86.4257)', text:'oklch(0.2350 0 0)', textSecondary:'oklch(0.4688 0.0136 84.5932)', textMuted:'oklch(0.4688 0.0136 84.5932)', border:'oklch(0.8434 0.0231 87.1621)', accent:'oklch(0.3012 0 0)', accentText:'oklch(0.9169 0.0175 99.6160)' },
+      dark: { bg:'oklch(0 0 0)', card:'oklch(0.2264 0 0)', text:'oklch(0.8141 0 0)', textSecondary:'oklch(0.6348 0.0113 81.7875)', textMuted:'oklch(0.6348 0.0113 81.7875)', border:'oklch(0.1822 0 0)', accent:'oklch(0.4325 0.0376 198.3573)', accentText:'oklch(1.0000 0 0)' }
+    },
+    sketch: {
+      font: "'Architects Daughter', cursive",
+      light: { bg:'oklch(0.9761 0 0)', card:'oklch(1.0000 0 0)', text:'oklch(0 0 0)', textSecondary:'oklch(0.5999 0 0)', textMuted:'oklch(0.5999 0 0)', border:'oklch(0 0 0)', accent:'oklch(0 0 0)', accentText:'oklch(1.0000 0 0)' },
+      dark: { bg:'oklch(0 0 0)', card:'oklch(0.2178 0 0)', text:'oklch(0.9761 0 0)', textSecondary:'oklch(0.9761 0 0)', textMuted:'oklch(0.9761 0 0)', border:'oklch(0.9761 0 0)', accent:'oklch(0.9761 0 0)', accentText:'oklch(0 0 0)' }
+    },
+    amber: {
+      font: "Montserrat, ui-sans-serif, sans-serif, system-ui",
+      light: { bg:'oklch(1.0000 0 0)', card:'oklch(1.0000 0 0)', text:'oklch(0 0 0)', textSecondary:'oklch(0.5319 0.0413 75.9565)', textMuted:'oklch(0.5319 0.0413 75.9565)', border:'oklch(0.8978 0.0278 76.4745)', accent:'oklch(0.8512 0.1254 73.9788)', accentText:'oklch(0 0 0)' },
+      dark: { bg:'oklch(0.1651 0.0141 76.6248)', card:'oklch(0.2044 0.0207 75.5143)', text:'oklch(0.9726 0.0227 76.5270)', textSecondary:'oklch(0.7409 0.0338 76.3513)', textMuted:'oklch(0.7409 0.0338 76.3513)', border:'oklch(0.3399 0.0342 75.5286)', accent:'oklch(0.8512 0.1254 73.9788)', accentText:'oklch(0.1778 0.0368 79.8490)' }
+    },
+    citrus: {
+      font: "Quicksand, system-ui, sans-serif",
+      light: { bg:'oklch(0.9926 0.0146 98.2779)', card:'oklch(1.0000 0 0)', text:'oklch(0.3211 0 0)', textSecondary:'oklch(0.5486 0 0)', textMuted:'oklch(0.5486 0 0)', border:'oklch(0.9128 0 0)', accent:'oklch(0.7116 0.1812 22.8389)', accentText:'oklch(1.0000 0 0)' },
+      dark: { bg:'oklch(0.2284 0.0384 282.9324)', card:'oklch(0.2543 0.0571 266.7095)', text:'oklch(0.9551 0 0)', textSecondary:'oklch(0.7058 0 0)', textMuted:'oklch(0.7058 0 0)', border:'oklch(0.3171 0.0566 282.6916)', accent:'oklch(0.7685 0.1369 20.7298)', accentText:'oklch(0.2284 0.0384 282.9324)' }
+    },
+    bubblegum: {
+      font: "Jua, sans-serif",
+      light: { bg:'oklch(0.9873 0.0069 354.7893)', card:'oklch(1.0000 0 0)', text:'oklch(0.4015 0.0436 37.9587)', textSecondary:'oklch(0.6265 0.0418 357.7265)', textMuted:'oklch(0.6265 0.0418 357.7265)', border:'oklch(0.9366 0.0345 359.8126)', accent:'oklch(0.8502 0.0851 6.1876)', accentText:'oklch(1.0000 0 0)' },
+      dark: { bg:'oklch(0.2482 0.0307 354.5794)', card:'oklch(0.3001 0.0369 357.0540)', text:'oklch(0.9678 0.0166 3.6461)', textSecondary:'oklch(0.8178 0.0293 355.5969)', textMuted:'oklch(0.8178 0.0293 355.5969)', border:'oklch(0.4074 0.0430 356.7696)', accent:'oklch(0.7716 0.1387 9.6611)', accentText:'oklch(0.2482 0.0307 354.5794)' }
+    },
+    marigold: {
+      font: "'Albert Sans', ui-sans-serif, sans-serif, system-ui",
+      light: { bg:'oklch(0.9901 0.0161 95.2193)', card:'oklch(0.9901 0.0161 95.2193)', text:'oklch(0.2138 0.0019 286.2347)', textSecondary:'oklch(0.5555 0 0)', textMuted:'oklch(0.5555 0 0)', border:'oklch(0.9219 0 0)', accent:'oklch(0.8480 0.1563 82.4419)', accentText:'oklch(0.2002 0 0)' },
+      dark: { bg:'oklch(0.2103 0.0059 285.8852)', card:'oklch(0.2103 0.0059 285.8852)', text:'oklch(0.9851 0 0)', textSecondary:'oklch(0.7090 0 0)', textMuted:'oklch(0.7090 0 0)', border:'oklch(0.2768 0 0)', accent:'oklch(0.8480 0.1563 82.4419)', accentText:'oklch(0 0 0)' }
+    },
+    brick: {
+      font: "'DM Sans', sans-serif",
+      light: { bg:'oklch(0.9684 0.0160 98.9931)', card:'oklch(0.9684 0.0160 98.9931)', text:'oklch(0.3800 0.0311 52.9437)', textSecondary:'oklch(0.5737 0.0551 48.3748)', textMuted:'oklch(0.5737 0.0551 48.3748)', border:'oklch(0.5737 0.0551 48.3748)', accent:'oklch(0.5665 0.1006 14.1906)', accentText:'oklch(1.0000 0 0)' },
+      dark: { bg:'oklch(0.2672 0.0120 44.5837)', card:'oklch(0.3291 0.0156 50.8936)', text:'oklch(0.9684 0.0160 98.9931)', textSecondary:'oklch(0.7575 0.0380 50.8610)', textMuted:'oklch(0.7575 0.0380 50.8610)', border:'oklch(0.3800 0.0311 52.9437)', accent:'oklch(0.7391 0.0590 53.5684)', accentText:'oklch(0.2672 0.0120 44.5837)' }
+    },
+    harvest: {
+      font: "'Roboto Condensed', system-ui, sans-serif",
+      light: { bg:'oklch(0.9153 0.0461 83.2827)', card:'oklch(0.8854 0.0531 83.9626)', text:'oklch(0.1997 0.0140 71.9628)', textSecondary:'oklch(0.4340 0.0345 71.8029)', textMuted:'oklch(0.4340 0.0345 71.8029)', border:'oklch(0.1997 0.0140 71.9628)', accent:'oklch(0.5930 0.1524 52.0222)', accentText:'oklch(0.9723 0.0216 83.2643)' },
+      dark: { bg:'oklch(0.1149 0 0)', card:'oklch(0.1822 0 0)', text:'oklch(0.8652 0.1768 90.3816)', textSecondary:'oklch(0.7119 0.1460 84.6103)', textMuted:'oklch(0.7119 0.1460 84.6103)', border:'oklch(0.8652 0.1768 90.3816)', accent:'oklch(0.8652 0.1768 90.3816)', accentText:'oklch(0 0 0)' }
+    },
+    olive: {
+      font: "'Instrument Sans', Inter, sans-serif",
+      light: { bg:'oklch(0.9885 0.0057 84.5659)', card:'oklch(0.9640 0.0082 91.4831)', text:'oklch(0.4538 0.0276 90.9045)', textSecondary:'oklch(0.6282 0.0405 90.1265)', textMuted:'oklch(0.6282 0.0405 90.1265)', border:'oklch(0.8274 0.0903 112.4121)', accent:'oklch(0.6819 0.0308 120.1873)', accentText:'oklch(0.9885 0.0057 84.5659)' },
+      dark: { bg:'oklch(0.3007 0.0126 120.1308)', card:'oklch(0.3425 0.0158 122.2444)', text:'oklch(0.8967 0.1113 99.9037)', textSecondary:'oklch(0.6282 0.0405 90.1265)', textMuted:'oklch(0.6282 0.0405 90.1265)', border:'oklch(0.4254 0.0264 121.6298)', accent:'oklch(0.8274 0.0903 112.4121)', accentText:'oklch(0.3007 0.0126 120.1308)' }
+    },
+    espresso: {
+      font: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      light: { bg:'oklch(0.9596 0.0131 82.4019)', card:'oklch(0.9773 0.0102 81.7952)', text:'oklch(0.2184 0.0079 274.5602)', textSecondary:'oklch(0.4821 0.0133 269.4066)', textMuted:'oklch(0.4821 0.0133 269.4066)', border:'oklch(0.8663 0.0168 79.3433)', accent:'oklch(0.2184 0.0079 274.5602)', accentText:'oklch(0.9596 0.0131 82.4019)' },
+      dark: { bg:'oklch(0.2184 0.0079 274.5602)', card:'oklch(0.2614 0.0094 276.7359)', text:'oklch(0.9596 0.0131 82.4019)', textSecondary:'oklch(0.7333 0.0115 280.4017)', textMuted:'oklch(0.7333 0.0115 280.4017)', border:'oklch(0.3022 0.0091 276.8278)', accent:'oklch(0.9596 0.0131 82.4019)', accentText:'oklch(0.2184 0.0079 274.5602)' }
+    },
+    caramel: {
+      font: "Manrope, ui-sans-serif, sans-serif, system-ui",
+      light: { bg:'oklch(0.9760 0.0082 91.4820)', card:'oklch(0.9914 0.0098 87.4695)', text:'oklch(0.3795 0.0309 64.7091)', textSecondary:'oklch(0.5479 0.0538 71.4207)', textMuted:'oklch(0.5479 0.0538 71.4207)', border:'oklch(0.8688 0.0450 83.8927)', accent:'oklch(0.6351 0.1052 63.8590)', accentText:'oklch(1.0000 0 0)' },
+      dark: { bg:'oklch(0.2246 0.0094 107.1335)', card:'oklch(0.1684 0 0)', text:'oklch(0.9280 0.0263 82.3839)', textSecondary:'oklch(0.8032 0.0335 80.9608)', textMuted:'oklch(0.8032 0.0335 80.9608)', border:'oklch(0.3796 0.0246 54.5408)', accent:'oklch(0.7369 0.0805 66.0333)', accentText:'oklch(0.2765 0.0184 59.7941)' }
+    }
+  };
+  var currentThemeKey = 'default';
+
+  function applyTheme(key) {
+    currentThemeKey = key;
+    var app = document.getElementById('app');
+    var isDark = app.classList.contains('dark');
+    if (key === 'default' || !THEMES[key]) {
+      ['--bg','--card','--text','--text-secondary','--text-muted','--border','--accent','--accent-text'].forEach(function(v){ app.style.removeProperty(v); });
+      app.style.removeProperty('font-family');
+      return;
+    }
+    var t = THEMES[key][isDark ? 'dark' : 'light'];
+    app.style.setProperty('--bg', t.bg);
+    app.style.setProperty('--card', t.card);
+    app.style.setProperty('--text', t.text);
+    app.style.setProperty('--text-secondary', t.textSecondary);
+    app.style.setProperty('--text-muted', t.textMuted);
+    app.style.setProperty('--border', t.border);
+    app.style.setProperty('--accent', t.accent);
+    app.style.setProperty('--accent-text', t.accentText);
+    app.style.fontFamily = THEMES[key].font;
+  }
+
+  document.getElementById('swatches').addEventListener('click', function(e){
+    var btn = e.target.closest('button.swatch'); if (!btn || btn.classList.contains('pending')) return;
+    document.querySelectorAll('.swatch').forEach(function(b){ b.classList.remove('active'); }); btn.classList.add('active');
+    applyTheme(btn.dataset.themeKey || 'default');
+  });
+  document.getElementById('notif-toggle').addEventListener('click', function(){ this.classList.toggle('on'); });
+
+  document.querySelectorAll('.chip-row').forEach(function(row){
+    row.addEventListener('click', function(e){
+      var chip = e.target.closest('button.chip'); if (!chip) return;
+      row.querySelectorAll('.chip').forEach(function(c){ c.classList.remove('active'); }); chip.classList.add('active');
+    });
+  });
+
+  document.getElementById('group-search').addEventListener('input', function(){
+    document.getElementById('group-search-result').style.display = this.value.trim() === '' ? 'none' : 'flex';
+  });
+  document.getElementById('user-search').addEventListener('input', function(){
+    document.getElementById('user-search-result').style.display = this.value.trim() === '' ? 'none' : 'flex';
+  });
+
+  document.getElementById('modal-close').addEventListener('click', function(){ document.getElementById('signin-modal').classList.remove('open'); });
+  document.getElementById('modal-signup').addEventListener('click', function(){ document.getElementById('signin-modal').classList.remove('open'); startSignupFlow(); });
+
+  ['hero-signup','header-signup','hero-signup-bottom'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('click', startSignupFlow);
+  });
+  ['hero-login','header-login'].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('click', function(){
+      var target = pendingReturnPage || 'experience';
+      pendingReturnPage = null;
+      goSignedIn(target);
+    });
+  });
+  document.getElementById('onboard-continue').addEventListener('click', finishOnboarding);
+  document.getElementById('onboard-skip').addEventListener('click', finishOnboarding);
+  document.getElementById('hero-browse').addEventListener('click', function(e){ e.preventDefault(); showPage('files'); });
+
+  document.querySelector('.demo-switch').addEventListener('click', function(e){
+    var btn = e.target.closest('button[data-view]'); if (!btn) return;
+    document.querySelectorAll('.demo-switch button').forEach(function(b){ b.classList.remove('active'); }); btn.classList.add('active');
+    var isLoggedOut = btn.dataset.view === 'landing';
+    document.getElementById('app').classList.toggle('logged-out', isLoggedOut);
+    showPage(isLoggedOut ? 'home' : 'experience');
+  });
+
+  var observer = new IntersectionObserver(function(entries){
+    entries.forEach(function(entry){ if (entry.isIntersecting) entry.target.classList.add('visible'); });
+  }, { threshold: 0.15 });
+  document.querySelectorAll('.reveal').forEach(function(el){ observer.observe(el); });
+
+  var HERO_TEXT = {
+    en: {
+      'hero-tagline-eyebrow': 'AOEhub (Alpha Omega Education) — for homeschool, unschool, and school families alike',
+      'hero-h1': "Education isn't something you copy.<br>It's something you walk.",
+      'hero-subhead': 'A free home for the philosophy, the honest experience, and the curriculum behind education — shared by families who started the walk before you, for families just starting now.',
+      'hero-signup': 'Sign up free', 'header-signup': 'Sign up',
+      'hero-login': 'Log in', 'header-login': 'Log in',
+      't-browse-pre': 'Or just', 't-browse-link': 'browse the File Board', 't-browse-post': ' and the Experience Board — no account needed to look around.',
+      't-signup-pre': 'Want to download a file, post something, or leave a comment?', 't-signup-strong': "Sign up or log in — it's free.",
+      'hero-pullquote-text': '"Education is an atmosphere, a discipline, and a life."',
+      'hero-tagline-small-text': "Always free · No ads · No scams · Built by those who've walked this path, are walking it now, and are just starting."
+    },
+    'zh-CN': {
+      'hero-tagline-eyebrow': 'AOEhub（Alpha Omega Education）— 无论在家自学、非学校教育还是学校教育的家庭都欢迎',
+      'hero-h1': '教育不是用来复制的。<br>它是用来走的路。',
+      'hero-subhead': '一个免费的家园，分享关于教育的理念、真实的经验和课程 —— 由先走过这条路的家庭分享给刚刚开始的家庭。',
+      'hero-signup': '免费注册', 'header-signup': '注册',
+      'hero-login': '登录', 'header-login': '登录',
+      't-browse-pre': '或者直接', 't-browse-link': '浏览资源板', 't-browse-post': '和经验分享板 —— 无需账号即可查看。',
+      't-signup-pre': '想下载文件、发布内容或留言吗？', 't-signup-strong': '免费注册或登录。',
+      'hero-pullquote-text': '"教育是一种氛围、一种纪律、一种生活。"',
+      'hero-tagline-small-text': '永远免费 · 无广告 · 无诈骗 · 由走过这条路、正在走这条路、刚刚开始这条路的人共同建立。'
+    },
+    'zh-TW': {
+      'hero-tagline-eyebrow': 'AOEhub（Alpha Omega Education）— 無論在家自學、非學校教育還是學校教育的家庭都歡迎',
+      'hero-h1': '教育不是用來複製的。<br>它是用來走的路。',
+      'hero-subhead': '一個免費的家園，分享關於教育的理念、真實的經驗和課程 —— 由先走過這條路的家庭分享給剛剛開始的家庭。',
+      'hero-signup': '免費註冊', 'header-signup': '註冊',
+      'hero-login': '登入', 'header-login': '登入',
+      't-browse-pre': '或者直接', 't-browse-link': '瀏覽資源板', 't-browse-post': '和經驗分享板 —— 無需帳號即可查看。',
+      't-signup-pre': '想下載文件、發布內容或留言嗎？', 't-signup-strong': '免費註冊或登入。',
+      'hero-pullquote-text': '"教育是一種氛圍、一種紀律、一種生活。"',
+      'hero-tagline-small-text': '永遠免費 · 無廣告 · 無詐騙 · 由走過這條路、正在走這條路、剛剛開始這條路的人共同建立。'
+    }
+  };
+
+  function applyLanguage(code) {
+    var dict = HERO_TEXT[code] || HERO_TEXT.en;
+    Object.keys(dict).forEach(function(id){
+      var el = document.getElementById(id);
+      if (!el) return;
+      if (id === 'hero-h1') el.innerHTML = dict[id];
+      else el.textContent = dict[id];
+    });
+    ['lang-select-loggedout','lang-select-settings'].forEach(function(id){
+      var sel = document.getElementById(id);
+      if (!sel) return;
+      sel.selectedIndex = code === 'en' ? 0 : (code === 'zh-CN' ? 1 : 2);
+    });
+  }
+
+  function langFromIndex(i) { return i === 1 ? 'zh-CN' : (i === 2 ? 'zh-TW' : 'en'); }
+  document.getElementById('lang-select-loggedout').addEventListener('change', function(){ applyLanguage(langFromIndex(this.selectedIndex)); });
+  document.getElementById('lang-select-settings').addEventListener('change', function(){ applyLanguage(langFromIndex(this.selectedIndex)); });
+
+  (function(){
+    var fab = document.getElementById('ai-fab');
+    var btn = document.getElementById('ai-fab-btn');
+    var dragging = false, moved = false, startX, startY, startLeft, startTop;
+
+    function clamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
+
+    btn.addEventListener('pointerdown', function(e){
+      dragging = true; moved = false;
+      var rect = fab.getBoundingClientRect();
+      startLeft = rect.left; startTop = rect.top;
+      startX = e.clientX; startY = e.clientY;
+      fab.style.left = startLeft + 'px';
+      fab.style.top = startTop + 'px';
+      fab.style.right = 'auto';
+      btn.setPointerCapture(e.pointerId);
+    });
+    btn.addEventListener('pointermove', function(e){
+      if (!dragging) return;
+      var dx = e.clientX - startX, dy = e.clientY - startY;
+      if (Math.abs(dx) > 6 || Math.abs(dy) > 6) moved = true;
+      if (!moved) return;
+      var newLeft = clamp(startLeft + dx, 4, window.innerWidth - fab.offsetWidth - 4);
+      var newTop = clamp(startTop + dy, 4, window.innerHeight - fab.offsetHeight - 4);
+      fab.style.left = newLeft + 'px';
+      fab.style.top = newTop + 'px';
+    });
+    ['pointerup','pointercancel'].forEach(function(evt){
+      btn.addEventListener(evt, function(){ dragging = false; });
+    });
+
+    btn.addEventListener('click', function(e){
+      if (moved) { moved = false; return; }
+      e.stopPropagation();
+      closeDropdowns();
+      var panel = document.getElementById('chat-panel');
+      var willOpen = !panel.classList.contains('open');
+      if (willOpen) {
+        var rect = fab.getBoundingClientRect();
+        var panelWidth = Math.min(320, window.innerWidth - 28);
+        var panelHeightEstimate = 380;
+
+        if (rect.right - panelWidth < 4) {
+          panel.style.left = '0'; panel.style.right = 'auto';
+        } else {
+          panel.style.right = '0'; panel.style.left = 'auto';
+        }
+
+        var spaceBelow = window.innerHeight - rect.bottom;
+        if (spaceBelow < panelHeightEstimate && rect.top > panelHeightEstimate) {
+          panel.style.top = 'auto';
+          panel.style.bottom = (fab.offsetHeight + 8) + 'px';
+        } else {
+          panel.style.bottom = 'auto';
+          panel.style.top = '54px';
+        }
+      }
+      panel.classList.toggle('open');
+    });
+  })();
+  document.getElementById('chat-close').addEventListener('click', function(e){
+    e.stopPropagation();
+    document.getElementById('chat-panel').classList.remove('open');
+  });
+  document.getElementById('chat-panel').addEventListener('click', function(e){ e.stopPropagation(); });
+
+  function aiReply(msg) {
+    var m = msg.toLowerCase();
+    if (m.indexOf('phonics') !== -1 || m.indexOf('file') !== -1 || m.indexOf('curriculum') !== -1 || m.indexOf('download') !== -1) {
+      return "Try the File Board — the Curriculum or Books sections, or just search for it at the top of the page.";
+    }
+    if (m.indexOf('why') !== -1 || m.indexOf('philosophy') !== -1 || m.indexOf('mason') !== -1) {
+      return "Look for posts tagged \"Philosophy\" on the Experience Board — that's where people share their thinking on questions like that, not just the admins.";
+    }
+    if (m.indexOf('group') !== -1) {
+      return "You can browse or start one from the Groups tab — some are public, some are private and invite-only.";
+    }
+    if (m.indexOf('point') !== -1) {
+      return "Points come from views, downloads, and discussion on the File Board. There's a full breakdown under \"How points work\" on your profile.";
+    }
+    return "I'm not confident about that one. On the real hub, a question I can't answer well gets forwarded to the admins instead of guessing.";
+  }
+
+  function sendChat() {
+    var input = document.getElementById('chat-input');
+    var text = input.value.trim();
+    if (!text) return;
+    var msgs = document.getElementById('chat-messages');
+    var userMsg = document.createElement('div');
+    userMsg.className = 'chat-msg user';
+    userMsg.textContent = text;
+    msgs.appendChild(userMsg);
+    input.value = '';
+    msgs.scrollTop = msgs.scrollHeight;
+    setTimeout(function(){
+      var aiMsg = document.createElement('div');
+      aiMsg.className = 'chat-msg ai';
+      aiMsg.textContent = aiReply(text);
+      msgs.appendChild(aiMsg);
+      msgs.scrollTop = msgs.scrollHeight;
+    }, 400);
+  }
+  document.getElementById('chat-send').addEventListener('click', sendChat);
+  document.getElementById('chat-input').addEventListener('keydown', function(e){ if (e.key === 'Enter') sendChat(); });
+
+  var CONTENT_TRANSLATIONS = {
+    't-file-desc': {
+      en: "A gentle, low-pressure phonics sequence I built for my daughter when she was 5. Short daily lessons, no worksheets she'd dread. Posted in three language versions below.",
+      zh: "这是我在女儿5岁时为她设计的一套温和、低压力的拼读课程。每天只需简短练习，没有让她害怕的练习册。下面提供三种语言版本。"
+    },
+    't-comment-1': {
+      en: "Did this work for a kid who already knows most letter sounds?",
+      zh: "如果孩子已经认识大部分字母发音，这套课程还适合吗？"
+    },
+    't-lin-post': {
+      en: "\"Education is an atmosphere, a discipline, a life.\" Charlotte Mason's words changed how I think about our homeschool days — not lessons to check off, but a way of living together.",
+      zh: "\"教育是一种氛围、一种纪律、一种生活。\"夏洛特·梅森的这句话改变了我对我们家在家教育日常的看法——不是要打勾完成的课程，而是一种共同生活的方式。"
+    }
+  };
+  document.querySelectorAll('.translate-btn').forEach(function(btn){
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      var targetId = btn.dataset.target;
+      var pair = CONTENT_TRANSLATIONS[targetId];
+      var el = document.getElementById(targetId);
+      if (!pair || !el) return;
+      var translated = btn.dataset.state === 'translated';
+      if (translated) {
+        el.textContent = pair.en;
+        btn.textContent = '🌐 Translate';
+        btn.dataset.state = 'original';
+      } else {
+        el.textContent = pair.zh;
+        btn.textContent = '🌐 Show original';
+        btn.dataset.state = 'translated';
+      }
+    });
+  });
+
+  document.getElementById('app').classList.add('logged-out');
+  showPage('home');
+</script>
+</body>
+</html>

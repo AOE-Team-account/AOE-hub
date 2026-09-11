@@ -1,0 +1,226 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   AOEhub design tokens — ported directly from hub-prototype.html.
+   Per project memory: the 15 alternate themes are already fully specified
+   there (OKLCH values, fonts) and should be carried forward, not re-derived.
+   Theme switching itself (applying the alternates + dark mode) is handled by
+   ThemeProvider, which sets these same custom properties at runtime.
+   ========================================================================== */
+
+:root {
+  --content-max: 640px;
+  --bg: #F5F7F2;
+  --card: #FFFFFF;
+  --text: #2B2B27;
+  --text-secondary: #6B6D63;
+  --text-muted: #97998E;
+  --border: #E1E3D9;
+  --accent: #3F6B4F;
+  --accent-text: #FFFFFF;
+  --pin-bg: #FBF2DE;
+  --pin-border: #E8CE8D;
+  --pin-text: #7A5A0E;
+
+  --font-heading: var(--font-lora), serif;
+  --font-body: var(--font-inter), system-ui, sans-serif;
+}
+
+@media (min-width: 900px) {
+  :root { --content-max: 860px; }
+}
+@media (min-width: 1300px) {
+  :root { --content-max: 1040px; }
+}
+
+.app.dark {
+  --bg: #1C1D1A;
+  --card: #26271F;
+  --text: #F0F0EA;
+  --text-secondary: #ADAF9F;
+  --text-muted: #767869;
+  --border: #3A3B31;
+  --pin-bg: #332C15;
+  --pin-border: #5C4C1C;
+  --pin-text: #E8CE8D;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+
+.app {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100dvh;
+  position: relative;
+}
+h1, h2, h3, .serif { font-family: var(--font-heading); }
+.shell { max-width: var(--content-max); margin: 0 auto; padding: 0 1rem; }
+
+/* -------------------------------------------------------------------- */
+/* Top bar / nav                                                        */
+/* -------------------------------------------------------------------- */
+
+.topbar { border-bottom: 1px solid var(--border); background: var(--card); position: relative; }
+.topbar-inner { display: flex; align-items: center; flex-wrap: wrap; row-gap: 8px; column-gap: 10px; padding: 12px 1rem; max-width: var(--content-max); margin: 0 auto; }
+.brand { display: flex; align-items: center; gap: 6px; font-family: var(--font-heading); font-weight: 600; font-size: 16px; flex-shrink: 0; cursor: pointer; color: inherit; text-decoration: none; }
+.search-wrap { flex: 1 1 140px; position: relative; min-width: 100px; }
+@media (max-width: 480px) {
+  .search-wrap { flex: 0 1 44px; min-width: 44px; transition: flex-basis 0.15s ease; }
+  .search-wrap:has(input:focus) { flex: 1 1 200px; min-width: 160px; }
+  .search-wrap input::placeholder { color: transparent; }
+  .search-wrap:has(input:focus) input::placeholder { color: var(--text-muted); }
+}
+.search-wrap svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); width: 15px; height: 15px; }
+.search-wrap input { width: 100%; padding-left: 32px; }
+.header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
+.icon-btn { background: none; border: none; color: var(--text-secondary); cursor: pointer; position: relative; padding: 4px; display: flex; }
+.plus-btn { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--border); background: var(--card); color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; position: relative; }
+.dot { position: absolute; top: 2px; right: 2px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); border: 1.5px solid var(--card); }
+.avatar-wrap, .plus-wrap { position: relative; }
+.avatar-btn { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--accent-text); border: none; font-family: var(--font-heading); font-weight: 600; font-size: 12px; cursor: pointer; }
+.dropdown { display: none; position: absolute; right: 0; top: 38px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 6px; min-width: 190px; box-shadow: 0 4px 16px rgba(0,0,0,0.08); z-index: 10; }
+.dropdown.open { display: block; }
+.dropdown button, .dropdown a { display: flex; justify-content: space-between; align-items: center; width: 100%; text-align: left; background: none; border: none; padding: 8px 10px; font-family: inherit; font-size: 13.5px; color: var(--text); border-radius: 6px; cursor: pointer; text-decoration: none; }
+.dropdown button:hover, .dropdown a:hover { background: var(--bg); }
+.dropdown hr { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+.dropdown .notif-item { display: block; padding: 8px 10px; font-size: 12.5px; color: var(--text-secondary); border-radius: 6px; line-height: 1.4; }
+.admin-tag { font-size: 10px; color: var(--text-muted); }
+.loggedout-actions { display: flex; gap: 8px; }
+
+.primary-tabs { display: flex; gap: 4px; padding: 10px 1rem 0; max-width: var(--content-max); margin: 0 auto; overflow-x: auto; }
+.primary-tabs a, .primary-tabs button { background: none; border: none; font-family: inherit; font-size: 14px; color: var(--text-secondary); padding: 8px 4px; cursor: pointer; border-bottom: 2px solid transparent; font-weight: 500; white-space: nowrap; text-decoration: none; }
+.primary-tabs a.active, .primary-tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+
+.page-body { padding-top: 1rem; padding-bottom: 3rem; }
+
+/* -------------------------------------------------------------------- */
+/* Core content primitives                                              */
+/* -------------------------------------------------------------------- */
+
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.1rem; margin-bottom: 12px; }
+.row { display: flex; align-items: center; gap: 8px; }
+.between { justify-content: space-between; }
+.wrap { flex-wrap: wrap; }
+.muted { color: var(--text-secondary); font-size: 13.5px; margin: 0; }
+.tiny { color: var(--text-muted); font-size: 12px; }
+.title { font-size: 16px; font-weight: 600; margin: 0 0 4px; font-family: var(--font-heading); }
+.badge { font-size: 11px; padding: 2px 8px; border-radius: 20px; background: color-mix(in srgb, var(--accent) 15%, var(--card)); color: var(--accent); font-weight: 500; }
+.badge.warn { background: color-mix(in srgb, #b5471f 15%, var(--card)); color: #b5471f; }
+.badge.neutral { background: var(--bg); color: var(--text-secondary); border: 1px solid var(--border); }
+.author-link { cursor: pointer; font-weight: 500; text-decoration: none; color: inherit; }
+.author-link:hover { text-decoration: underline; }
+
+.more-btn { background: none; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 2px 6px; line-height: 1; margin-left: auto; }
+
+.file-card { padding: 0; overflow: hidden; cursor: pointer; display: block; text-decoration: none; color: inherit; }
+.preview-img { height: 110px; background: var(--bg); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: center; color: var(--text-muted); gap: 6px; font-size: 12px; }
+.preview-img.large { height: 160px; }
+.file-card .body { padding: 12px 14px; }
+
+.chip-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.chip { font-family: inherit; font-size: 13px; padding: 6px 13px; border-radius: 20px; border: 1px solid var(--border); background: var(--card); color: var(--text-secondary); cursor: pointer; }
+.chip.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+
+.start-here { border: 1px solid var(--border); background: var(--card); border-radius: 12px; padding: 14px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+
+input, select, textarea { font-family: inherit; font-size: 14px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; width: 100%; }
+textarea { min-height: 90px; resize: vertical; }
+label.field-label { display: block; font-size: 13px; font-weight: 500; margin: 14px 0 6px; }
+label.field-label:first-child { margin-top: 0; }
+button.btn { font-family: inherit; font-size: 13.5px; font-weight: 500; border-radius: 8px; padding: 8px 14px; cursor: pointer; border: 1px solid var(--border); background: var(--card); color: var(--text); }
+button.btn.primary { background: var(--accent); color: var(--accent-text); border: none; }
+button.btn.danger { color: #b5471f; border-color: #e3b39d; }
+button.btn.small { padding: 5px 11px; font-size: 12.5px; }
+button.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.back-link { background: none; border: none; color: var(--text-secondary); font-family: inherit; font-size: 13.5px; cursor: pointer; padding: 0; margin-bottom: 14px; display: flex; align-items: center; gap: 5px; }
+
+.pin { background: var(--pin-bg); border: 1px solid var(--pin-border); color: var(--pin-text); border-radius: 12px; padding: 1rem 1.1rem; margin-bottom: 16px; }
+.reply { background: var(--bg); border-radius: 8px; padding: 8px 10px; margin: 8px 0 0 16px; }
+
+.swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; flex-shrink: 0; }
+.swatch.active { border-color: var(--text); }
+.swatch.pending { background: repeating-linear-gradient(45deg, var(--border), var(--border) 3px, var(--card) 3px, var(--card) 6px); cursor: not-allowed; opacity: 0.7; }
+.toggle { width: 40px; height: 22px; border-radius: 20px; background: var(--border); position: relative; cursor: pointer; border: none; flex-shrink: 0; }
+.toggle.on { background: var(--accent); }
+.toggle .knob { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: left 0.15s; }
+.toggle.on .knob { left: 20px; }
+.seg { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; width: fit-content; }
+.seg button { border: none; background: var(--card); color: var(--text-secondary); padding: 7px 16px; font-family: inherit; font-size: 13.5px; cursor: pointer; }
+.seg button.active { background: var(--accent); color: var(--accent-text); }
+section.settings-block { margin-bottom: 20px; }
+section.settings-block > p.label { font-weight: 500; margin: 0 0 8px; font-size: 14px; }
+
+.reveal { opacity: 0; transform: translateY(18px); transition: opacity 0.6s ease-out, transform 0.6s ease-out; }
+.reveal.visible { opacity: 1; transform: none; }
+
+/* -------------------------------------------------------------------- */
+/* Landing / marketing                                                  */
+/* -------------------------------------------------------------------- */
+
+.landing-hero { text-align: center; padding: 2rem 1rem 0.5rem; }
+.logo-mark { margin: 0 auto 10px; display: block; }
+@keyframes logoFadeIn { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: none; } }
+@keyframes growStem { from { stroke-dashoffset: 60; } to { stroke-dashoffset: 0; } }
+@keyframes unfurl { from { opacity: 0; transform: scale(0.4); } to { opacity: 1; transform: scale(1); } }
+.logo-book { opacity: 0; transform-origin: 60px 90px; animation: logoFadeIn 0.5s ease-out 0s forwards; }
+.logo-tree-l { opacity: 0; transform-origin: 25px 70px; animation: logoFadeIn 0.5s ease-out 0.25s forwards; }
+.logo-tree-r { opacity: 0; transform-origin: 95px 70px; animation: logoFadeIn 0.5s ease-out 0.4s forwards; }
+.logo-mark .stem { stroke-dasharray: 36; stroke-dashoffset: 36; animation: growStem 0.9s ease-out 0.7s forwards; }
+.logo-mark .leaf { transform-origin: center; opacity: 0; animation: unfurl 0.5s ease-out forwards; }
+.logo-mark .leaf-l { animation-delay: 1.3s; }
+.logo-mark .leaf-r { animation-delay: 1.5s; }
+.landing-hero .tagline { font-size: 12.5px; letter-spacing: 0.03em; color: var(--accent); font-weight: 500; margin: 0 0 10px; }
+.landing-hero h1 { font-size: 24px; font-weight: 600; margin: 0 0 12px; line-height: 1.4; }
+.landing-hero p { color: var(--text-secondary); font-size: 15px; max-width: 430px; margin: 0 auto 14px; line-height: 1.65; }
+.landing-cta { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 8px; }
+.hero-pullquote { font-family: var(--font-heading); font-style: italic; font-size: 16px; color: var(--text); max-width: 380px; margin: 18px auto 6px; }
+.hero-tagline-small { font-size: 12px; color: var(--text-muted); max-width: 420px; margin: 0 auto 8px; line-height: 1.6; }
+
+.feature-row { max-width: 480px; margin: 2.5rem auto; text-align: center; padding: 0 0.5rem; }
+.feature-icon-wrap { width: 84px; height: 84px; border-radius: 50%; background: var(--pin-bg); color: var(--accent); display: flex; align-items: center; justify-content: center; margin: 0 auto 14px; }
+.feature-eyebrow { font-size: 11.5px; letter-spacing: 0.04em; color: var(--accent); font-weight: 600; margin: 0 0 6px; text-transform: uppercase; }
+.feature-title { font-size: 19px; font-weight: 600; margin: 0 0 8px; }
+.feature-desc { color: var(--text-secondary); font-size: 14px; line-height: 1.7; margin: 0; }
+
+.hero-bottom-cta { text-align: center; padding: 1.5rem 1rem 0.5rem; }
+.site-footer { border-top: 1px solid var(--border); margin-top: 2rem; padding: 1.5rem 1rem; }
+.site-footer .footer-link { font-size: 13px; color: var(--text-secondary); text-decoration: none; }
+.site-footer .footer-link:hover { color: var(--accent); }
+
+/* -------------------------------------------------------------------- */
+/* AI chat FAB, modals, misc                                            */
+/* -------------------------------------------------------------------- */
+
+.ai-fab-fixed { position: fixed; top: 130px; right: 14px; z-index: 20; touch-action: none; }
+.ai-fab-fixed button#ai-fab-btn { width: 46px; height: 46px; border-radius: 50%; background: var(--accent); color: var(--accent-text); border: none; cursor: grab; display: flex; align-items: center; justify-content: center; box-shadow: 0 3px 10px rgba(0,0,0,0.15); touch-action: none; }
+.ai-fab-fixed button#ai-fab-btn:active { cursor: grabbing; }
+.chat-panel { display: none; position: absolute; top: 54px; right: 0; width: min(320px, calc(100vw - 28px)); background: var(--card); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); overflow: hidden; }
+.chat-panel.open { display: flex; flex-direction: column; }
+.chat-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13.5px; font-weight: 500; }
+.chat-header button { background: none; border: none; font-size: 18px; color: var(--text-muted); cursor: pointer; line-height: 1; padding: 0 2px; }
+.chat-messages { display: flex; flex-direction: column; padding: 12px; gap: 8px; max-height: 260px; overflow-y: auto; }
+.chat-msg { max-width: 85%; padding: 8px 12px; border-radius: 12px; font-size: 13px; line-height: 1.5; }
+.chat-msg.ai { background: var(--bg); color: var(--text); align-self: flex-start; }
+.chat-msg.user { background: var(--accent); color: var(--accent-text); align-self: flex-end; }
+.chat-input-row { display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--border); }
+.chat-input-row input { flex: 1; }
+
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.35); align-items: center; justify-content: center; z-index: 50; padding: 1rem; }
+.modal-overlay.open { display: flex; }
+.modal-box { background: var(--card); border-radius: 14px; padding: 1.5rem; max-width: 340px; width: 100%; }
+.modal-box .row { margin-top: 14px; }
+.compose-inline { background: var(--bg); border-radius: 8px; padding: 10px; margin-top: 10px; display: none; }
+.compose-inline.open { display: block; }
+.check-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; }
+.check-item svg { color: var(--accent); flex-shrink: 0; }
+.stat-block { min-width: 60px; }
+
+/*
+  Text-size scaling (Settings > Text size) is applied via CSS `zoom` on a
+  wrapper the app renders around top bar + tabs + page content ONLY
+  (see AppShell). Deliberately not on the app root: `zoom` changes the
+  containing-block behavior of `position: fixed` descendants, which would
+  misposition the AI chat FAB and modals. Keep it scoped to that wrapper.
+*/
