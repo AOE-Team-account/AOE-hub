@@ -117,8 +117,8 @@ Settings includes a **text-size control** (four sizes) that scales the whole int
 2. **Backend** — Supabase project, real database schema, pgvector enabled, real auth/sign-up wired up
 3. **File storage** — Cloudflare R2 bucket + Internet Archive account, upload flow routes files correctly
 4. **Hosting & domain** — deploy to Cloudflare Pages, then connect aoe.ai via DNS
-5. **RAG AI** — real embedding pipeline, swappable model connection, real chat backend
-6. **Backups** — the scheduled GitHub Action described above
+5. **Backups** — the scheduled GitHub Action described above (set up before the RAG AI so the safety net exists before more complex data starts accumulating)
+6. **RAG AI** — real embedding pipeline, swappable model connection, real chat backend
 7. **Populate content** — admins upload the real first-wave content; admin accounts get real permissions
 8. **Marketing copy & translation** — swap in final wording once supplied; connect language switcher and translate buttons to a real translation API
 9. **Launch** — final cross-device test, then go live and begin the relationship-first growth approach

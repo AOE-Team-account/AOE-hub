@@ -6,7 +6,7 @@ import { useAuth, useRequireAuthPage } from "@/contexts/AuthContext";
 import { BackLink } from "@/components/ui/BackLink";
 import { Button } from "@/components/ui/Button";
 import { Segmented } from "@/components/ui/Segmented";
-import { GROUP_CREATE_MIN_POINTS, GROUP_CREATE_MIN_ACCOUNT_AGE_DAYS, daysSince } from "@/lib/data/groups";
+import { GROUP_CREATE_MIN_POINTS, GROUP_CREATE_MIN_ACCOUNT_AGE_DAYS, daysSince } from "@/lib/data/group-eligibility";
 import type { GroupVisibility } from "@/lib/types";
 
 function CheckItem({ met, children }: { met: boolean; children: React.ReactNode }) {

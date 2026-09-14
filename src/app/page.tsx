@@ -9,17 +9,13 @@ import { Logo } from "@/components/brand/Logo";
 import { Reveal } from "@/components/ui/Reveal";
 
 export default function HomePage() {
-  const { status, hydrated, startSignup, logIn } = useAuth();
+  const { status, hydrated } = useAuth();
   const { dict } = useLanguage();
   const router = useRouter();
 
   // Only redirect an already-authed visitor who lands here directly (e.g. a
   // stale bookmark to "/"). Waits for `hydrated` (see AuthContext) so a hard
   // refresh while actually signed in doesn't flash the guest landing page.
-  // Deliberately does NOT depend on `status` beyond that first hydrated
-  // check: if it reacted to every status change, clicking "Sign up" on this
-  // very page would race its own explicit push to /onboarding and win,
-  // skipping onboarding.
   useEffect(() => {
     if (!hydrated) return;
     if (status === "authed") router.replace("/experience");
@@ -38,10 +34,10 @@ export default function HomePage() {
         <h1 dangerouslySetInnerHTML={{ __html: dict.heroH1 }} />
         <p>{dict.heroSubhead}</p>
         <div className="landing-cta">
-          <button className="btn primary" onClick={startSignup}>
+          <button className="btn primary" onClick={() => router.push("/signup")}>
             {dict.heroSignup}
           </button>
-          <button className="btn" onClick={logIn}>
+          <button className="btn" onClick={() => router.push("/login")}>
             {dict.heroLogin}
           </button>
         </div>
@@ -115,7 +111,7 @@ export default function HomePage() {
       </Reveal>
 
       <div className="hero-bottom-cta">
-        <button className="btn primary" onClick={startSignup}>
+        <button className="btn primary" onClick={() => router.push("/signup")}>
           {dict.heroSignup}
         </button>
       </div>

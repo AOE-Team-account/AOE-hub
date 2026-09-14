@@ -12,7 +12,7 @@ import type { LanguageCode } from "@/lib/types";
 type DropdownId = "plus" | "notif" | "avatar" | null;
 
 export function TopBar() {
-  const { status, user, startSignup, logIn, signOut } = useAuth();
+  const { status, user, signOut } = useAuth();
   const { lang, setLang, dict } = useLanguage();
   const router = useRouter();
   const [openDropdown, setOpenDropdown] = useState<DropdownId>(null);
@@ -158,10 +158,10 @@ export function TopBar() {
                   </option>
                 ))}
               </select>
-              <button className="btn" onClick={logIn}>
+              <button className="btn" onClick={() => router.push("/login")}>
                 {dict.headerLogin}
               </button>
-              <button className="btn primary" onClick={startSignup}>
+              <button className="btn primary" onClick={() => router.push("/signup")}>
                 {dict.headerSignup}
               </button>
             </div>

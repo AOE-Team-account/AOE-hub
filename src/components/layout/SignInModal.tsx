@@ -1,10 +1,12 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { Modal } from "@/components/ui/Modal";
 
 export function SignInModal() {
-  const { isSignInModalOpen, closeSignInModal, startSignup } = useAuth();
+  const { isSignInModalOpen, closeSignInModal } = useAuth();
+  const router = useRouter();
 
   return (
     <Modal open={isSignInModalOpen} onClose={closeSignInModal}>
@@ -14,7 +16,13 @@ export function SignInModal() {
         joining groups need an account.
       </p>
       <div className="row" style={{ gap: 8 }}>
-        <button className="btn primary" onClick={startSignup}>
+        <button
+          className="btn primary"
+          onClick={() => {
+            closeSignInModal();
+            router.push("/signup");
+          }}
+        >
           Sign up free
         </button>
         <button className="btn" onClick={closeSignInModal}>

@@ -1,24 +1,23 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { CURRENT_USER_ID, getUserById } from "@/lib/mock-data";
+import { createClient } from "@/lib/supabase/client";
+import { userFromProfileRow, type ProfileRow } from "@/lib/profile";
 import type { User } from "@/lib/types";
 
-// Mock auth for Phase 1 — no real accounts yet. Phase 2 (per the roadmap)
-// swaps this for real Supabase auth; everything downstream should only
-// depend on this context's shape, not on how signed-in state is stored.
+// Real Supabase auth (Phase 2). Session lives in cookies (via @supabase/ssr)
+// so it's readable both client- and server-side; this context just mirrors
+// that session into React state and looks up the matching `profiles` row.
 
 interface AuthContextValue {
   status: "guest" | "authed";
   user: User | null;
-  /** False until the mock-persisted auth state has been read from
-   *  localStorage. Gated pages MUST wait for this before deciding whether
-   *  to redirect a visitor away — otherwise a page's own mount effect can
-   *  run (and redirect) before this provider's mount effect has had a
-   *  chance to hydrate `status` from storage (child effects run before
-   *  parent effects on mount), incorrectly bouncing an already-signed-in
-   *  visitor on every hard refresh of a gated route. */
+  /** False until the initial session check has completed. Gated pages MUST
+   *  wait for this before deciding whether to redirect a visitor away —
+   *  otherwise a page's own mount effect can redirect before the session
+   *  has even been read, incorrectly bouncing an already-signed-in visitor
+   *  on every hard refresh of a gated route. */
   hydrated: boolean;
   isSignInModalOpen: boolean;
   /** Returns true if already signed in; otherwise opens the sign-in modal
@@ -27,43 +26,64 @@ interface AuthContextValue {
   requireAuth: () => boolean;
   openSignInModal: () => void;
   closeSignInModal: () => void;
-  /** Existing user path — skips onboarding, returns to wherever they were. */
-  logIn: () => void;
-  /** New user path — caller should navigate to /onboarding next. */
-  startSignup: () => void;
-  signOut: () => void;
-  /** Consumes and clears the page to return to after onboarding/login. */
+  signOut: () => Promise<void>;
+  /** Consumes and clears the page to return to after login/onboarding. */
   consumePendingReturn: () => string;
+  /** Re-fetches the profiles row for the current user (e.g. after onboarding
+   *  writes onboarding_experience/onboarding_reason, or points change). */
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-
-const STORAGE_KEY = "aoehub.authed";
 const DEFAULT_RETURN = "/experience";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<"guest" | "authed">("guest");
+  const [user, setUser] = useState<User | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [isSignInModalOpen, setSignInModalOpen] = useState(false);
   const [pendingReturn, setPendingReturn] = useState<string>(DEFAULT_RETURN);
   const pathname = usePathname();
   const router = useRouter();
+  const supabase = useRef(createClient()).current;
+
+  async function loadProfile(userId: string) {
+    const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single();
+    if (error || !data) {
+      setUser(null);
+      return;
+    }
+    setUser(userFromProfileRow(data as ProfileRow));
+  }
 
   useEffect(() => {
-    // Mock persistence only exists client-side (no real session/cookie yet
-    // — see Phase 2), so this can't be read until after mount.
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    /* eslint-disable react-hooks/set-state-in-effect */
-    if (stored === "1") setStatus("authed");
-    setHydrated(true);
-    /* eslint-enable react-hooks/set-state-in-effect */
+    let cancelled = false;
+
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (cancelled) return;
+      if (session?.user) {
+        setStatus("authed");
+        await loadProfile(session.user.id);
+      }
+      setHydrated(true);
+    });
+
+    const { data: subscription } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        setStatus("authed");
+        await loadProfile(session.user.id);
+      } else {
+        setStatus("guest");
+        setUser(null);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.subscription.unsubscribe();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, status === "authed" ? "1" : "0");
-  }, [status]);
-
-  const user = status === "authed" ? getUserById(CURRENT_USER_ID) ?? null : null;
 
   function requireAuth() {
     if (status === "authed") return true;
@@ -72,22 +92,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return false;
   }
 
-  function logIn() {
-    setStatus("authed");
-    setSignInModalOpen(false);
-    const target = pendingReturn || DEFAULT_RETURN;
-    setPendingReturn(DEFAULT_RETURN);
-    router.push(target);
-  }
-
-  function startSignup() {
-    setStatus("authed");
-    setSignInModalOpen(false);
-    router.push("/onboarding");
-  }
-
-  function signOut() {
-    setStatus("guest");
+  async function signOut() {
+    await supabase.auth.signOut();
     router.push("/");
   }
 
@@ -95,6 +101,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const target = pendingReturn || DEFAULT_RETURN;
     setPendingReturn(DEFAULT_RETURN);
     return target;
+  }
+
+  async function refreshProfile() {
+    if (user) await loadProfile(user.id);
   }
 
   const value = useMemo(
@@ -106,10 +116,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       requireAuth,
       openSignInModal: () => setSignInModalOpen(true),
       closeSignInModal: () => setSignInModalOpen(false),
-      logIn,
-      startSignup,
       signOut,
       consumePendingReturn,
+      refreshProfile,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [status, user, hydrated, isSignInModalOpen, pathname, pendingReturn]
@@ -127,11 +136,7 @@ export function useAuth() {
 /** For pages that only make sense when signed in: redirects to `redirectTo`
  *  if the visitor turns out to be a guest, an admin-only page can pass
  *  `extraCheck` (e.g. `(user) => user.isAdmin`) to also gate on that. Waits
- *  for `hydrated` first — see the note on AuthContextValue.hydrated.
- *
- *  Returns `ready`: false while hydration is pending OR a redirect has just
- *  been triggered, so the page can render nothing instead of flashing
- *  gated content for a frame before the redirect takes effect. */
+ *  for `hydrated` first — see the note on AuthContextValue.hydrated. */
 export function useRequireAuthPage(redirectTo: string, extraCheck?: (user: User) => boolean): boolean {
   const { hydrated, status, user, requireAuth } = useAuth();
   const router = useRouter();

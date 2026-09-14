@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, useRequireAuthPage } from "@/contexts/AuthContext";
+import { createClient } from "@/lib/supabase/client";
 import { ChipRow } from "@/components/ui/ChipRow";
 
 type Experience = "new" | "some" | "years";
@@ -22,18 +23,32 @@ const Q2_OPTIONS: { value: Reason; label: string }[] = [
 ];
 
 export default function OnboardingPage() {
-  const { consumePendingReturn } = useAuth();
+  const ready = useRequireAuthPage("/");
+  const { user, consumePendingReturn } = useAuth();
   const router = useRouter();
   const [experience, setExperience] = useState<Experience>("new");
   const [reason, setReason] = useState<Reason>("notsure");
+  const [saving, setSaving] = useState(false);
 
-  function finish(showWelcome: boolean) {
+  async function finish(save: boolean) {
+    if (save && user) {
+      setSaving(true);
+      const supabase = createClient();
+      await supabase
+        .from("profiles")
+        .update({ onboarding_experience: experience, onboarding_reason: reason })
+        .eq("id", user.id);
+      setSaving(false);
+    }
+
     const target = consumePendingReturn();
-    if (showWelcome && target === "/experience") {
+    if (save && experience === "new" && target === "/experience") {
       window.localStorage.setItem("aoehub.showNewcomerWelcome", "1");
     }
     router.push(target);
   }
+
+  if (!ready) return null;
 
   return (
     <>
@@ -52,10 +67,15 @@ export default function OnboardingPage() {
       <p className="field-label">What brought you here?</p>
       <ChipRow options={Q2_OPTIONS} value={reason} onChange={setReason} />
 
-      <button className="btn primary" style={{ width: "100%", marginTop: 20 }} onClick={() => finish(experience === "new")}>
-        Continue
+      <button
+        className="btn primary"
+        style={{ width: "100%", marginTop: 20 }}
+        disabled={saving}
+        onClick={() => finish(true)}
+      >
+        {saving ? "Saving…" : "Continue"}
       </button>
-      <button className="btn" style={{ width: "100%", marginTop: 8 }} onClick={() => finish(false)}>
+      <button className="btn" style={{ width: "100%", marginTop: 8 }} disabled={saving} onClick={() => finish(false)}>
         Skip for now
       </button>
     </>
