@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth, useRequireAuthPage } from "@/contexts/AuthContext";
+import { createClient } from "@/lib/supabase/client";
 import { BackLink } from "@/components/ui/BackLink";
 import { Button } from "@/components/ui/Button";
 import { Segmented } from "@/components/ui/Segmented";
@@ -24,14 +25,43 @@ export default function CreateGroupPage() {
   const { user } = useAuth();
   useRequireAuthPage("/groups");
   const router = useRouter();
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [visibility, setVisibility] = useState<GroupVisibility>("public");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (!user) return null;
 
   const accountAgeDays = daysSince(user.memberSince);
   const hasPoints = user.points >= GROUP_CREATE_MIN_POINTS;
   const hasAccountAge = accountAgeDays >= GROUP_CREATE_MIN_ACCOUNT_AGE_DAYS;
-  const eligible = hasPoints && hasAccountAge; // no-unresolved-reports check needs real report data (Phase 2)
+  // The real gate is the creator_must_be_eligible_for_group() trigger in
+  // schema.sql — this client-side check is just to disable the button early
+  // and show the checklist; the DB is the source of truth either way. Admins
+  // bypass the gate entirely there, so this must match or an admin's own
+  // "Create group" button would stay disabled with no way to proceed.
+  const eligible = user.isAdmin || (hasPoints && hasAccountAge);
+
+  async function submit() {
+    if (!user || !name.trim()) return;
+    setSubmitting(true);
+    setError(null);
+    const supabase = createClient();
+    const { error: insertError } = await supabase.from("groups").insert({
+      name: name.trim(),
+      description: description.trim() || null,
+      visibility,
+      created_by: user.id,
+    });
+    setSubmitting(false);
+    if (insertError) {
+      setError(insertError.message);
+      return;
+    }
+    router.push("/groups");
+    router.refresh();
+  }
 
   return (
     <>
@@ -46,9 +76,9 @@ export default function CreateGroupPage() {
       </div>
 
       <label className="field-label">Group name</label>
-      <input placeholder="e.g. Only children homeschool support" />
+      <input placeholder="e.g. Only children homeschool support" value={name} onChange={(e) => setName(e.target.value)} />
       <label className="field-label">Description</label>
-      <textarea placeholder="What's this group for?" />
+      <textarea placeholder="What's this group for?" value={description} onChange={(e) => setDescription(e.target.value)} />
       <label className="field-label">Visibility</label>
       <Segmented
         options={[
@@ -63,8 +93,19 @@ export default function CreateGroupPage() {
         members, not from the hub.
       </p>
 
-      <Button variant="primary" style={{ width: "100%", marginTop: 18 }} disabled={!eligible} onClick={() => router.push("/groups")}>
-        Create group
+      {error && (
+        <p className="muted" style={{ color: "#b5471f", marginTop: 10 }}>
+          {error}
+        </p>
+      )}
+
+      <Button
+        variant="primary"
+        style={{ width: "100%", marginTop: 18 }}
+        disabled={!eligible || !name.trim() || submitting}
+        onClick={submit}
+      >
+        {submitting ? "Creating…" : "Create group"}
       </Button>
     </>
   );

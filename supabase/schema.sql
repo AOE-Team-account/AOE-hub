@@ -239,6 +239,26 @@ create table if not exists public.group_members (
   primary key (group_id, user_id)
 );
 
+-- A group's creator is always its first member — structural, so no client
+-- code path can forget to add them.
+create or replace function public.add_creator_as_group_member()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.group_members (group_id, user_id) values (new.id, new.created_by)
+  on conflict do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists groups_add_creator_as_member on public.groups;
+create trigger groups_add_creator_as_member
+  after insert on public.groups
+  for each row execute function public.add_creator_as_group_member();
+
 create table if not exists public.group_invites (
   id uuid primary key default gen_random_uuid(),
   group_id uuid not null references public.groups (id) on delete cascade,
@@ -331,8 +351,22 @@ set search_path = public
 as $$
 declare
   author uuid;
-  already_viewed_today boolean;
+  is_new_view_today boolean;
 begin
+  -- Both the raw view counter AND the point award are gated on this being a
+  -- genuinely new view (this viewer, this content, today) — not just the
+  -- point award. An earlier version of this function incremented the
+  -- counter unconditionally on every call, which would have inflated view
+  -- counts on every page load/refresh, not just once per person per day.
+  insert into public.post_views (target_type, target_id, viewer_id)
+  values (p_target_type, p_target_id, p_viewer_id)
+  on conflict do nothing
+  returning true into is_new_view_today;
+
+  if not coalesce(is_new_view_today, false) then
+    return;
+  end if;
+
   if p_target_type = 'file' then
     select author_id into author from public.file_posts where id = p_target_id;
     update public.file_posts set views = views + 1 where id = p_target_id;
@@ -343,12 +377,7 @@ begin
     raise exception 'record_view: unsupported target_type %', p_target_type;
   end if;
 
-  insert into public.post_views (target_type, target_id, viewer_id)
-  values (p_target_type, p_target_id, p_viewer_id)
-  on conflict do nothing
-  returning true into already_viewed_today;
-
-  if already_viewed_today and author is not null and author <> p_viewer_id then
+  if author is not null and author <> p_viewer_id then
     perform public.award_points(author, 1, 'view', p_target_type, p_target_id);
   end if;
 end;
@@ -520,6 +549,23 @@ as $$
   select exists (
     select 1 from public.group_members where group_id = p_group_id and user_id = p_user_id
   );
+$$;
+
+-- The group_members SELECT policy below (correctly) restricts reading the
+-- actual roster to members + admins, so anyone else fetching a *public*
+-- group's row would otherwise see its member count as 0. A count alone
+-- isn't sensitive (the app already shows it on public group cards), and
+-- this is only ever called for a group row the caller could already see
+-- (RLS on `groups` already gated that), so bypassing RLS here to return
+-- just a number is safe.
+create or replace function public.group_member_count(p_group_id uuid)
+returns integer
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select count(*)::integer from public.group_members where group_id = p_group_id;
 $$;
 
 -- profiles: readable by everyone (public profile pages); only the owner

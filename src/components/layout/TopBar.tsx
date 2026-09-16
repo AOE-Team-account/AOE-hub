@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { createClient } from "@/lib/supabase/client";
 import { LANGUAGE_LABELS, LANGUAGE_ORDER } from "@/lib/i18n/dictionaries";
-import { getNotifications } from "@/lib/mock-data";
-import type { LanguageCode } from "@/lib/types";
+import type { LanguageCode, NotificationItem } from "@/lib/types";
 
 type DropdownId = "plus" | "notif" | "avatar" | null;
 
@@ -39,7 +39,31 @@ export function TopBar() {
     }
   }
 
-  const notifications = getNotifications();
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+
+  useEffect(() => {
+    if (!user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setNotifications([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("notifications")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(10);
+      if (cancelled) return;
+      setNotifications(
+        (data ?? []).map((row) => ({ id: row.id, body: row.body, createdAt: row.created_at, read: row.read }))
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   return (
     <div className="topbar" ref={containerRef}>
@@ -108,6 +132,7 @@ export function TopBar() {
                   {notifications.some((n) => !n.read) && <span className="dot" />}
                 </button>
                 <div className={`dropdown${openDropdown === "notif" ? " open" : ""}`}>
+                  {notifications.length === 0 && <div className="notif-item">No notifications yet.</div>}
                   {notifications.map((n, i) => (
                     <div key={n.id}>
                       <div className="notif-item">{n.body}</div>

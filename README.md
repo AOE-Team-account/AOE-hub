@@ -4,21 +4,25 @@
 
 This is the real Next.js codebase, scaffolded around [`hub-prototype.html`](./hub-prototype.html) (the authoritative visual/interaction reference) and [`AOEhub memory from chat.md`](./AOEhub%20memory%20from%20chat.md) (the authoritative product/architecture decisions). Read both before making product decisions that aren't obvious from the code.
 
-## Status: Phase 2 — Backend (in progress)
+## Status: Phase 2 — Backend (schema + auth + real data, done)
+
+The hub is now fully wired to a real Supabase backend — no mock data left anywhere in the app (`mock-data.ts` has been deleted). It genuinely launches empty: every board, list, and dashboard reflects whatever is actually in your database.
 
 | Concern | Status | Where it lives |
 |---|---|---|
 | Auth / sessions | **Real** — Supabase Auth (email + password) | `src/contexts/AuthContext.tsx`, `src/app/login`, `src/app/signup` |
-| Database schema | **Real** — full schema, ready to run | `supabase/schema.sql` |
+| Database schema | **Real**, live-tested end to end | `supabase/schema.sql` |
 | pgvector (for RAG) | **Enabled** in schema, tables created, unused until Phase 6 | `supabase/schema.sql` (`kb_documents`, `kb_chunks`) |
-| Points | **Real formula**, server-enforced via triggers/functions | `supabase/schema.sql` (`award_points`, `record_view`, `record_download`), `src/lib/points.ts` |
-| File Board / Experience Board detail pages, public profile | **Real queries** | `src/lib/data/*.ts` → Supabase |
-| File Board / Experience Board / Groups / Admin **list views**, notifications | **Still mock** — not yet migrated off `mock-data.ts` | `src/app/experience/page.tsx`, `src/app/files/page.tsx`, `src/app/groups/page.tsx`, `src/app/admin/page.tsx`, `src/components/layout/TopBar.tsx`, `src/app/profile/page.tsx` |
-| File storage / downloads | Fake buttons | `src/components/files/FileDetailActions.tsx` → Phase 3 |
+| Points | **Real formula**, server-enforced via triggers/functions | `supabase/schema.sql` (`award_points`, `record_view`), `src/lib/points.ts` |
+| Everything you can browse (both boards, Groups, Admin Dashboard, notifications, your own profile) | **Real queries and real writes** — posting, commenting, joining/creating/leaving groups all hit Supabase | `src/lib/data/*.ts`, plus direct browser-client calls in each page (see below) |
+| File *uploads* specifically | Form UI only, no real insert yet — needs real file storage first | `src/app/files/new/page.tsx` → Phase 3 |
+| File downloads | Fake buttons | `src/components/files/FileDetailActions.tsx` → Phase 3 |
 | RAG AI assistant | Keyword placeholder, behind a swappable interface | `src/lib/ai/keyword-provider.ts` → Phase 6 |
 | Content translation | Seeded cache, no real API call | `src/lib/i18n/translate.ts` → Phase 8 |
 
-**Why the list views are still mock:** those pages read `mock-data.ts` directly rather than going through `src/lib/data/*.ts` (a deliberate Phase 1 split — client-interactive board pages vs. server-rendered detail pages). Wiring them to real Supabase queries is the natural next chunk of Phase 2 work.
+**Two patterns for real data, by design:** server-rendered pages (detail pages, board list pages) fetch through `src/lib/data/*.ts` using the server Supabase client. Write actions (posting, commenting, joining a group) call the *browser* Supabase client directly from a Client Component, then call `router.refresh()` — Row Level Security enforces who's allowed to do what either way, so this split is about which client is convenient, not about security.
+
+**Known gap:** `profiles.groups_count`, `files_count`, `followers_count`, and `following_count` are denormalized columns that exist in the schema but aren't yet kept up to date by triggers (only `points` has that, via `award_points()`). The Profile page works around this for its own files count by counting real rows directly; the other three will show stale/zero values until that's built.
 
 ## Setting up your own Supabase project
 
@@ -49,17 +53,18 @@ Then open http://localhost:3000.
 src/
   app/                    routes (App Router) — one folder per page in hub-prototype.html
     login/, signup/        real Supabase auth forms
+    experience/, files/, groups/, admin/   each has a Server Component page.tsx (real data fetch)
+                                            + a *Client.tsx sibling (interactivity, real writes)
   components/
     layout/               TopBar, PrimaryTabs, AppShell, SignInModal, ReportModal
     ai/                   the draggable AI chat FAB
     ui/                   design-system primitives (Card, Chip, Badge, Button, Modal, ...)
-    discussion/           shared comment-thread UI (used by both boards)
+    discussion/           shared comment-thread UI (used by both boards, real inserts)
     files/, profile/, brand/   feature-specific small components
   contexts/               AuthContext (real Supabase session), ThemeContext, LanguageContext, ReportContext
   lib/
     types.ts              core domain types — the Postgres schema mirrors these closely
-    mock-data.ts           in-memory sample content — still used by board LIST pages, see table above
-    data/                  data-access layer — detail pages + profile queries go through here to Supabase
+    data/                  data-access layer (server client) — reads for every list/detail page
     supabase/              browser/server Supabase clients (client.ts, server.ts, config.ts)
     profile.ts              maps a `profiles` row to the app's `User` type
     theme-presets.ts        the 15 alternate themes, ported verbatim from the prototype
@@ -83,7 +88,7 @@ One accessibility detail worth knowing before touching layout: the text-size con
 ## What's next (per the roadmap in the memory doc)
 
 1. ~~Code foundation~~
-2. Backend — real Supabase project, schema, pgvector, real auth ← **you are here** (schema + auth done; board list pages still need migrating off mock data)
+2. Backend — real Supabase project, schema, pgvector, real auth, all boards/dashboard on real data ← **you are here** (done, except real file uploads/downloads — that needs Phase 3's storage)
 3. File storage — Cloudflare R2 + Internet Archive, real upload flow
 4. Hosting & domain — Cloudflare Pages, then `aoe.ai` DNS
 5. Backups — scheduled `pg_dump` to Backblaze B2 (set up before RAG so the safety net exists before more complex data starts accumulating)

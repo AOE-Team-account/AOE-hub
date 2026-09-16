@@ -16,10 +16,9 @@ interface GroupRow {
 
 async function fromRow(row: GroupRow): Promise<Group> {
   const supabase = await createClient();
-  const { count } = await supabase
-    .from("group_members")
-    .select("*", { count: "exact", head: true })
-    .eq("group_id", row.id);
+  // group_member_count() bypasses the group_members RLS deliberately — see
+  // the comment on that function in schema.sql for why that's safe here.
+  const { data: count } = await supabase.rpc("group_member_count", { p_group_id: row.id });
 
   return {
     id: row.id,
@@ -42,4 +41,16 @@ export async function getGroupById(id: string): Promise<Group | undefined> {
   const supabase = await createClient();
   const { data } = await supabase.from("groups").select("*").eq("id", id).single();
   return data ? fromRow(data as GroupRow) : undefined;
+}
+
+/** Group IDs the currently-authenticated user belongs to. Empty for a guest. */
+export async function listMyGroupIds(): Promise<string[]> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data } = await supabase.from("group_members").select("group_id").eq("user_id", user.id);
+  return (data ?? []).map((row) => row.group_id);
 }

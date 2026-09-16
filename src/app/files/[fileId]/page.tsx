@@ -1,12 +1,24 @@
 import { notFound } from "next/navigation";
 import { getFilePostById, listFileComments } from "@/lib/data/files";
 import { getUserById } from "@/lib/data/users";
+import { createClient } from "@/lib/supabase/server";
+import { userFromProfileRow, type ProfileRow } from "@/lib/profile";
+import type { User } from "@/lib/types";
 import { BackLink } from "@/components/ui/BackLink";
 import { AuthorLink } from "@/components/ui/AuthorLink";
 import { TranslatableText } from "@/components/ui/TranslateButton";
 import { Badge } from "@/components/ui/Badge";
 import { Discussion } from "@/components/discussion/Discussion";
 import { DownloadButton, RemixButton } from "@/components/files/FileDetailActions";
+
+function collectAuthorIds(comments: Awaited<ReturnType<typeof listFileComments>>): string[] {
+  const ids: string[] = [];
+  for (const c of comments) {
+    ids.push(c.authorId);
+    for (const r of c.replies ?? []) ids.push(r.authorId);
+  }
+  return ids;
+}
 
 export default async function FileDetailPage({ params }: PageProps<"/files/[fileId]">) {
   const { fileId } = await params;
@@ -17,6 +29,22 @@ export default async function FileDetailPage({ params }: PageProps<"/files/[file
     getUserById(file.authorId),
     listFileComments(file.id),
   ]);
+
+  const supabase = await createClient();
+  const {
+    data: { user: viewer },
+  } = await supabase.auth.getUser();
+  if (viewer) {
+    await supabase.rpc("record_view", { p_target_type: "file", p_target_id: file.id, p_viewer_id: viewer.id });
+  }
+
+  const commentAuthorIds = [...new Set(collectAuthorIds(comments))];
+  const { data: authorRows } = commentAuthorIds.length
+    ? await supabase.from("profiles").select("*").in("id", commentAuthorIds)
+    : { data: [] as ProfileRow[] };
+  const authors: Record<string, User | undefined> = Object.fromEntries(
+    (authorRows ?? []).map((row) => [row.id, userFromProfileRow(row as ProfileRow)])
+  );
 
   return (
     <>
@@ -62,7 +90,14 @@ export default async function FileDetailPage({ params }: PageProps<"/files/[file
         <RemixButton />
       </div>
 
-      <Discussion initialComments={comments} composeLabel="Ask a question" postAuthorId={file.authorId} />
+      <Discussion
+        parentType="file"
+        parentId={file.id}
+        initialComments={comments}
+        authors={authors}
+        composeLabel="Ask a question"
+        postAuthorId={file.authorId}
+      />
     </>
   );
 }

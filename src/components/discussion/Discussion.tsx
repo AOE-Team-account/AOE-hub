@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
-import { getUserById } from "@/lib/mock-data";
-import type { Comment, CommentType } from "@/lib/types";
+import { createClient } from "@/lib/supabase/client";
+import type { Comment, CommentType, User } from "@/lib/types";
 import { AuthorLink } from "@/components/ui/AuthorLink";
 import { TranslatableText } from "@/components/ui/TranslateButton";
 import { Badge } from "@/components/ui/Badge";
@@ -16,45 +17,63 @@ const TYPE_LABEL: Record<CommentType, string> = {
 };
 
 export function Discussion({
+  parentType,
+  parentId,
   initialComments,
+  authors,
   composeLabel,
   postAuthorId,
 }: {
+  parentType: "file" | "experience-post";
+  parentId: string;
   initialComments: Comment[];
+  authors: Record<string, User | undefined>;
   composeLabel: string;
   postAuthorId?: string;
 }) {
   const { requireAuth, user } = useAuth();
+  const router = useRouter();
   const [comments, setComments] = useState(initialComments);
   const [composeOpen, setComposeOpen] = useState(false);
   const [type, setType] = useState<CommentType>("question");
   const [body, setBody] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Re-sync when the parent Server Component re-fetches after router.refresh().
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setComments(initialComments);
+  }, [initialComments]);
 
   function openCompose() {
     if (requireAuth()) setComposeOpen((v) => !v);
   }
 
-  function submit() {
+  async function submit() {
     if (!body.trim() || !user) return;
-    const newComment: Comment = {
-      id: `local-${Date.now()}`,
-      parentType: "experience-post",
-      parentId: "local",
-      authorId: user.id,
-      type,
-      body: body.trim(),
-      createdAt: new Date().toISOString(),
-    };
-    setComments((c) => [...c, newComment]);
+    setSubmitting(true);
+    setError(null);
+    const supabase = createClient();
+    const { error: insertError } = await supabase
+      .from("comments")
+      .insert({ parent_type: parentType, parent_id: parentId, author_id: user.id, type, body: body.trim() });
+    setSubmitting(false);
+    if (insertError) {
+      setError(insertError.message);
+      return;
+    }
     setBody("");
     setComposeOpen(false);
+    router.refresh();
   }
 
   return (
     <div className="card">
       <p className="title" style={{ marginBottom: 12 }}>Discussion</p>
+      {comments.length === 0 && <p className="muted">No comments yet.</p>}
       {comments.map((comment) => (
-        <CommentRow key={comment.id} comment={comment} postAuthorId={postAuthorId} />
+        <CommentRow key={comment.id} comment={comment} authors={authors} postAuthorId={postAuthorId} />
       ))}
 
       <Button style={{ width: "100%", marginTop: 12 }} onClick={openCompose}>
@@ -67,16 +86,29 @@ export function Discussion({
           <option value="sharing">Just sharing</option>
         </select>
         <textarea placeholder="Write something..." value={body} onChange={(e) => setBody(e.target.value)} />
-        <Button variant="primary" style={{ marginTop: 8 }} onClick={submit}>
-          Post
+        {error && (
+          <p className="muted" style={{ color: "#b5471f", marginTop: 6 }}>
+            {error}
+          </p>
+        )}
+        <Button variant="primary" style={{ marginTop: 8 }} onClick={submit} disabled={submitting || !body.trim()}>
+          {submitting ? "Posting…" : "Post"}
         </Button>
       </div>
     </div>
   );
 }
 
-function CommentRow({ comment, postAuthorId }: { comment: Comment; postAuthorId?: string }) {
-  const author = getUserById(comment.authorId);
+function CommentRow({
+  comment,
+  authors,
+  postAuthorId,
+}: {
+  comment: Comment;
+  authors: Record<string, User | undefined>;
+  postAuthorId?: string;
+}) {
+  const author = authors[comment.authorId];
   return (
     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10, marginBottom: 10 }}>
       <div className="row wrap" style={{ gap: 6, marginBottom: 4 }}>
@@ -86,7 +118,7 @@ function CommentRow({ comment, postAuthorId }: { comment: Comment; postAuthorId?
       </div>
       <TranslatableText text={comment.body} as="p" className="muted" />
       {comment.replies?.map((reply) => {
-        const replyAuthor = getUserById(reply.authorId);
+        const replyAuthor = authors[reply.authorId];
         return (
           <div className="reply" key={reply.id}>
             <div className="row" style={{ gap: 6, marginBottom: 2 }}>

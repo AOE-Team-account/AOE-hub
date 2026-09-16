@@ -1,22 +1,109 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth, useRequireAuthPage } from "@/contexts/AuthContext";
-import { getFilePosts, getExperiencePosts } from "@/lib/mock-data";
+import { createClient } from "@/lib/supabase/client";
 import { PointsInfoButton } from "@/components/profile/PointsInfoButton";
 import { Button } from "@/components/ui/Button";
+import type { ExperiencePost, FilePost } from "@/lib/types";
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
   useRequireAuthPage("/");
   const [editing, setEditing] = useState(false);
-  const [deletedFiles, setDeletedFiles] = useState<Set<string>>(new Set());
-  const [deletedPosts, setDeletedPosts] = useState<Set<string>>(new Set());
+  const [name, setName] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [myFiles, setMyFiles] = useState<FilePost[]>([]);
+  const [myPosts, setMyPosts] = useState<ExperiencePost[]>([]);
+
+  useEffect(() => {
+    // Seeds the edit form from the auth-provided user once it's loaded —
+    // can't be known until the async session/profile fetch resolves.
+    if (user) {
+      /* eslint-disable react-hooks/set-state-in-effect */
+      setName(user.name);
+      setDisplayName(user.displayName ?? "");
+      /* eslint-enable react-hooks/set-state-in-effect */
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      const supabase = createClient();
+      const [{ data: files }, { data: posts }] = await Promise.all([
+        supabase.from("file_posts").select("*").eq("author_id", user.id).order("created_at", { ascending: false }),
+        supabase
+          .from("experience_posts")
+          .select("*")
+          .eq("author_id", user.id)
+          .eq("is_announcement", false)
+          .order("created_at", { ascending: false }),
+      ]);
+      if (cancelled) return;
+      setMyFiles(
+        (files ?? []).map((f) => ({
+          id: f.id,
+          title: f.title,
+          description: f.description,
+          section: f.section,
+          mediaType: f.media_type,
+          authorship: f.authorship,
+          remixOfPostId: f.remix_of_post_id ?? undefined,
+          authorId: f.author_id,
+          views: f.views,
+          createdAt: f.created_at,
+          updatedAt: f.updated_at ?? undefined,
+          assets: [],
+        }))
+      );
+      setMyPosts(
+        (posts ?? []).map((p) => ({
+          id: p.id,
+          authorId: p.author_id,
+          category: p.category ?? "just-sharing",
+          title: p.title ?? undefined,
+          body: p.body,
+          views: p.views,
+          replyCount: 0,
+          createdAt: p.created_at,
+          pinned: p.pinned,
+          isAnnouncement: p.is_announcement,
+        }))
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   if (!user) return null;
 
-  const myFiles = getFilePosts().filter((f) => f.authorId === user.id && !deletedFiles.has(f.id));
-  const myPosts = getExperiencePosts().filter((p) => p.authorId === user.id && !p.isAnnouncement && !deletedPosts.has(p.id));
+  async function saveProfile() {
+    if (!user) return;
+    setSaving(true);
+    const supabase = createClient();
+    await supabase.from("profiles").update({ name: name.trim(), display_name: displayName.trim() || null }).eq("id", user.id);
+    setSaving(false);
+    setEditing(false);
+    await refreshProfile();
+  }
+
+  async function deleteFile(id: string) {
+    if (!confirm("Delete this file? This cannot be undone.")) return;
+    const supabase = createClient();
+    await supabase.from("file_posts").delete().eq("id", id);
+    setMyFiles((files) => files.filter((f) => f.id !== id));
+  }
+
+  async function deletePost(id: string) {
+    if (!confirm("Delete this post? This cannot be undone.")) return;
+    const supabase = createClient();
+    await supabase.from("experience_posts").delete().eq("id", id);
+    setMyPosts((posts) => posts.filter((p) => p.id !== id));
+  }
 
   return (
     <>
@@ -53,17 +140,21 @@ export default function ProfilePage() {
         <label className="field-label" style={{ marginTop: 0 }}>Profile picture</label>
         <button className="btn small">Choose new picture</button>
         <label className="field-label">Name</label>
-        <input defaultValue={user.name} />
+        <input value={name} onChange={(e) => setName(e.target.value)} />
         <label className="field-label">Display name</label>
-        <input placeholder="How you'd like to appear on posts, e.g. 'Sarah's Homeschool'" />
-        <Button variant="primary" size="small" style={{ marginTop: 12 }} onClick={() => setEditing(false)}>
-          Save
+        <input
+          placeholder="How you'd like to appear on posts, e.g. 'Sarah's Homeschool'"
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+        />
+        <Button variant="primary" size="small" style={{ marginTop: 12 }} disabled={saving} onClick={saveProfile}>
+          {saving ? "Saving…" : "Save"}
         </Button>
       </div>
 
       <div className="card row wrap" style={{ gap: 18 }}>
         <Stat label="points" value={user.points.toLocaleString()} />
-        <Stat label="files" value={String(user.filesCount)} />
+        <Stat label="files" value={String(myFiles.length)} />
         <Stat label="groups" value={String(user.groupsCount)} />
         <Stat label="followers" value={user.followers.toLocaleString()} />
         <Stat label="following" value={user.following.toLocaleString()} />
@@ -80,15 +171,7 @@ export default function ProfilePage() {
           </div>
           <div className="row" style={{ gap: 6 }}>
             <Button size="small">Update</Button>
-            <Button
-              size="small"
-              variant="danger"
-              onClick={() => {
-                if (confirm("Delete this file? This cannot be undone.")) {
-                  setDeletedFiles((s) => new Set(s).add(f.id));
-                }
-              }}
-            >
+            <Button size="small" variant="danger" onClick={() => deleteFile(f.id)}>
               Delete
             </Button>
           </div>
@@ -105,15 +188,7 @@ export default function ProfilePage() {
           </div>
           <div className="row" style={{ gap: 6 }}>
             <Button size="small">Update</Button>
-            <Button
-              size="small"
-              variant="danger"
-              onClick={() => {
-                if (confirm("Delete this post? This cannot be undone.")) {
-                  setDeletedPosts((s) => new Set(s).add(p.id));
-                }
-              }}
-            >
+            <Button size="small" variant="danger" onClick={() => deletePost(p.id)}>
               Delete
             </Button>
           </div>

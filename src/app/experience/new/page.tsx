@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useRequireAuthPage } from "@/contexts/AuthContext";
+import { useAuth, useRequireAuthPage } from "@/contexts/AuthContext";
+import { createClient } from "@/lib/supabase/client";
 import { BackLink } from "@/components/ui/BackLink";
 import { Button } from "@/components/ui/Button";
 import type { ExperienceCategory } from "@/lib/types";
@@ -19,12 +20,32 @@ const CATEGORIES: { value: ExperienceCategory; label: string }[] = [
 
 export default function NewExperiencePostPage() {
   const ready = useRequireAuthPage("/experience");
+  const { user } = useAuth();
   const router = useRouter();
   const [acknowledged, setAcknowledged] = useState(false);
   const [category, setCategory] = useState<ExperienceCategory>("starting-out");
   const [body, setBody] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (!ready) return null;
+
+  async function submit() {
+    if (!user || !body.trim()) return;
+    setSubmitting(true);
+    setError(null);
+    const supabase = createClient();
+    const { error: insertError } = await supabase
+      .from("experience_posts")
+      .insert({ author_id: user.id, category, body: body.trim() });
+    setSubmitting(false);
+    if (insertError) {
+      setError(insertError.message);
+      return;
+    }
+    router.push("/experience");
+    router.refresh();
+  }
 
   return (
     <>
@@ -56,13 +77,19 @@ export default function NewExperiencePostPage() {
         </Button>
       </div>
 
+      {error && (
+        <p className="muted" style={{ color: "#b5471f", marginTop: 10 }}>
+          {error}
+        </p>
+      )}
+
       <Button
         variant="primary"
         style={{ width: "100%", marginTop: 14 }}
-        disabled={!acknowledged || !body.trim()}
-        onClick={() => router.push("/experience")}
+        disabled={!acknowledged || !body.trim() || submitting}
+        onClick={submit}
       >
-        Post to the Experience Board
+        {submitting ? "Posting…" : "Post to the Experience Board"}
       </Button>
     </>
   );
