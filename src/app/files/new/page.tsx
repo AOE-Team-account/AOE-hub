@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useRequireAuthPage } from "@/contexts/AuthContext";
 import { BackLink } from "@/components/ui/BackLink";
@@ -35,6 +35,11 @@ const AUTHORSHIP_OPTIONS: { value: Authorship; label: string }[] = [
   { value: "notmine", label: "Not my work" },
 ];
 
+interface FileRow {
+  label: string;
+  file: File | null;
+}
+
 export default function UploadFilePage() {
   const ready = useRequireAuthPage("/files");
   const router = useRouter();
@@ -44,12 +49,61 @@ export default function UploadFilePage() {
   const [mediaType, setMediaType] = useState<MediaType>("document");
   const [section, setSection] = useState<FileSection>("curriculum");
   const [authorship, setAuthorship] = useState<Authorship>("original");
-  const [fileLabels, setFileLabels] = useState<string[]>([""]);
+  const [rows, setRows] = useState<FileRow[]>([{ label: "", file: null }]);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   if (!ready) return null;
 
-  const canSubmit = acknowledged && title.trim() && description.trim() && fileLabels.some((l) => l.trim());
+  const canSubmit = acknowledged && title.trim() && description.trim() && rows.some((r) => r.file);
+
+  function updateRow(i: number, patch: Partial<FileRow>) {
+    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  }
+
+  async function submit() {
+    const usableRows = rows.filter((r) => r.file);
+    if (!title.trim() || !description.trim() || usableRows.length === 0) return;
+
+    setSubmitting(true);
+    setError(null);
+    setStatusMessage("Scanning files for malware — this can take up to a minute per file…");
+
+    const formData = new FormData();
+    formData.set("title", title.trim());
+    formData.set("description", description.trim());
+    formData.set("section", section);
+    formData.set("mediaType", mediaType);
+    formData.set("authorship", authorship);
+    formData.set("labels", JSON.stringify(usableRows.map((r) => r.label || r.file!.name)));
+    usableRows.forEach((r) => formData.append("files", r.file!));
+
+    try {
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Upload failed.");
+        setSubmitting(false);
+        setStatusMessage(null);
+        return;
+      }
+      const flagged = (data.results as { label: string; scanStatus: string }[]).filter((r) => r.scanStatus === "flagged");
+      if (flagged.length > 0) {
+        setStatusMessage(
+          `Posted, but ${flagged.map((f) => f.label).join(", ")} failed the malware scan and won't be downloadable.`
+        );
+      }
+      router.push(`/files/${data.postId}`);
+      router.refresh();
+    } catch {
+      setError("Something went wrong uploading. Please try again.");
+      setSubmitting(false);
+      setStatusMessage(null);
+    }
+  }
 
   return (
     <>
@@ -84,34 +138,34 @@ export default function UploadFilePage() {
         </div>
       )}
 
-      <label className="field-label">Preview picture or video</label>
-      <p className="tiny" style={{ marginBottom: 6 }}>
-        Shown on the card before someone opens the file — a photo of the finished pages, a screenshot, or a short
-        clip works well.
-      </p>
-      <button className="btn">Choose preview image or video</button> <span className="tiny">no preview chosen</span>
-
       <label className="field-label">Files</label>
       <p className="tiny" style={{ marginBottom: 8 }}>
         Add every file that belongs together in one post — different languages, different subjects, or a
-        chapter-by-chapter curriculum. Each one gets its own label and its own download button.
+        chapter-by-chapter curriculum. Each one gets its own label and its own download button. Every file is
+        scanned for malware before it becomes downloadable.
       </p>
-      {fileLabels.map((label, i) => (
+      {rows.map((row, i) => (
         <div className="row" style={{ gap: 8, marginBottom: 8 }} key={i}>
           <input
             placeholder="Label, e.g. 'English version' or 'Chapter 3 - Fractions'"
             style={{ flex: 1 }}
-            value={label}
-            onChange={(e) => {
-              const next = [...fileLabels];
-              next[i] = e.target.value;
-              setFileLabels(next);
-            }}
+            value={row.label}
+            onChange={(e) => updateRow(i, { label: e.target.value })}
           />
-          <button className="btn small">Choose file</button>
+          <input
+            ref={(el) => {
+              fileInputRefs.current[i] = el;
+            }}
+            type="file"
+            style={{ display: "none" }}
+            onChange={(e) => updateRow(i, { file: e.target.files?.[0] ?? null })}
+          />
+          <button className="btn small" type="button" onClick={() => fileInputRefs.current[i]?.click()}>
+            {row.file ? row.file.name.slice(0, 20) : "Choose file"}
+          </button>
         </div>
       ))}
-      <button className="btn small" onClick={() => setFileLabels((l) => [...l, ""])}>
+      <button className="btn small" type="button" onClick={() => setRows((r) => [...r, { label: "", file: null }])}>
         + Add another file
       </button>
 
@@ -125,13 +179,19 @@ export default function UploadFilePage() {
         </Button>
       </div>
 
-      <Button
-        variant="primary"
-        style={{ width: "100%", marginTop: 14 }}
-        disabled={!canSubmit}
-        onClick={() => router.push("/files")}
-      >
-        Post to the File Board
+      {statusMessage && (
+        <p className="muted" style={{ marginTop: 10 }}>
+          {statusMessage}
+        </p>
+      )}
+      {error && (
+        <p className="muted" style={{ color: "#b5471f", marginTop: 10 }}>
+          {error}
+        </p>
+      )}
+
+      <Button variant="primary" style={{ width: "100%", marginTop: 14 }} disabled={!canSubmit || submitting} onClick={submit}>
+        {submitting ? "Uploading…" : "Post to the File Board"}
       </Button>
     </>
   );

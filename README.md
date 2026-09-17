@@ -4,25 +4,36 @@
 
 This is the real Next.js codebase, scaffolded around [`hub-prototype.html`](./hub-prototype.html) (the authoritative visual/interaction reference) and [`AOEhub memory from chat.md`](./AOEhub%20memory%20from%20chat.md) (the authoritative product/architecture decisions). Read both before making product decisions that aren't obvious from the code.
 
-## Status: Phase 2 — Backend (schema + auth + real data, done)
+## Status: Phase 3 — File storage (done)
 
-The hub is now fully wired to a real Supabase backend — no mock data left anywhere in the app (`mock-data.ts` has been deleted). It genuinely launches empty: every board, list, and dashboard reflects whatever is actually in your database.
+The hub is fully wired to real backends everywhere — no mock data anywhere in the app. It genuinely launches empty: every board, list, and dashboard reflects whatever is actually in your database and storage.
 
 | Concern | Status | Where it lives |
 |---|---|---|
 | Auth / sessions | **Real** — Supabase Auth (email + password) | `src/contexts/AuthContext.tsx`, `src/app/login`, `src/app/signup` |
 | Database schema | **Real**, live-tested end to end | `supabase/schema.sql` |
 | pgvector (for RAG) | **Enabled** in schema, tables created, unused until Phase 6 | `supabase/schema.sql` (`kb_documents`, `kb_chunks`) |
-| Points | **Real formula**, server-enforced via triggers/functions | `supabase/schema.sql` (`award_points`, `record_view`), `src/lib/points.ts` |
-| Everything you can browse (both boards, Groups, Admin Dashboard, notifications, your own profile) | **Real queries and real writes** — posting, commenting, joining/creating/leaving groups all hit Supabase | `src/lib/data/*.ts`, plus direct browser-client calls in each page (see below) |
-| File *uploads* specifically | Form UI only, no real insert yet — needs real file storage first | `src/app/files/new/page.tsx` → Phase 3 |
-| File downloads | Fake buttons | `src/components/files/FileDetailActions.tsx` → Phase 3 |
+| Points | **Real formula**, server-enforced via triggers/functions | `supabase/schema.sql` (`award_points`, `record_view`, `record_download`), `src/lib/points.ts` |
+| Every board, Groups, Admin Dashboard, notifications, your own profile | **Real queries and real writes** | `src/lib/data/*.ts`, plus direct browser-client calls in each page |
+| File uploads | **Real** — routes to Cloudflare R2 (small files) or Internet Archive (large files) automatically, gated by a real VirusTotal malware scan | `src/app/api/upload/route.ts`, `src/lib/storage/`, `src/lib/malware-scan/` |
+| File downloads | **Real** — signed URL (R2) or direct IA URL, only for scan-confirmed-clean files; increments the download counter and awards points | `src/app/api/download/[assetId]/route.ts` |
 | RAG AI assistant | Keyword placeholder, behind a swappable interface | `src/lib/ai/keyword-provider.ts` → Phase 6 |
 | Content translation | Seeded cache, no real API call | `src/lib/i18n/translate.ts` → Phase 8 |
 
-**Two patterns for real data, by design:** server-rendered pages (detail pages, board list pages) fetch through `src/lib/data/*.ts` using the server Supabase client. Write actions (posting, commenting, joining a group) call the *browser* Supabase client directly from a Client Component, then call `router.refresh()` — Row Level Security enforces who's allowed to do what either way, so this split is about which client is convenient, not about security.
+**Two patterns for real data, by design:** server-rendered pages (detail pages, board list pages) fetch through `src/lib/data/*.ts` using the server Supabase client. Write actions (posting, commenting, joining a group) call the *browser* Supabase client directly from a Client Component, then call `router.refresh()` — Row Level Security enforces who's allowed to do what either way, so this split is about which client is convenient, not about security. File uploads are the one write that goes through a server Route Handler instead (`/api/upload`), since the storage/scanning credentials are server-only secrets.
 
-**Known gap:** `profiles.groups_count`, `files_count`, `followers_count`, and `following_count` are denormalized columns that exist in the schema but aren't yet kept up to date by triggers (only `points` has that, via `award_points()`). The Profile page works around this for its own files count by counting real rows directly; the other three will show stale/zero values until that's built.
+### How file uploads actually work
+
+1. `/api/upload` uploads the file's bytes to storage **first** — Cloudflare R2 under 50MB, Internet Archive above that (`src/lib/storage/router.ts` — the threshold is a tunable constant, not a spec'd number from the project docs).
+2. It submits the file to VirusTotal and polls briefly (~10s). A fast result (the common case for small/known files) marks the asset `clean` or `flagged` immediately.
+3. If VirusTotal is still working after that short window — normal on their free tier, observed taking several minutes during testing — the asset is saved as `pending` with the VirusTotal analysis id attached. The file's bytes stay in storage but are invisible to everyone except the uploader/admins (RLS) and refused by the download route either way.
+4. `/api/cron/check-pending-scans` (protected by `CRON_SECRET`) re-checks any `pending` asset once and resolves it: `clean` stays as-is, `flagged` gets its storage object deleted (real quarantine, not just a hidden row) and the row updated. **Not wired to an actual scheduler yet** — that's a Phase 4 hosting decision (Vercel Cron, Cloudflare Cron Triggers, or a timed GitHub Action all work); call it by hand or via any scheduler in the meantime.
+
+**Known follow-ups, deliberately not built yet:**
+- Files over 200MB are rejected — very large uploads would need a presigned direct-to-storage upload instead of routing bytes through this server, a bigger change than this pass needed.
+- The "remix" authorship field is a free-text hint, not a real link to the original post yet — no search-and-select UI for it.
+- The preview image/video picker on the upload form is still a placeholder — doesn't upload anything.
+- `profiles.groups_count`, `files_count`, `followers_count`, `following_count` are denormalized columns not yet kept current by triggers (only `points` has that). The Profile page works around this for its own files count by counting real rows directly.
 
 ## Setting up your own Supabase project
 
@@ -36,7 +47,16 @@ The hub is now fully wired to a real Supabase backend — no mock data left anyw
 5. (Optional, for easier local testing) In **Authentication → Sign In / Providers → Email**, turn off "Confirm email" so signing up logs you straight in without needing to click an email link.
 6. To make yourself an admin for testing the Admin Dashboard: sign up normally, then in **Table Editor → profiles**, set your row's `is_admin` to `true`.
 
-Without a `.env.local`, the app still builds and runs — auth and real-data pages just won't function (guest browsing and the still-mock pages work regardless).
+Without a `.env.local`, the app still builds and runs — auth and real-data pages just won't function (guest browsing works regardless).
+
+## Setting up file storage + malware scanning
+
+1. **Cloudflare R2**: create a free Cloudflare account → R2 Object Storage → create a bucket (Standard storage class — Infrequent Access is for rarely-touched data, wrong fit for a hub people actively download from) → R2 → Manage API tokens → create an **Account** token (not User) with Object Read & Write scoped to that one bucket, no expiry, no IP filtering (Cloudflare Pages doesn't have a fixed IP to filter to anyway). You need the Account ID, Access Key ID, and Secret Access Key → `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME`.
+2. **Internet Archive**: free account at [archive.org](https://archive.org) → once logged in, go to [archive.org/account/s3.php](https://archive.org/account/s3.php) for your Access Key / Secret Key → `IA_ACCESS_KEY` / `IA_SECRET_KEY` / `IA_BUCKET_NAME` (an IA "bucket" is really an "item," created automatically on first upload — nothing to create ahead of time). Note: brand-new IA items have a real propagation delay (observed several minutes during testing) before they're publicly downloadable — this is normal IA behavior, not a bug.
+3. **VirusTotal**: free account at [virustotal.com](https://www.virustotal.com/gui/join-us) → profile icon → API Key → `VIRUSTOTAL_API_KEY`.
+4. Generate a `CRON_SECRET` (`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`) to protect the pending-scan follow-up endpoint.
+
+See `.env.example` for the full list with inline notes.
 
 ## Getting started
 
@@ -55,6 +75,10 @@ src/
     login/, signup/        real Supabase auth forms
     experience/, files/, groups/, admin/   each has a Server Component page.tsx (real data fetch)
                                             + a *Client.tsx sibling (interactivity, real writes)
+    api/
+      upload/               receives a file, scans it, routes it to storage
+      download/[assetId]/   verifies scan_status="clean", redirects to a real signed/direct URL
+      cron/check-pending-scans/   resolves scans VirusTotal didn't finish in time (see below)
   components/
     layout/               TopBar, PrimaryTabs, AppShell, SignInModal, ReportModal
     ai/                   the draggable AI chat FAB
@@ -65,7 +89,9 @@ src/
   lib/
     types.ts              core domain types — the Postgres schema mirrors these closely
     data/                  data-access layer (server client) — reads for every list/detail page
-    supabase/              browser/server Supabase clients (client.ts, server.ts, config.ts)
+    supabase/              browser/server/service-role Supabase clients (client.ts, server.ts, service.ts, config.ts)
+    storage/                R2 + Internet Archive clients, size-based routing (router.ts)
+    malware-scan/            VirusTotal submit/poll (virustotal.ts)
     profile.ts              maps a `profiles` row to the app's `User` type
     theme-presets.ts        the 15 alternate themes, ported verbatim from the prototype
     fonts.ts                next/font setup for every font the themes reference
@@ -88,9 +114,9 @@ One accessibility detail worth knowing before touching layout: the text-size con
 ## What's next (per the roadmap in the memory doc)
 
 1. ~~Code foundation~~
-2. Backend — real Supabase project, schema, pgvector, real auth, all boards/dashboard on real data ← **you are here** (done, except real file uploads/downloads — that needs Phase 3's storage)
-3. File storage — Cloudflare R2 + Internet Archive, real upload flow
-4. Hosting & domain — Cloudflare Pages, then `aoe.ai` DNS
+2. ~~Backend — real Supabase project, schema, pgvector, real auth, all boards/dashboard on real data~~
+3. File storage — Cloudflare R2 + Internet Archive, real upload flow, VirusTotal scanning gate ← **you are here** (done — see "known follow-ups" above for what's deliberately left for later)
+4. Hosting & domain — Cloudflare Pages, then `aoe.ai` DNS (this is also when the pending-scan cron job gets wired to an actual scheduler)
 5. Backups — scheduled `pg_dump` to Backblaze B2 (set up before RAG so the safety net exists before more complex data starts accumulating)
 6. RAG AI — real embedding pipeline behind the existing `AIProvider` interface
 7. Populate content — admins upload the real first-wave content

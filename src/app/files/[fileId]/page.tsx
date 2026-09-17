@@ -82,9 +82,13 @@ export default async function FileDetailPage({ params }: PageProps<"/files/[file
           <div className="row between" key={asset.id} style={{ padding: "8px 0", borderTop: "1px solid var(--border)" }}>
             <div>
               <p style={{ fontWeight: 500, fontSize: 14, margin: 0 }}>{asset.label}</p>
-              <p className="tiny">{asset.downloads} downloads</p>
+              <p className="tiny">
+                {asset.downloads} downloads
+                {asset.scanStatus === "pending" && " · still being checked for malware"}
+                {asset.scanStatus === "flagged" && " · failed the malware scan, unavailable"}
+              </p>
             </div>
-            <DownloadButton />
+            <DownloadButton assetId={asset.id} scanStatus={asset.scanStatus} />
           </div>
         ))}
         <RemixButton />

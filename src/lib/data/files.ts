@@ -25,6 +25,8 @@ interface FileAssetRow {
   label: string;
   mime_type: string | null;
   downloads: number;
+  scan_status: FileAsset["scanStatus"];
+  size_bytes: number | null;
 }
 
 function fromRow(row: FilePostRow, assets: FileAsset[]): FilePost {
@@ -51,7 +53,14 @@ async function assetsFor(postIds: string[]): Promise<Record<string, FileAsset[]>
 
   const byPost: Record<string, FileAsset[]> = {};
   for (const row of (data ?? []) as FileAssetRow[]) {
-    const asset: FileAsset = { id: row.id, label: row.label, mimeType: row.mime_type ?? "", downloads: row.downloads };
+    const asset: FileAsset = {
+      id: row.id,
+      label: row.label,
+      mimeType: row.mime_type ?? "",
+      downloads: row.downloads,
+      scanStatus: row.scan_status,
+      sizeBytes: row.size_bytes,
+    };
     byPost[row.file_post_id] = [...(byPost[row.file_post_id] ?? []), asset];
   }
   return byPost;

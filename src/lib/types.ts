@@ -58,11 +58,15 @@ export interface User {
   groupsCount: number;
 }
 
+export type ScanStatus = "pending" | "clean" | "flagged";
+
 export interface FileAsset {
   id: string;
   label: string;
   mimeType: string;
   downloads: number;
+  scanStatus: ScanStatus;
+  sizeBytes: number | null;
 }
 
 export interface FilePost {

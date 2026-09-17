@@ -110,9 +110,22 @@ create table if not exists public.file_assets (
   created_at timestamptz not null default now()
 );
 
+-- Added in the Phase 3 pass: which of the two storage backends holds this
+-- asset (see src/lib/storage/router.ts for the size-based routing logic),
+-- and its size for display + for that same routing decision on any future
+-- re-upload. `alter table ... add column if not exists` so this stays safe
+-- to re-run even on a project that already has file_assets from Phase 2.
+alter table public.file_assets add column if not exists storage_backend text check (storage_backend in ('r2', 'internet-archive'));
+alter table public.file_assets add column if not exists size_bytes bigint;
+-- VirusTotal's analysis id for a still-"pending" scan, so a later check
+-- (see the /api/cron/check-pending-scans route) can poll for the result
+-- without needing the original file bytes again. Cleared once resolved.
+alter table public.file_assets add column if not exists scan_analysis_id text;
+
 create index if not exists file_assets_file_post_id_idx on public.file_assets (file_post_id);
 
-comment on column public.file_assets.scan_status is 'Malware scan gate (ClamAV/VirusTotal, Phase 3) — only "clean" assets are ever downloadable.';
+comment on column public.file_assets.scan_status is 'Malware scan gate (VirusTotal, Phase 3) — only "clean" assets are ever downloadable.';
+comment on column public.file_assets.storage_backend is 'Which S3-compatible backend actually holds the bytes: Cloudflare R2 (small files) or Internet Archive (large files).';
 
 -- ============================================================================
 -- Experience Board
@@ -609,8 +622,17 @@ drop policy if exists "authors and admins can delete file posts" on public.file_
 create policy "authors and admins can delete file posts" on public.file_posts
   for delete using (auth.uid() = author_id or public.is_admin(auth.uid()));
 
+-- Per project memory: "flagged files get quarantined automatically, never
+-- shown publicly." Only clean assets are visible to everyone; the
+-- uploader can still see their own pending/flagged assets (so they get
+-- feedback on what happened), and admins can see everything for moderation.
 drop policy if exists "file assets are publicly readable" on public.file_assets;
-create policy "file assets are publicly readable" on public.file_assets for select using (true);
+create policy "clean file assets are publicly readable" on public.file_assets
+  for select using (
+    scan_status = 'clean'
+    or exists (select 1 from public.file_posts where id = file_post_id and author_id = auth.uid())
+    or public.is_admin(auth.uid())
+  );
 
 drop policy if exists "post authors manage their file assets" on public.file_assets;
 create policy "post authors manage their file assets" on public.file_assets
