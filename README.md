@@ -51,7 +51,7 @@ Without a `.env.local`, the app still builds and runs — auth and real-data pag
 
 ## Setting up file storage + malware scanning
 
-1. **Cloudflare R2**: create a free Cloudflare account → R2 Object Storage → create a bucket (Standard storage class — Infrequent Access is for rarely-touched data, wrong fit for a hub people actively download from) → R2 → Manage API tokens → create an **Account** token (not User) with Object Read & Write scoped to that one bucket, no expiry, no IP filtering (Cloudflare Pages doesn't have a fixed IP to filter to anyway). You need the Account ID, Access Key ID, and Secret Access Key → `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME`.
+1. **Cloudflare R2**: create a free Cloudflare account → R2 Object Storage → create a bucket (Standard storage class — Infrequent Access is for rarely-touched data, wrong fit for a hub people actively download from) → R2 → Manage API tokens → create an **Account** token (not User) with Object Read & Write scoped to that one bucket, no expiry, no IP filtering (nothing in this stack has one fixed IP to filter to). You need the Account ID, Access Key ID, and Secret Access Key → `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME`.
 2. **Internet Archive**: free account at [archive.org](https://archive.org) → once logged in, go to [archive.org/account/s3.php](https://archive.org/account/s3.php) for your Access Key / Secret Key → `IA_ACCESS_KEY` / `IA_SECRET_KEY` / `IA_BUCKET_NAME` (an IA "bucket" is really an "item," created automatically on first upload — nothing to create ahead of time). Note: brand-new IA items have a real propagation delay (observed several minutes during testing) before they're publicly downloadable — this is normal IA behavior, not a bug.
 3. **VirusTotal**: free account at [virustotal.com](https://www.virustotal.com/gui/join-us) → profile icon → API Key → `VIRUSTOTAL_API_KEY`.
 4. Generate a `CRON_SECRET` (`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`) to protect the pending-scan follow-up endpoint.
@@ -116,7 +116,7 @@ One accessibility detail worth knowing before touching layout: the text-size con
 1. ~~Code foundation~~
 2. ~~Backend — real Supabase project, schema, pgvector, real auth, all boards/dashboard on real data~~
 3. File storage — Cloudflare R2 + Internet Archive, real upload flow, VirusTotal scanning gate ← **you are here** (done — see "known follow-ups" above for what's deliberately left for later)
-4. Hosting & domain — Cloudflare Pages, then `aoe.ai` DNS (this is also when the pending-scan cron job gets wired to an actual scheduler)
+4. Hosting & domain — Namecheap shared hosting via cPanel's Git Version Control tool (deliberately switched from an earlier Cloudflare Pages plan — already-paid-for hosting), `aoe.ai` DNS stays on Namecheap pointing directly at it. Note: this deploy path has no auto-deploy-on-push — needs either manually clicking "Deploy HEAD Commit" in cPanel or a small webhook, decide which when this phase starts. Also when the pending-scan cron job gets wired to an actual scheduler.
 5. Backups — scheduled `pg_dump` to Backblaze B2 (set up before RAG so the safety net exists before more complex data starts accumulating)
 6. RAG AI — real embedding pipeline behind the existing `AIProvider` interface
 7. Populate content — admins upload the real first-wave content
