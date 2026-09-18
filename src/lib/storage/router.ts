@@ -1,5 +1,6 @@
 import { uploadToR2, getR2DownloadUrl, deleteFromR2 } from "./r2";
 import { uploadToInternetArchive, getInternetArchiveDownloadUrl, deleteFromInternetArchive } from "./internet-archive";
+import type { MediaType } from "@/lib/types";
 
 export type StorageBackend = "r2" | "internet-archive";
 
@@ -11,7 +12,12 @@ export type StorageBackend = "r2" | "internet-archive";
 // video/audio-sized to IA instead.
 const LARGE_FILE_THRESHOLD_BYTES = 50 * 1024 * 1024; // 50MB
 
-export function chooseStorageBackend(sizeBytes: number): StorageBackend {
+// Exception to the size rule: Internet Archive's software support is built
+// around emulating legacy/retro software, not serving live modern web
+// content — a poor fit for anything meant to run live in-browser. Games
+// and apps always go to R2 regardless of size, even a large one.
+export function chooseStorageBackend(sizeBytes: number, mediaType?: MediaType): StorageBackend {
+  if (mediaType === "game" || mediaType === "app") return "r2";
   return sizeBytes > LARGE_FILE_THRESHOLD_BYTES ? "internet-archive" : "r2";
 }
 

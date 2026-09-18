@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { scanFileWithShortPoll, type ScanResult } from "@/lib/malware-scan/virustotal";
 import { chooseStorageBackend, uploadFile, deleteFile } from "@/lib/storage/router";
+import type { MediaType } from "@/lib/types";
 
 // Node runtime (not edge) — needed for Buffer and for VirusTotal's polling
 // loop, which can legitimately take several seconds per file.
@@ -77,7 +78,7 @@ export async function POST(request: Request) {
     const label = labels[i] || file.name;
     const buffer = Buffer.from(await file.arrayBuffer());
     const contentType = file.type || "application/octet-stream";
-    const backend = chooseStorageBackend(buffer.length);
+    const backend = chooseStorageBackend(buffer.length, mediaType as MediaType);
     const key = `${post.id}/${randomUUID()}-${file.name}`;
 
     // Upload first, regardless of scan outcome — the file needs to exist
