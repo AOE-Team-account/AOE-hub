@@ -1,0 +1,38 @@
+name: Backup Supabase database
+
+on:
+  schedule:
+    # 09:00 UTC daily. GitHub Actions cron can be delayed by several
+    # minutes during high load — that's fine for a nightly backup.
+    - cron: "0 9 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dump database
+        run: |
+          docker run --rm postgres:17 \
+            pg_dump "$SUPABASE_DB_URL" --no-owner --format=plain \
+            | gzip > backup.sql.gz
+
+          size=$(stat -c%s backup.sql.gz)
+          if [ "$size" -lt 1024 ]; then
+            echo "Dump is suspiciously small ($size bytes) — refusing to upload a possibly-broken backup."
+            exit 1
+          fi
+          echo "Dump size: $size bytes"
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+
+      - name: Upload to Backblaze B2
+        run: |
+          pip install --quiet awscli
+          aws s3 cp backup.sql.gz "s3://$B2_BUCKET_NAME/backups/aoehub-supabase.sql.gz" \
+            --endpoint-url "https://$B2_ENDPOINT"
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          B2_BUCKET_NAME: ${{ secrets.B2_BUCKET_NAME }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
