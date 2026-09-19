@@ -2,7 +2,7 @@
 
 **Alpha Omega Education** — a free education hub for homeschool, unschool, and school families. Domain: `aoe.ai`.
 
-This is the real Next.js codebase, scaffolded around [`hub-prototype.html`](./hub-prototype.html) (the authoritative visual/interaction reference) and [`AOEhub memory from chat.md`](./AOEhub%20memory%20from%20chat.md) (the authoritative product/architecture decisions). Read both before making product decisions that aren't obvious from the code.
+This is the real Next.js codebase, scaffolded around [`hub-prototype.html`](./hub-prototype.html) (the authoritative visual/interaction reference) and the project's memory doc (the authoritative product/architecture decisions — currently `AOEhub memory from chat3.md`; the project owner edits this file directly between sessions and renames it as it grows, so check the folder for the current filename rather than trusting this link). Read both before making product decisions that aren't obvious from the code.
 
 ## Status: Phase 3 — File storage (done)
 
