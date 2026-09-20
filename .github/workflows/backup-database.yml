@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Dump database
+        shell: bash
         run: |
           docker run --rm postgres:17 \
             pg_dump "$SUPABASE_DB_URL" --no-owner --format=plain \
