@@ -73,7 +73,7 @@ The workflow at `.github/workflows/backup-database.yml` runs every night, dumps 
    - `B2_APPLICATION_KEY` — the Application Key's secret
    - `B2_BUCKET_NAME` — the bucket name from step 2
    - `B2_ENDPOINT` — the endpoint host from step 5 (no `https://`)
-   - `SUPABASE_DB_URL` — from Supabase dashboard → Project Settings → Database → Connection string (URI, **direct connection**, not the pgbouncer pooler — `pg_dump` needs the direct one). This is a full database password in URL form — treat it with the same care as the Supabase service role key.
+   - `SUPABASE_DB_URL` — from Supabase dashboard → Project Settings → Database → Connection string (URI, **Session pooler**, port 5432 — not the "Direct connection" string, which is IPv6-only and unreachable from GitHub's runners, and not the Transaction pooler on port 6543, which `pg_dump` can't use). This is a full database password in URL form — treat it with the same care as the Supabase service role key.
 
 Once the secrets exist, the workflow runs automatically at 09:00 UTC daily, or you can trigger it manually from the **Actions** tab (`Backup Supabase database` → **Run workflow**) to verify it works without waiting for the schedule.
 
