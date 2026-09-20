@@ -28,7 +28,16 @@ jobs:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
 
       - name: Upload to Backblaze B2
+        shell: bash
         run: |
+          # Secrets pasted from a web page often carry stray whitespace/newlines.
+          export AWS_ACCESS_KEY_ID="$(printf '%s' "$AWS_ACCESS_KEY_ID" | tr -d '[:space:]')"
+          export AWS_SECRET_ACCESS_KEY="$(printf '%s' "$AWS_SECRET_ACCESS_KEY" | tr -d '[:space:]')"
+          B2_BUCKET_NAME="$(printf '%s' "$B2_BUCKET_NAME" | tr -d '[:space:]')"
+          B2_ENDPOINT="$(printf '%s' "$B2_ENDPOINT" | tr -d '[:space:]')"
+          # B2 signs requests with the region embedded in the endpoint (s3.<region>.backblazeb2.com).
+          export AWS_DEFAULT_REGION="$(printf '%s' "$B2_ENDPOINT" | sed -E 's/^s3\.([^.]+)\.backblazeb2\.com$/\1/')"
+
           pip install --quiet awscli
           aws s3 cp backup.sql.gz "s3://$B2_BUCKET_NAME/backups/aoehub-supabase.sql.gz" \
             --endpoint-url "https://$B2_ENDPOINT"
