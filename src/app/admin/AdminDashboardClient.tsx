@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { userFromProfileRow, type ProfileRow } from "@/lib/profile";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { AdminAssistantPanel } from "./AdminAssistantPanel";
 import type { AdminReport, Group, User } from "@/lib/types";
 
 const REASON_LABEL: Record<string, string> = {
@@ -111,6 +112,8 @@ export function AdminDashboardClient({ reports, reportedGroups }: { reports: Adm
           </div>
         </div>
       ))}
+
+      <AdminAssistantPanel />
 
       <p className="label" style={{ fontWeight: 500, margin: "20px 0 8px" }}>Groups oversight</p>
       <p className="tiny" style={{ marginBottom: 10 }}>

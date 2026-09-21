@@ -1,19 +1,27 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { aiProvider } from "@/lib/ai";
+import Link from "next/link";
+import { aiProvider, type AISource } from "@/lib/ai";
+import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { createClient } from "@/lib/supabase/client";
 
 interface ChatMessage {
   id: number;
   from: "ai" | "user";
   text: string;
+  sources?: AISource[];
+  // The question that could not be answered, so it can be sent to the admins.
+  escalateQuestion?: string;
+  isError?: boolean;
 }
 
 const clamp = (val: number, min: number, max: number) => Math.max(min, Math.min(max, val));
 
 export function AiFab() {
   const { lang } = useLanguage();
+  const { user, openSignInModal } = useAuth();
   const fabRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -28,6 +36,7 @@ export function AiFab() {
     { id: 0, from: "ai", text: "Hi! I can help you find files, point you to a philosophy idea, or explain how something on the hub works. What are you looking for?" },
   ]);
   const [input, setInput] = useState("");
+  const [thinking, setThinking] = useState(false);
 
   const dragState = useRef({ dragging: false, moved: false, startX: 0, startY: 0, startLeft: 0, startTop: 0 });
 
@@ -90,12 +99,53 @@ export function AiFab() {
 
   async function sendChat() {
     const text = input.trim();
-    if (!text) return;
-    const userMsg: ChatMessage = { id: Date.now(), from: "user", text };
-    setMessages((m) => [...m, userMsg]);
+    if (!text || thinking) return;
+    const history = messages.filter((m) => !m.isError).map((m) => ({ from: m.from, text: m.text }));
+    setMessages((m) => [...m, { id: Date.now(), from: "user", text }]);
     setInput("");
-    const reply = await aiProvider.reply(text, lang);
-    setMessages((m) => [...m, { id: Date.now() + 1, from: "ai", text: reply }]);
+    setThinking(true);
+    try {
+      const reply = await aiProvider.reply(text, lang, history);
+      setMessages((m) => [
+        ...m,
+        {
+          id: Date.now() + 1,
+          from: "ai",
+          text: reply.text,
+          sources: reply.sources,
+          escalateQuestion: reply.escalate ? text : undefined,
+        },
+      ]);
+    } catch (err) {
+      setMessages((m) => [
+        ...m,
+        { id: Date.now() + 1, from: "ai", text: err instanceof Error ? err.message : "Something went wrong.", isError: true },
+      ]);
+    } finally {
+      setThinking(false);
+    }
+  }
+
+  async function askAdmins(msgId: number, question: string) {
+    if (!user) {
+      openSignInModal();
+      return;
+    }
+    const supabase = createClient();
+    const { error } = await supabase.from("admin_questions").insert({ asker_id: user.id, question, lang });
+    setMessages((all) => [
+      ...all.map((m) => (m.id === msgId ? { ...m, escalateQuestion: undefined } : m)),
+      {
+        id: Date.now(),
+        from: "ai" as const,
+        text: error
+          ? error.message.includes("open questions")
+            ? error.message
+            : "I couldn't send that to the admins. Please try again."
+          : "Sent. An admin will answer, and you'll get a notification when they do.",
+        isError: !!error,
+      },
+    ]);
   }
 
   const fabStyle: React.CSSProperties = pos
@@ -136,8 +186,25 @@ export function AiFab() {
           {messages.map((m) => (
             <div key={m.id} className={`chat-msg ${m.from}`}>
               {m.text}
+              {m.sources && m.sources.length > 0 && (
+                <div className="tiny" style={{ marginTop: 6 }}>
+                  From:{" "}
+                  {m.sources.map((src, i) => (
+                    <span key={i}>
+                      {i > 0 && ", "}
+                      {src.href ? <Link href={src.href} style={{ color: "var(--accent)" }}>{src.title}</Link> : src.title}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {m.escalateQuestion && (
+                <button className="btn small" style={{ marginTop: 8 }} onClick={() => askAdmins(m.id, m.escalateQuestion!)}>
+                  {user ? "Send to the admins" : "Sign in to ask the admins"}
+                </button>
+              )}
             </div>
           ))}
+          {thinking && <div className="chat-msg ai">Thinking…</div>}
         </div>
         <div className="chat-input-row">
           <input

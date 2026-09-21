@@ -506,20 +506,56 @@ create table if not exists public.kb_documents (
   created_at timestamptz not null default now()
 );
 
--- 1536 matches OpenAI's text-embedding-3-small / ada-002 dimensionality —
--- the most common default. If Phase 6 picks a different embedding model,
--- this column's dimension will need to change to match.
+-- 768 dimensions: the hub's fixed embedding size (Phase 5). Chosen because
+-- it's the native size of common local models (nomic-embed-text) AND a size
+-- the big commercial embedders can be asked to produce, so the embedding
+-- model can be swapped without altering this column. Each chunk records
+-- which model made it (embedding_model) — vectors from different models are
+-- not comparable, so a model swap means re-indexing, never mixing.
 create table if not exists public.kb_chunks (
   id uuid primary key default gen_random_uuid(),
   document_id uuid not null references public.kb_documents (id) on delete cascade,
   chunk_index integer not null,
   content text not null,
-  embedding vector(1536),
+  embedding vector(768),
+  embedding_model text,
   created_at timestamptz not null default now()
 );
 
-create index if not exists kb_chunks_embedding_idx on public.kb_chunks
-  using ivfflat (embedding vector_cosine_ops) with (lists = 100);
+-- Existing projects created this table at 1536 dimensions in Phase 2 (it has
+-- never held data). Bring it to 768 idempotently; a no-op once it matches.
+do $$
+begin
+  if (select atttypmod from pg_attribute
+        where attrelid = 'public.kb_chunks'::regclass and attname = 'embedding') <> 768 then
+    drop index if exists public.kb_chunks_embedding_idx;
+    delete from public.kb_chunks;
+    alter table public.kb_chunks alter column embedding type vector(768);
+  end if;
+end $$;
+
+alter table public.kb_chunks add column if not exists embedding_model text;
+
+-- HNSW rather than IVFFlat: IVFFlat picks its clusters from the rows present
+-- when the index is built, so building it on an empty table gives poor
+-- recall forever. HNSW has no such training step.
+drop index if exists public.kb_chunks_embedding_idx;
+create index if not exists kb_chunks_embedding_hnsw_idx on public.kb_chunks
+  using hnsw (embedding vector_cosine_ops);
+create index if not exists kb_chunks_document_id_idx on public.kb_chunks (document_id);
+
+-- Phase 5 additions to kb_documents: a hash of the indexed text (so unchanged
+-- posts are never re-embedded), and a 'hub-guide' source type for the built-in
+-- "how the hub works" text.
+alter table public.kb_documents add column if not exists content_hash text;
+-- Set only once EVERY chunk of the document has been embedded with this
+-- model. A long book is indexed in resumable slices; null/other = unfinished.
+alter table public.kb_documents add column if not exists indexed_model text;
+alter table public.kb_documents drop constraint if exists kb_documents_source_type_check;
+alter table public.kb_documents add constraint kb_documents_source_type_check
+  check (source_type in ('philosophy-text', 'admin-answer', 'file-post', 'experience-post', 'hub-guide'));
+create unique index if not exists kb_documents_source_uniq
+  on public.kb_documents (source_type, source_id) where source_id is not null;
 
 -- ============================================================================
 -- Row Level Security
@@ -764,3 +800,259 @@ create policy "users can mark their notifications read" on public.notifications
 -- kb_documents / kb_chunks: no client policies at all — the RAG pipeline
 -- (Phase 6) reads/writes these with the service role key from a trusted
 -- server context only, never from the browser.
+
+-- ============================================================================
+-- Phase 5 — RAG AI
+-- ============================================================================
+
+-- Vault: Supabase's built-in encrypted secret storage. Member-supplied AI
+-- API keys live here, never in a plain column (see set_my_ai_key below).
+create extension if not exists supabase_vault;
+
+-- ---- Keep the knowledge base in step with the boards ----------------------
+
+-- When a post is deleted (by its author, an admin, or a cascade from a
+-- banned/deleted account) its knowledge-base copy must disappear with it, so
+-- the AI can never quote content that has been removed. kb_documents has no
+-- client policies, hence SECURITY DEFINER.
+create or replace function public.remove_kb_document_for_deleted_post()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.kb_documents
+   where source_id = old.id
+     and source_type = case tg_table_name when 'file_posts' then 'file-post' else 'experience-post' end;
+  return old;
+end;
+$$;
+
+drop trigger if exists file_posts_remove_kb on public.file_posts;
+create trigger file_posts_remove_kb after delete on public.file_posts
+  for each row execute function public.remove_kb_document_for_deleted_post();
+
+drop trigger if exists experience_posts_remove_kb on public.experience_posts;
+create trigger experience_posts_remove_kb after delete on public.experience_posts
+  for each row execute function public.remove_kb_document_for_deleted_post();
+
+-- ---- Similarity search -----------------------------------------------------
+
+-- Only chunks made by the CURRENT embedding model are searchable (vectors
+-- from different models aren't comparable). Callable by the server with the
+-- service role only — the chat route is the sole caller.
+create or replace function public.match_kb_chunks(
+  query_embedding vector(768),
+  match_count integer,
+  p_model text
+)
+returns table (
+  chunk_id uuid,
+  document_id uuid,
+  source_type text,
+  source_id uuid,
+  title text,
+  content text,
+  similarity double precision
+)
+language sql
+stable
+set search_path = public
+as $$
+  select c.id, c.document_id, d.source_type, d.source_id, d.title, c.content,
+         1 - (c.embedding <=> query_embedding) as similarity
+  from public.kb_chunks c
+  join public.kb_documents d on d.id = c.document_id
+  where c.embedding_model = p_model
+  order by c.embedding <=> query_embedding
+  limit least(greatest(match_count, 1), 20);
+$$;
+
+revoke execute on function public.match_kb_chunks(vector, integer, text) from public, anon, authenticated;
+grant execute on function public.match_kb_chunks(vector, integer, text) to service_role;
+
+-- ---- Questions the AI couldn't answer, routed to the admins ---------------
+
+create table if not exists public.admin_questions (
+  id uuid primary key default gen_random_uuid(),
+  asker_id uuid not null references public.profiles (id) on delete cascade,
+  question text not null check (char_length(question) between 3 and 1000),
+  lang text,
+  status text not null default 'open' check (status in ('open', 'answered')),
+  answer text check (answer is null or char_length(answer) <= 4000),
+  answered_by uuid references public.profiles (id) on delete set null,
+  created_at timestamptz not null default now(),
+  answered_at timestamptz
+);
+
+create index if not exists admin_questions_status_idx on public.admin_questions (status, created_at);
+alter table public.admin_questions enable row level security;
+
+-- Cap open questions per member so the admin inbox can't be flooded.
+create or replace function public.limit_open_admin_questions()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if (select count(*) from public.admin_questions where asker_id = new.asker_id and status = 'open') >= 5 then
+    raise exception 'You already have 5 open questions with the admins — please wait for an answer first.';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists admin_questions_limit on public.admin_questions;
+create trigger admin_questions_limit before insert on public.admin_questions
+  for each row execute function public.limit_open_admin_questions();
+
+drop policy if exists "members ask the admins" on public.admin_questions;
+create policy "members ask the admins" on public.admin_questions
+  for insert with check (auth.uid() = asker_id and status = 'open' and answer is null and answered_by is null);
+
+drop policy if exists "askers and admins read questions" on public.admin_questions;
+create policy "askers and admins read questions" on public.admin_questions
+  for select using (auth.uid() = asker_id or public.is_admin(auth.uid()));
+
+-- Answering goes through this function only: it records the answer, tells the
+-- asker, and adds the Q&A to the knowledge base so the AI can answer the same
+-- question itself next time (the index run picks up the new document).
+create or replace function public.answer_admin_question(p_id uuid, p_answer text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_q public.admin_questions;
+  v_text text;
+begin
+  if not public.is_admin(auth.uid()) then
+    raise exception 'Only admins can answer questions.';
+  end if;
+  if p_answer is null or char_length(btrim(p_answer)) not between 1 and 4000 then
+    raise exception 'Answer must be between 1 and 4000 characters.';
+  end if;
+
+  update public.admin_questions
+     set status = 'answered', answer = btrim(p_answer), answered_by = auth.uid(), answered_at = now()
+   where id = p_id and status = 'open'
+   returning * into v_q;
+  if v_q.id is null then
+    raise exception 'That question was not found or was already answered.';
+  end if;
+
+  insert into public.notifications (user_id, body, kind)
+  values (v_q.asker_id, 'An admin answered your question: "' || left(v_q.question, 80) || '" — ' || left(v_q.answer, 200), 'admin-answer');
+
+  v_text := 'Question: ' || v_q.question || E'\nAnswer: ' || v_q.answer;
+  insert into public.kb_documents (source_type, source_id, title, content, content_hash)
+  values ('admin-answer', v_q.id, left(v_q.question, 120), v_text, md5(v_text))
+  on conflict (source_type, source_id) where source_id is not null
+  do update set content = excluded.content, content_hash = excluded.content_hash, title = excluded.title;
+end;
+$$;
+
+revoke execute on function public.answer_admin_question(uuid, text) from public, anon;
+grant execute on function public.answer_admin_question(uuid, text) to authenticated;
+
+-- ---- Bring-your-own AI key -------------------------------------------------
+
+-- The key itself is in Vault; this table only remembers which provider/model
+-- and which Vault secret. The browser can read its own row (never the key).
+create table if not exists public.user_ai_settings (
+  user_id uuid primary key references public.profiles (id) on delete cascade,
+  provider text not null check (provider in ('google', 'anthropic', 'openai')),
+  model text not null check (char_length(model) between 1 and 100),
+  vault_secret_id uuid not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.user_ai_settings enable row level security;
+
+drop policy if exists "members read their own ai settings" on public.user_ai_settings;
+create policy "members read their own ai settings" on public.user_ai_settings
+  for select using (auth.uid() = user_id);
+
+-- Whenever a settings row goes away (member removes their key, or their
+-- account is deleted and the row cascades) the encrypted secret goes too.
+create or replace function public.delete_vault_secret_for_ai_settings()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from vault.secrets where id = old.vault_secret_id;
+  return old;
+end;
+$$;
+
+drop trigger if exists user_ai_settings_delete_secret on public.user_ai_settings;
+create trigger user_ai_settings_delete_secret after delete on public.user_ai_settings
+  for each row execute function public.delete_vault_secret_for_ai_settings();
+
+create or replace function public.set_my_ai_key(p_provider text, p_model text, p_key text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_existing uuid;
+  v_secret uuid;
+begin
+  if v_uid is null then raise exception 'Not signed in.'; end if;
+  if p_provider not in ('google', 'anthropic', 'openai') then raise exception 'Unsupported provider.'; end if;
+  if p_model is null or p_model !~ '^[A-Za-z0-9._:/-]{1,100}$' then raise exception 'Invalid model name.'; end if;
+  if p_key is null or char_length(p_key) not between 8 and 512 then raise exception 'Invalid key.'; end if;
+
+  select vault_secret_id into v_existing from public.user_ai_settings where user_id = v_uid;
+  if v_existing is not null then
+    perform vault.update_secret(v_existing, p_key, 'user_ai_key_' || v_uid::text, 'AOEhub member AI key');
+    v_secret := v_existing;
+  else
+    v_secret := vault.create_secret(p_key, 'user_ai_key_' || v_uid::text, 'AOEhub member AI key');
+  end if;
+
+  insert into public.user_ai_settings (user_id, provider, model, vault_secret_id)
+  values (v_uid, p_provider, p_model, v_secret)
+  on conflict (user_id) do update
+    set provider = excluded.provider, model = excluded.model,
+        vault_secret_id = excluded.vault_secret_id, updated_at = now();
+end;
+$$;
+
+create or replace function public.remove_my_ai_key()
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  delete from public.user_ai_settings where user_id = auth.uid();
+$$;
+
+-- Server-only: hands the decrypted key to the chat route for one request.
+-- Not callable by browsers under any role except the service role.
+create or replace function public.get_user_ai_key(p_user_id uuid)
+returns table (provider text, model text, api_key text)
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select s.provider, s.model, v.decrypted_secret
+  from public.user_ai_settings s
+  join vault.decrypted_secrets v on v.id = s.vault_secret_id
+  where s.user_id = p_user_id;
+$$;
+
+revoke execute on function public.set_my_ai_key(text, text, text) from public, anon;
+grant execute on function public.set_my_ai_key(text, text, text) to authenticated;
+revoke execute on function public.remove_my_ai_key() from public, anon;
+grant execute on function public.remove_my_ai_key() to authenticated;
+revoke execute on function public.get_user_ai_key(uuid) from public, anon, authenticated;
+grant execute on function public.get_user_ai_key(uuid) to service_role;

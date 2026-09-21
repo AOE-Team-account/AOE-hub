@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth, useRequireAuthPage } from "@/contexts/AuthContext";
 import { createClient } from "@/lib/supabase/client";
 import { ChipRow } from "@/components/ui/ChipRow";
+import { AiKeyForm, type AiKeyFormHandle } from "@/components/ai/AiKeyForm";
 
 type Experience = "new" | "some" | "years";
 type Reason = "curriculum" | "community" | "philosophy" | "notsure";
@@ -29,10 +30,17 @@ export default function OnboardingPage() {
   const [experience, setExperience] = useState<Experience>("new");
   const [reason, setReason] = useState<Reason>("notsure");
   const [saving, setSaving] = useState(false);
+  const keyForm = useRef<AiKeyFormHandle>(null);
 
   async function finish(save: boolean) {
     if (save && user) {
       setSaving(true);
+      // A typed-in AI key is verified first; if it's wrong, stay here so it
+      // can be fixed (the form shows why) rather than silently dropping it.
+      if (!(await keyForm.current?.submitIfFilled())) {
+        setSaving(false);
+        return;
+      }
       const supabase = createClient();
       await supabase
         .from("profiles")
@@ -56,7 +64,7 @@ export default function OnboardingPage() {
         Welcome to AOEhub
       </p>
       <p className="muted" style={{ marginBottom: 20 }}>
-        Two quick questions — totally optional, just helps us show you the right things first.
+        A few quick questions — totally optional, just helps us show you the right things first.
       </p>
 
       <p className="field-label" style={{ marginTop: 0 }}>
@@ -66,6 +74,13 @@ export default function OnboardingPage() {
 
       <p className="field-label">What brought you here?</p>
       <ChipRow options={Q2_OPTIONS} value={reason} onChange={setReason} />
+
+      <p className="field-label">Have your own AI API key, or want to use one?</p>
+      <p className="tiny" style={{ marginBottom: 8 }}>
+        You can paste it here — otherwise we&apos;ll use ours, though it may not be as good as your own. You can also add it
+        later in Settings.
+      </p>
+      <AiKeyForm ref={keyForm} standalone={false} />
 
       <button
         className="btn primary"

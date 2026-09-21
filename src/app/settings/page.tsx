@@ -8,6 +8,8 @@ import { LANGUAGE_LABELS, LANGUAGE_ORDER } from "@/lib/i18n/dictionaries";
 import { Segmented } from "@/components/ui/Segmented";
 import { Toggle } from "@/components/ui/Toggle";
 import type { LanguageCode } from "@/lib/types";
+import { useAuth } from "@/contexts/AuthContext";
+import { AiKeyForm } from "@/components/ai/AiKeyForm";
 
 const ZOOM_FONT_SIZE: Record<TextZoom, number> = { 0.9: 12, 1: 15, 1.15: 18, 1.3: 21 };
 
@@ -15,6 +17,7 @@ export default function SettingsPage() {
   const { themeKey, setThemeKey, dark, setDark, textZoom, setTextZoom } = useTheme();
   const { lang, setLang } = useLanguage();
   const [notifyOn, setNotifyOn] = useState(true);
+  const { status } = useAuth();
 
   return (
     <>
@@ -72,6 +75,17 @@ export default function SettingsPage() {
           translated.
         </p>
       </section>
+
+      {status === "authed" && (
+        <section className="settings-block">
+          <p className="label">AI assistant</p>
+          <p className="tiny" style={{ marginBottom: 10 }}>
+            The assistant uses the hub&apos;s own AI by default. If you have your own AI API key you can use that instead — it
+            may answer better than ours.
+          </p>
+          <AiKeyForm />
+        </section>
+      )}
 
       <section className="settings-block">
         <p className="label">Notifications</p>

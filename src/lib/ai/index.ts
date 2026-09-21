@@ -1,9 +1,10 @@
-import { keywordAIProvider } from "./keyword-provider";
+import { httpAIProvider } from "./http-provider";
 import type { AIProvider } from "./provider";
 
-// The single place that decides which AI provider backs the hub assistant.
-// Swap this one line for a real RAG/LLM provider in Phase 5 — nothing else
-// in the app should need to change.
-export const aiProvider: AIProvider = keywordAIProvider;
+// The single place that decides what backs the chat UI. Which model actually
+// answers (local Ollama, a hosted API, or a member's own key) is decided on
+// the server — see src/lib/ai/server/.
+export const aiProvider: AIProvider = httpAIProvider;
 
 export type { AIProvider } from "./provider";
+export type { AIReply, AISource, AIHistoryTurn } from "./types";

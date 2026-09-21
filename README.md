@@ -4,7 +4,7 @@
 
 This is the real Next.js codebase, scaffolded around [`hub-prototype.html`](./hub-prototype.html) (the authoritative visual/interaction reference) and the project's memory doc (the authoritative product/architecture decisions — currently `AOEhub memory from chat3.md`; the project owner edits this file directly between sessions and renames it as it grows, so check the folder for the current filename rather than trusting this link). Read both before making product decisions that aren't obvious from the code.
 
-## Status: Phase 4 — Backups (in progress)
+## Status: Phase 5 — RAG AI (built; live testing in progress)
 
 The hub is fully wired to real backends everywhere — no mock data anywhere in the app. It genuinely launches empty: every board, list, and dashboard reflects whatever is actually in your database and storage.
 
@@ -12,13 +12,13 @@ The hub is fully wired to real backends everywhere — no mock data anywhere in 
 |---|---|---|
 | Auth / sessions | **Real** — Supabase Auth (email + password) | `src/contexts/AuthContext.tsx`, `src/app/login`, `src/app/signup` |
 | Database schema | **Real**, live-tested end to end | `supabase/schema.sql` |
-| pgvector (for RAG) | **Enabled** in schema, tables created, unused until Phase 6 | `supabase/schema.sql` (`kb_documents`, `kb_chunks`) |
+| pgvector (for RAG) | **In use** — 768-dimension HNSW-indexed chunks, each tagged with the embedding model that made it | `supabase/schema.sql` (`kb_documents`, `kb_chunks`, `match_kb_chunks`) |
 | Points | **Real formula**, server-enforced via triggers/functions | `supabase/schema.sql` (`award_points`, `record_view`, `record_download`), `src/lib/points.ts` |
 | Every board, Groups, Admin Dashboard, notifications, your own profile | **Real queries and real writes** | `src/lib/data/*.ts`, plus direct browser-client calls in each page |
 | File uploads | **Real** — routes to Cloudflare R2 (small files) or Internet Archive (large files) automatically, gated by a real VirusTotal malware scan | `src/app/api/upload/route.ts`, `src/lib/storage/`, `src/lib/malware-scan/` |
 | File downloads | **Real** — signed URL (R2) or direct IA URL, only for scan-confirmed-clean files; increments the download counter and awards points | `src/app/api/download/[assetId]/route.ts` |
 | Database backups | **Real** — nightly GitHub Action dumps Supabase Postgres to Backblaze B2; retention via B2's own version-lifecycle rule, not custom code | `.github/workflows/backup-database.yml` |
-| RAG AI assistant | Keyword placeholder, behind a swappable interface | `src/lib/ai/keyword-provider.ts` → Phase 6 |
+| RAG AI assistant | **Real** — retrieval over pgvector (posts, files, philosophy books, admin answers, a built-in hub guide) feeding a swappable model; members can use their own key; unsure questions go to an admin inbox | `src/lib/ai/`, `src/app/api/ai/`, `src/app/admin/AdminAssistantPanel.tsx` |
 | Content translation | Seeded cache, no real API call | `src/lib/i18n/translate.ts` → Phase 8 |
 
 **Two patterns for real data, by design:** server-rendered pages (detail pages, board list pages) fetch through `src/lib/data/*.ts` using the server Supabase client. Write actions (posting, commenting, joining a group) call the *browser* Supabase client directly from a Client Component, then call `router.refresh()` — Row Level Security enforces who's allowed to do what either way, so this split is about which client is convenient, not about security. File uploads are the one write that goes through a server Route Handler instead (`/api/upload`), since the storage/scanning credentials are server-only secrets.
@@ -28,7 +28,7 @@ The hub is fully wired to real backends everywhere — no mock data anywhere in 
 1. `/api/upload` uploads the file's bytes to storage **first** — Cloudflare R2 under 50MB, Internet Archive above that (`src/lib/storage/router.ts` — the threshold is a tunable constant, not a spec'd number from the project docs).
 2. It submits the file to VirusTotal and polls briefly (~10s). A fast result (the common case for small/known files) marks the asset `clean` or `flagged` immediately.
 3. If VirusTotal is still working after that short window — normal on their free tier, observed taking several minutes during testing — the asset is saved as `pending` with the VirusTotal analysis id attached. The file's bytes stay in storage but are invisible to everyone except the uploader/admins (RLS) and refused by the download route either way.
-4. `/api/cron/check-pending-scans` (protected by `CRON_SECRET`) re-checks any `pending` asset once and resolves it: `clean` stays as-is, `flagged` gets its storage object deleted (real quarantine, not just a hidden row) and the row updated. **Not wired to an actual scheduler yet** — that's a Phase 4 hosting decision (Vercel Cron, Cloudflare Cron Triggers, or a timed GitHub Action all work); call it by hand or via any scheduler in the meantime.
+4. `/api/cron/check-pending-scans` (protected by `CRON_SECRET`) re-checks any `pending` asset once and resolves it: `clean` stays as-is, `flagged` gets its storage object deleted (real quarantine, not just a hidden row) and the row updated. **Not wired to an actual scheduler yet** — that's a Phase 7 (hosting) decision (Vercel Cron, Cloudflare Cron Triggers, or a timed GitHub Action all work); call it by hand or via any scheduler in the meantime.
 
 **Known follow-ups, deliberately not built yet:**
 - Files over 200MB are rejected — very large uploads would need a presigned direct-to-storage upload instead of routing bytes through this server, a bigger change than this pass needed.
@@ -79,6 +79,25 @@ Once the secrets exist, the workflow runs automatically at 09:00 UTC daily, or y
 
 **Restoring** from a backup: download the `.sql.gz` object from the B2 bucket (or an older version of it, if recovering from a bad recent backup), then `gunzip backup.sql.gz && psql "$SUPABASE_DB_URL" -f backup.sql` against a fresh/target database. Not something to script blindly — always confirm which database you're pointing at first.
 
+## Setting up the AI assistant
+
+**How it works.** A question is embedded, the closest passages are pulled from `kb_chunks` (pgvector), and a chat model answers using only those passages. If the passages don't contain the answer, the assistant says so and offers to send the question to the admins; when an admin answers, the member gets an in-app notification and the answer is added to the assistant's knowledge so it can answer the same question itself next time.
+
+**What gets indexed** (only public content): File Board posts that have at least one *scan-clean* file (title, section, type, file labels, description — the uploaded files' own contents are **not** indexed yet), all Experience Board posts, philosophy books added by an admin, admin answers, and a built-in "how AOEhub works" guide (`src/lib/ai/server/hub-guide.ts`). Deleted posts leave the index automatically (database trigger), and posts whose files are all flagged drop out on the next update.
+
+**Swappable models — all in environment variables, no code changes** (see `.env.example`):
+- *Chat model* — `AI_PROVIDER` (`openai-compatible` covers Ollama, vLLM, Google's Gemini endpoint, OpenAI; or `anthropic`), `AI_BASE_URL`, `AI_API_KEY`, `AI_CHAT_MODEL`.
+- *Embedding model* — `EMBEDDING_*`. Separate from chat. The database column is fixed at 768 dimensions; changing the embedding model just needs the admin **Update index** button (it detects the swap and re-embeds everything — vectors from different models are never mixed).
+- **Development default is a local Ollama** (`gemma4` for chat, `nomic-embed-text` for embeddings: `ollama pull nomic-embed-text`). `localhost` only exists on your own machine — before the live site goes up (Phase 7), point `AI_*`/`EMBEDDING_*` at an endpoint the hosting server can actually reach.
+
+**Members' own keys.** Onboarding question 3 and **Settings → AI assistant**. A key is verified with one tiny request, then stored **encrypted in Supabase Vault** (never a normal column), read only server-side for that member's own questions, and deleted with their account. Providers are a fixed list (Google AI Studio, Anthropic, OpenAI) with fixed URLs — members can't enter a custom URL, which would let them aim this server at internal addresses. If a member's key stops working they're told so; the assistant does not silently fall back to (and spend) the hub's budget.
+
+**Admin tools** (Admin dashboard): *Questions for the admins* inbox, *Add a philosophy book* (.txt / .md or pasted text), and **Update index**, which processes in time-boxed slices so even a whole book never has to fit in one request. The same work is available to a scheduler at `POST /api/cron/index-knowledge` (`Authorization: Bearer $CRON_SECRET`) — **not yet attached to a scheduler**, alongside `check-pending-scans` (Phase 7).
+
+**One-time setup:** re-run `supabase/schema.sql` in the Supabase SQL Editor (it's safe to re-run; it migrates the vector column 1536 → 768, adds the new tables/functions, and enables Vault), then run `ollama pull nomic-embed-text`.
+
+**Known limits:** the rate limiter is per server process (a speed bump, not a guarantee); very large libraries would want the index sync made incremental instead of re-reading every post each run.
+
 ## Getting started
 
 ```bash
@@ -117,7 +136,7 @@ src/
     theme-presets.ts        the 15 alternate themes, ported verbatim from the prototype
     fonts.ts                next/font setup for every font the themes reference
     points.ts               the points formula (search-ranking compression only — DB does the raw counting)
-    ai/                      swappable AI provider interface + placeholder implementation
+    ai/                      chat UI provider (calls /api/ai/chat), BYO-key provider list, chunking; server/ holds the model adapters, embeddings, indexer and answer pipeline
     i18n/                    UI dictionary (en/zh-CN/zh-TW) + on-demand content translation
   proxy.ts                  refreshes the Supabase session on every request (Next 16 renamed "middleware")
 supabase/
@@ -140,8 +159,8 @@ One accessibility detail worth knowing before touching layout: the text-size con
 1. ~~Code foundation~~
 2. ~~Backend — real Supabase project, schema, pgvector, real auth, all boards/dashboard on real data~~
 3. ~~File storage — Cloudflare R2 + Internet Archive, real upload flow, VirusTotal scanning gate~~
-4. Backups — nightly `pg_dump` to Backblaze B2 via GitHub Actions ← **you are here** (workflow built; needs the one-time Backblaze account/bucket/secrets setup above before it can actually run — see "Setting up nightly database backups")
-5. RAG AI — real embedding pipeline behind the existing `AIProvider` interface, bring-your-own-API-key support
+4. ~~Backups — nightly `pg_dump` to Backblaze B2 via GitHub Actions~~
+5. RAG AI — embedding pipeline, swappable model, bring-your-own-API-key ← **you are here** (built; see "Setting up the AI assistant")
 6. Marketing copy, translation & policy wording — final marketing copy, real translation API, and the actual Content Policy/Safety Policy text
 7. Hosting & domain — Namecheap shared hosting via cPanel's Git Version Control tool (deliberately switched from an earlier Cloudflare Pages plan — already-paid-for hosting), `aoe.ai` DNS stays on Namecheap pointing directly at it. Note: this deploy path has no auto-deploy-on-push — needs either manually clicking "Deploy HEAD Commit" in cPanel or a small webhook, decide which when this phase starts. Also when the pending-scan cron job gets wired to an actual scheduler. Deliberately placed after Backups/RAG/copy so the app is feature-complete before going live.
 8. Populate content — admins upload the real first-wave content
