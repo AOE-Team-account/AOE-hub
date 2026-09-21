@@ -4,14 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 
-// Matches hub-prototype.html: Experience Board is always visible, but the
-// File Board and Groups tabs are intentionally hidden from the nav bar for
-// logged-out visitors (they can still reach the File Board via the explicit
-// "browse the File Board" link on the homepage — viewing it needs no
-// account, it's just decluttered from the tab bar until signed in).
+// Deliberate deviation from hub-prototype.html: the prototype hid the File
+// Board tab from logged-out visitors, which stranded them on the Experience
+// Board with no way back except the homepage. Both boards are readable
+// without an account, so both tabs show for everyone; Groups stays hidden
+// until sign-in because logged-out visitors can't join or post in groups.
 const TABS = [
   { href: "/experience", label: "Experience board", hideWhenLoggedOut: false },
-  { href: "/files", label: "File board", hideWhenLoggedOut: true },
+  { href: "/files", label: "File board", hideWhenLoggedOut: false },
   { href: "/groups", label: "Groups", hideWhenLoggedOut: true },
 ];
 
