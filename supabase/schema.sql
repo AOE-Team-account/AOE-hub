@@ -299,6 +299,59 @@ create table if not exists public.reports (
 
 create index if not exists reports_status_idx on public.reports (status);
 
+-- Keeps groups.reported (what the admin dashboard actually filters on) in
+-- sync with whether the group has any open report against it — fires on
+-- both a new report and an admin resolving/dismissing one.
+create or replace function public.sync_group_reported_flag()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_group_id uuid;
+begin
+  v_group_id := coalesce(new.target_id, old.target_id);
+  if coalesce(new.target_type, old.target_type) <> 'group' then
+    return coalesce(new, old);
+  end if;
+  update public.groups
+     set reported = exists (
+       select 1 from public.reports where target_type = 'group' and target_id = v_group_id and status = 'open'
+     )
+   where id = v_group_id;
+  return coalesce(new, old);
+end;
+$$;
+
+drop trigger if exists reports_sync_group_flag on public.reports;
+create trigger reports_sync_group_flag after insert or update on public.reports
+  for each row execute function public.sync_group_reported_flag();
+
+-- Lets an admin notify a member (e.g. a moderation warning) without a client
+-- insert policy on notifications — every other write to that table already
+-- goes through a SECURITY DEFINER path (award_points, answer_admin_question,
+-- handle_new_user), this keeps the same rule for admin-authored ones.
+create or replace function public.admin_notify_user(p_user_id uuid, p_body text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin(auth.uid()) then
+    raise exception 'Only admins can send this notification.';
+  end if;
+  if p_body is null or char_length(btrim(p_body)) not between 1 and 500 then
+    raise exception 'Invalid notification text.';
+  end if;
+  insert into public.notifications (user_id, body, kind) values (p_user_id, btrim(p_body), 'admin-warning');
+end;
+$$;
+
+revoke execute on function public.admin_notify_user(uuid, text) from public, anon;
+grant execute on function public.admin_notify_user(uuid, text) to authenticated;
+
 -- ============================================================================
 -- Points — raw event ledger + the one function allowed to change balances
 -- ============================================================================
