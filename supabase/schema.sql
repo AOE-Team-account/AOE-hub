@@ -37,13 +37,27 @@ create table if not exists public.profiles (
   following_count integer not null default 0,
   files_count integer not null default 0,
   groups_count integer not null default 0,
-  onboarding_experience text check (onboarding_experience in ('new', 'some', 'years')),
+  onboarding_experience text check (onboarding_experience in ('homeschooling', 'in-school', 'unschooling', 'want-to-know-more', 'new-way-of-learning')),
   onboarding_reason text check (onboarding_reason in ('curriculum', 'community', 'philosophy', 'notsure')),
+  referral_source text check (referral_source is null or referral_source in ('friend', 'web-search', 'social-media', 'youtube', 'other')),
   created_at timestamptz not null default now()
 );
 
 comment on table public.profiles is 'Public profile data. Row is created automatically on signup by handle_new_user().';
 comment on column public.profiles.points is 'Honest sum of points_events for this user — only award_points() may change this.';
+
+-- Onboarding Q1 widened from a homeschooling-experience scale to a broader
+-- "what's your situation" question that also fits people who aren't
+-- homeschooling at all (memory doc update). `alter ... add column if not
+-- exists` is a no-op on a fresh install (the column above already has it);
+-- this only matters for a project that ran schema.sql before this change.
+alter table public.profiles add column if not exists referral_source text;
+alter table public.profiles drop constraint if exists profiles_onboarding_experience_check;
+alter table public.profiles add constraint profiles_onboarding_experience_check
+  check (onboarding_experience in ('homeschooling', 'in-school', 'unschooling', 'want-to-know-more', 'new-way-of-learning'));
+alter table public.profiles drop constraint if exists profiles_referral_source_check;
+alter table public.profiles add constraint profiles_referral_source_check
+  check (referral_source is null or referral_source in ('friend', 'web-search', 'social-media', 'youtube', 'other'));
 
 -- Auto-create a profile row whenever someone signs up via Supabase Auth.
 create or replace function public.handle_new_user()

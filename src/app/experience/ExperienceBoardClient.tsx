@@ -38,13 +38,22 @@ export function ExperienceBoardClient({
   authors: Record<string, User | undefined>;
 }) {
   const [filter, setFilter] = useState<ExperienceCategory | "all">("all");
-  const [showWelcome, setShowWelcome] = useState(false);
+  // Two different welcome cards for two different first-onboarding answers
+  // (see src/app/onboarding/page.tsx) — someone still exploring what this
+  // kind of education even is, vs. a school family checking the hub out.
+  // Someone already homeschooling/unschooling gets neither, since they
+  // already know their way around.
+  const [showNewcomerWelcome, setShowNewcomerWelcome] = useState(false);
+  const [showSchoolFamilyWelcome, setShowSchoolFamilyWelcome] = useState(false);
 
   useEffect(() => {
     if (window.localStorage.getItem("aoehub.showNewcomerWelcome") === "1") {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setShowWelcome(true);
+      setShowNewcomerWelcome(true);
       window.localStorage.removeItem("aoehub.showNewcomerWelcome");
+    } else if (window.localStorage.getItem("aoehub.showSchoolFamilyWelcome") === "1") {
+      setShowSchoolFamilyWelcome(true);
+      window.localStorage.removeItem("aoehub.showSchoolFamilyWelcome");
     }
   }, []);
 
@@ -67,13 +76,25 @@ export function ExperienceBoardClient({
         </div>
       )}
 
-      {showWelcome && (
+      {/* Draft copy — final wording is a Phase 6 task alongside the marketing page, not decided here. */}
+      {showNewcomerWelcome && (
         <Card style={{ background: "var(--pin-bg)", borderColor: "var(--pin-border)" }}>
           <p className="title" style={{ marginBottom: 4 }}>Welcome — glad you&apos;re here</p>
           <p className="muted">
-            Since you&apos;re just starting out, a couple of good places to begin: try the <strong>Philosophy</strong>{" "}
-            tag right here on the Experience Board for the &quot;why,&quot; or the File Board&apos;s beginner picks
-            for the &quot;how.&quot;
+            Since you&apos;re just starting to explore this, a couple of good places to begin: try the{" "}
+            <strong>Philosophy</strong> tag right here on the Experience Board for the &quot;why,&quot; or the File
+            Board&apos;s beginner picks for the &quot;how.&quot;
+          </p>
+        </Card>
+      )}
+      {showSchoolFamilyWelcome && (
+        <Card style={{ background: "var(--pin-bg)", borderColor: "var(--pin-border)" }}>
+          <p className="title" style={{ marginBottom: 4 }}>Welcome — glad you&apos;re here</p>
+          <p className="muted">
+            AOEhub isn&apos;t just for homeschoolers — plenty of school families use it too, for extra practice
+            material, a different way of thinking about learning, or just to see what else is out there. The{" "}
+            <strong>Philosophy</strong> tag here on the Experience Board is a good place to see what this community
+            actually believes, and the File Board has plenty worth browsing either way.
           </p>
         </Card>
       )}
