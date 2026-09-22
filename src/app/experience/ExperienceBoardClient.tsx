@@ -20,6 +20,66 @@ const CATEGORY_OPTIONS: { value: ExperienceCategory | "all"; label: string }[] =
   { value: "reflections", label: "Reflections" },
 ];
 
+// Mirrors the Situation type in src/app/onboarding/page.tsx — kept as a
+// plain string union here (rather than a shared import) since this is the
+// one place outside onboarding that needs it, and duplicating a 5-value
+// union is cheaper than adding a shared types module for it.
+type WelcomeSituation = "homeschooling" | "in-school" | "unschooling" | "want-to-know-more" | "new-way-of-learning";
+const WELCOME_SITUATIONS: WelcomeSituation[] = ["homeschooling", "in-school", "unschooling", "want-to-know-more", "new-way-of-learning"];
+function isWelcomeSituation(v: string | null): v is WelcomeSituation {
+  return !!v && (WELCOME_SITUATIONS as string[]).includes(v);
+}
+
+// Draft copy — final wording is a Phase 6 task alongside the marketing page,
+// not decided here. Four variants so every new member gets a card tuned to
+// their onboarding answer, not just the ones "new" to the whole idea.
+const EXPLORING_WELCOME = {
+  title: "Welcome — glad you're here",
+  body: (
+    <>
+      Since you&apos;re just starting to explore this, a couple of good places to begin: try the{" "}
+      <strong>Philosophy</strong> tag right here on the Experience Board for the &quot;why,&quot; or the File
+      Board&apos;s beginner picks for the &quot;how.&quot;
+    </>
+  ),
+};
+
+const WELCOME_COPY: Record<WelcomeSituation, { title: string; body: React.ReactNode }> = {
+  "want-to-know-more": EXPLORING_WELCOME,
+  "new-way-of-learning": EXPLORING_WELCOME,
+  "in-school": {
+    title: "Welcome — glad you're here",
+    body: (
+      <>
+        AOEhub isn&apos;t just for homeschoolers — plenty of school families use it too, for extra practice material,
+        a different way of thinking about learning, or just to see what else is out there. The{" "}
+        <strong>Philosophy</strong> tag here on the Experience Board is a good place to see what this community
+        actually believes, and the File Board has plenty worth browsing either way.
+      </>
+    ),
+  },
+  homeschooling: {
+    title: "Welcome — glad to have you",
+    body: (
+      <>
+        You&apos;re new to the hub, not to homeschooling — so you&apos;ve probably already got something worth
+        sharing. Post about what&apos;s working (or isn&apos;t) on the Experience Board, and the File Board is full
+        of curriculum other homeschooling families have already put through its paces.
+      </>
+    ),
+  },
+  unschooling: {
+    title: "Welcome — glad to have you",
+    body: (
+      <>
+        You&apos;re new to the hub, not to unschooling — this community values that perspective a lot. Share how
+        it&apos;s actually going for you on the Experience Board, and check the File Board for resources other
+        unschoolers have already found useful.
+      </>
+    ),
+  },
+};
+
 const CATEGORY_LABELS: Record<ExperienceCategory, string> = {
   philosophy: "Philosophy",
   "starting-out": "Starting out",
@@ -38,23 +98,19 @@ export function ExperienceBoardClient({
   authors: Record<string, User | undefined>;
 }) {
   const [filter, setFilter] = useState<ExperienceCategory | "all">("all");
-  // Two different welcome cards for two different first-onboarding answers
-  // (see src/app/onboarding/page.tsx) — someone still exploring what this
-  // kind of education even is, vs. a school family checking the hub out.
-  // Someone already homeschooling/unschooling gets neither, since they
-  // already know their way around.
-  const [showNewcomerWelcome, setShowNewcomerWelcome] = useState(false);
-  const [showSchoolFamilyWelcome, setShowSchoolFamilyWelcome] = useState(false);
+  // Every new member gets a welcome card, tuned to their onboarding Q1
+  // answer (see src/app/onboarding/page.tsx) — someone already
+  // homeschooling/unschooling is new to the HUB, not the idea, so their
+  // card is about sharing experience, not "here's what this is."
+  const [welcomeSituation, setWelcomeSituation] = useState<WelcomeSituation | null>(null);
 
   useEffect(() => {
-    if (window.localStorage.getItem("aoehub.showNewcomerWelcome") === "1") {
+    const situation = window.localStorage.getItem("aoehub.welcomeSituation");
+    if (isWelcomeSituation(situation)) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setShowNewcomerWelcome(true);
-      window.localStorage.removeItem("aoehub.showNewcomerWelcome");
-    } else if (window.localStorage.getItem("aoehub.showSchoolFamilyWelcome") === "1") {
-      setShowSchoolFamilyWelcome(true);
-      window.localStorage.removeItem("aoehub.showSchoolFamilyWelcome");
+      setWelcomeSituation(situation);
     }
+    if (situation) window.localStorage.removeItem("aoehub.welcomeSituation");
   }, []);
 
   const pinned = posts.find((p) => p.isAnnouncement);
@@ -76,26 +132,10 @@ export function ExperienceBoardClient({
         </div>
       )}
 
-      {/* Draft copy — final wording is a Phase 6 task alongside the marketing page, not decided here. */}
-      {showNewcomerWelcome && (
+      {welcomeSituation && (
         <Card style={{ background: "var(--pin-bg)", borderColor: "var(--pin-border)" }}>
-          <p className="title" style={{ marginBottom: 4 }}>Welcome — glad you&apos;re here</p>
-          <p className="muted">
-            Since you&apos;re just starting to explore this, a couple of good places to begin: try the{" "}
-            <strong>Philosophy</strong> tag right here on the Experience Board for the &quot;why,&quot; or the File
-            Board&apos;s beginner picks for the &quot;how.&quot;
-          </p>
-        </Card>
-      )}
-      {showSchoolFamilyWelcome && (
-        <Card style={{ background: "var(--pin-bg)", borderColor: "var(--pin-border)" }}>
-          <p className="title" style={{ marginBottom: 4 }}>Welcome — glad you&apos;re here</p>
-          <p className="muted">
-            AOEhub isn&apos;t just for homeschoolers — plenty of school families use it too, for extra practice
-            material, a different way of thinking about learning, or just to see what else is out there. The{" "}
-            <strong>Philosophy</strong> tag here on the Experience Board is a good place to see what this community
-            actually believes, and the File Board has plenty worth browsing either way.
-          </p>
+          <p className="title" style={{ marginBottom: 4 }}>{WELCOME_COPY[welcomeSituation].title}</p>
+          <p className="muted">{WELCOME_COPY[welcomeSituation].body}</p>
         </Card>
       )}
 

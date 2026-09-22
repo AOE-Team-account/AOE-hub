@@ -78,17 +78,13 @@ export default function OnboardingPage() {
     }
 
     const target = consumePendingReturn();
+    // Every new member gets a welcome card on the Experience Board, tuned to
+    // their Q1 answer — someone already homeschooling/unschooling is new to
+    // the HUB, not to the idea, so their card is about sharing experience
+    // and finding others like them, not "here's what this is." See
+    // ExperienceBoardClient.tsx for the four variants.
     if (save && target === "/experience") {
-      // Two different welcome cards for two different kinds of newcomer —
-      // someone genuinely new to the whole idea of homeschool/unschool
-      // education vs. a school family checking the hub out for the first
-      // time. Someone who's already homeschooling or unschooling doesn't
-      // get a welcome card at all; they already know what they're doing.
-      if (situation === "want-to-know-more" || situation === "new-way-of-learning") {
-        window.localStorage.setItem("aoehub.showNewcomerWelcome", "1");
-      } else if (situation === "in-school") {
-        window.localStorage.setItem("aoehub.showSchoolFamilyWelcome", "1");
-      }
+      window.localStorage.setItem("aoehub.welcomeSituation", situation);
     }
     router.push(target);
   }
