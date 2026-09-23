@@ -69,7 +69,8 @@ export async function POST(request: Request) {
   try {
     await addPhilosophyText(title, text);
     return NextResponse.json({ ok: true, characters: text.length });
-  } catch {
+  } catch (err) {
+    console.error(`Failed to save book "${title}":`, err instanceof Error ? err.message : err);
     return NextResponse.json({ error: "Could not save the book." }, { status: 500 });
   }
 }
