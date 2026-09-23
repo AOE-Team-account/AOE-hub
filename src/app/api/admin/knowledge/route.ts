@@ -9,8 +9,12 @@ export const runtime = "nodejs";
 // Admin-only upload, not the public File Board upload, so a more generous
 // cap than a plain-text book would need is fine — real PDF/EPUB books run
 // larger than their extractable text for the same content (fonts, images,
-// formatting).
-const MAX_BOOK_BYTES = 30 * 1024 * 1024;
+// formatting). Real project philosophy books ran up to ~45MB with genuine
+// page images alongside real text. A true outlier past this (one project
+// book hit 400MB) is better added directly via a one-off script than by
+// raising this system-wide limit for a live server on the strength of one
+// file.
+const MAX_BOOK_BYTES = 60 * 1024 * 1024;
 
 export async function GET() {
   const guard = await requireAdmin();
