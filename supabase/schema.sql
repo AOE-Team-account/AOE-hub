@@ -729,7 +729,7 @@ create policy "authors and admins can delete file posts" on public.file_posts
 -- shown publicly." Only clean assets are visible to everyone; the
 -- uploader can still see their own pending/flagged assets (so they get
 -- feedback on what happened), and admins can see everything for moderation.
-drop policy if exists "file assets are publicly readable" on public.file_assets;
+drop policy if exists "clean file assets are publicly readable" on public.file_assets;
 create policy "clean file assets are publicly readable" on public.file_assets
   for select using (
     scan_status = 'clean'
