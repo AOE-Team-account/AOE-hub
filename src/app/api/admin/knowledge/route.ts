@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/ai/server/admin-guard";
 import { AINotConfiguredError } from "@/lib/ai/server/config";
+import { DocumentExtractError, extractEpubText, extractPdfText } from "@/lib/ai/server/document-extract";
 import { addPhilosophyText, getIndexStatus } from "@/lib/ai/server/indexer";
 
 export const runtime = "nodejs";
 
-const MAX_BOOK_BYTES = 8 * 1024 * 1024;
+// Admin-only upload, not the public File Board upload, so a more generous
+// cap than a plain-text book would need is fine — real PDF/EPUB books run
+// larger than their extractable text for the same content (fonts, images,
+// formatting).
+const MAX_BOOK_BYTES = 30 * 1024 * 1024;
 
 export async function GET() {
   const guard = await requireAdmin();
@@ -18,9 +23,9 @@ export async function GET() {
   }
 }
 
-// Adds a philosophy book from an uploaded .txt/.md file or pasted text. It is
-// only stored here; embedding happens in the index step so a large book never
-// has to finish inside a single request.
+// Adds a philosophy book from an uploaded .txt/.md/.pdf/.epub file, or
+// pasted text. It is only stored here; embedding happens in the index step
+// so a large book never has to finish inside a single request.
 export async function POST(request: Request) {
   const guard = await requireAdmin();
   if (!guard.ok) return guard.response;
@@ -33,14 +38,29 @@ export async function POST(request: Request) {
 
   let text = pasted ?? "";
   if (file instanceof File && file.size > 0) {
-    if (file.size > MAX_BOOK_BYTES) return NextResponse.json({ error: "That file is over 8 MB." }, { status: 413 });
-    if (!/\.(txt|md|markdown)$/i.test(file.name)) {
-      return NextResponse.json({ error: "Only .txt and .md files are supported for now — paste the text for other formats." }, { status: 400 });
+    if (file.size > MAX_BOOK_BYTES) {
+      return NextResponse.json({ error: `That file is over ${MAX_BOOK_BYTES / (1024 * 1024)} MB.` }, { status: 413 });
     }
-    text = await file.text();
+    const ext = file.name.toLowerCase().match(/\.(txt|md|markdown|pdf|epub)$/)?.[1];
+    if (!ext) {
+      return NextResponse.json({ error: "Only .txt, .md, .pdf, and .epub files are supported — or paste the text directly." }, { status: 400 });
+    }
+    try {
+      const buffer = Buffer.from(await file.arrayBuffer());
+      text = ext === "pdf" ? await extractPdfText(buffer) : ext === "epub" ? await extractEpubText(buffer) : buffer.toString("utf-8");
+    } catch (err) {
+      if (err instanceof DocumentExtractError) return NextResponse.json({ error: err.message }, { status: 400 });
+      console.error(`Failed to extract text from ${file.name}:`, err instanceof Error ? err.message : err);
+      return NextResponse.json({ error: "Could not read that file." }, { status: 400 });
+    }
   }
   text = text.trim();
-  if (text.length < 50) return NextResponse.json({ error: "There isn't enough text to add." }, { status: 400 });
+  if (text.length < 50) {
+    return NextResponse.json(
+      { error: "There isn't enough text to add — for a PDF, this can also mean it's scanned images with no selectable text." },
+      { status: 400 }
+    );
+  }
 
   try {
     await addPhilosophyText(title, text);

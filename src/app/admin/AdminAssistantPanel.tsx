@@ -188,7 +188,7 @@ function KnowledgeTools() {
         <input placeholder="Book title" value={title} onChange={(e) => setTitle(e.target.value)} />
         <input
           type="file"
-          accept=".txt,.md,.markdown,text/plain"
+          accept=".txt,.md,.markdown,.pdf,.epub,text/plain,application/pdf,application/epub+zip"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           style={{ marginTop: 8 }}
         />
@@ -200,7 +200,7 @@ function KnowledgeTools() {
           </Button>
         </div>
         <p className="tiny" style={{ marginTop: 6 }}>
-          Adding a book with the same title replaces the old copy. .txt and .md files for now.
+          Adding a book with the same title replaces the old copy. .txt, .md, .pdf, and .epub are supported — a scanned PDF with no selectable text won&apos;t work, since nothing here can read text out of an image.
         </p>
       </div>
       {message && <p className="tiny" style={{ marginTop: 8 }}>{message}</p>}
