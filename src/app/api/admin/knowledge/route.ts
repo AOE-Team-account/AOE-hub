@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/ai/server/admin-guard";
 import { AINotConfiguredError } from "@/lib/ai/server/config";
 import { DocumentExtractError, extractEpubText, extractPdfText } from "@/lib/ai/server/document-extract";
-import { addPhilosophyText, getIndexStatus } from "@/lib/ai/server/indexer";
+import { addPhilosophyText, deletePhilosophyBook, getIndexStatus, listPhilosophyBooks } from "@/lib/ai/server/indexer";
 
 export const runtime = "nodejs";
 
@@ -20,10 +20,28 @@ export async function GET() {
   const guard = await requireAdmin();
   if (!guard.ok) return guard.response;
   try {
-    return NextResponse.json(await getIndexStatus());
+    const [status, books] = await Promise.all([getIndexStatus(), listPhilosophyBooks()]);
+    return NextResponse.json({ ...status, books });
   } catch (err) {
     if (err instanceof AINotConfiguredError) return NextResponse.json({ error: err.message }, { status: 503 });
     return NextResponse.json({ error: "Could not read the knowledge base." }, { status: 500 });
+  }
+}
+
+// Deletes one philosophy book by id (never any other kb_documents source —
+// file/experience posts are removed by deleting the post itself, and admin
+// answers are removed via retract, both elsewhere).
+export async function DELETE(request: Request) {
+  const guard = await requireAdmin();
+  if (!guard.ok) return guard.response;
+  const id = new URL(request.url).searchParams.get("id");
+  if (!id) return NextResponse.json({ error: "Missing book id." }, { status: 400 });
+  try {
+    await deletePhilosophyBook(id);
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error(`Failed to delete book ${id}:`, err instanceof Error ? err.message : err);
+    return NextResponse.json({ error: "Could not delete the book." }, { status: 500 });
   }
 }
 

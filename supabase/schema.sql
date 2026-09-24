@@ -904,6 +904,59 @@ drop trigger if exists experience_posts_remove_kb on public.experience_posts;
 create trigger experience_posts_remove_kb after delete on public.experience_posts
   for each row execute function public.remove_kb_document_for_deleted_post();
 
+-- Same rule for a deleted admin_questions row — this one was missed in the
+-- first Phase 5 pass (found 2026-09-24: retracting a wrong answer needs the
+-- indexed copy gone too, and this covers any future direct deletion as well).
+create or replace function public.remove_kb_document_for_deleted_question()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.kb_documents where source_type = 'admin-answer' and source_id = old.id;
+  return old;
+end;
+$$;
+
+drop trigger if exists admin_questions_remove_kb on public.admin_questions;
+create trigger admin_questions_remove_kb after delete on public.admin_questions
+  for each row execute function public.remove_kb_document_for_deleted_question();
+
+-- Undoes a wrong answer: removes it from the AI's index immediately, reopens
+-- the question (so the same "answer" flow can fix it properly), and tells
+-- the asker rather than letting an answer silently vanish.
+create or replace function public.retract_admin_answer(p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_q public.admin_questions;
+begin
+  if not public.is_admin(auth.uid()) then
+    raise exception 'Only admins can retract an answer.';
+  end if;
+
+  update public.admin_questions
+     set status = 'open', answer = null, answered_by = null, answered_at = null
+   where id = p_id and status = 'answered'
+   returning * into v_q;
+  if v_q.id is null then
+    raise exception 'That question was not found or has no answer to retract.';
+  end if;
+
+  delete from public.kb_documents where source_type = 'admin-answer' and source_id = p_id;
+
+  insert into public.notifications (user_id, body, kind)
+  values (v_q.asker_id, 'An admin is revisiting the answer to your question: "' || left(v_q.question, 80) || '" — you''ll hear back again soon.', 'admin-answer-retracted');
+end;
+$$;
+
+revoke execute on function public.retract_admin_answer(uuid) from public, anon;
+grant execute on function public.retract_admin_answer(uuid) to authenticated;
+
 -- ---- Similarity search -----------------------------------------------------
 
 -- Only chunks made by the CURRENT embedding model are searchable (vectors

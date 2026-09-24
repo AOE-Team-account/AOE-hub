@@ -195,3 +195,34 @@ export async function addPhilosophyText(title: string, content: string): Promise
   });
   if (error) throw new Error(error.message);
 }
+
+export interface PhilosophyBook {
+  id: string;
+  title: string;
+  characters: number;
+  createdAt: string;
+}
+
+export async function listPhilosophyBooks(): Promise<PhilosophyBook[]> {
+  const db = createServiceRoleClient();
+  const { data, error } = await db
+    .from("kb_documents")
+    .select("id, title, content, created_at")
+    .eq("source_type", "philosophy-text")
+    .order("title");
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((d) => ({
+    id: d.id,
+    title: d.title ?? "(untitled)",
+    characters: d.content?.length ?? 0,
+    createdAt: d.created_at,
+  }));
+}
+
+// kb_chunks rows for this document are removed by the foreign key's own
+// cascade (see kb_chunks.document_id ... on delete cascade in the schema).
+export async function deletePhilosophyBook(id: string): Promise<void> {
+  const db = createServiceRoleClient();
+  const { error } = await db.from("kb_documents").delete().eq("id", id).eq("source_type", "philosophy-text");
+  if (error) throw new Error(error.message);
+}
