@@ -111,10 +111,12 @@ export default function OnboardingPage() {
       <p className="field-label">Where did you hear about us?</p>
       <ChipRow options={Q3_OPTIONS} value={referral} onChange={setReferral} />
 
-      <p className="field-label">Have your own AI API key, or want to use one?</p>
+      {/* Draft copy — final wording is decided in Phase 6 with the rest of the sign-up text. */}
+      <p className="field-label">Recommended: use your own AI API key</p>
       <p className="tiny" style={{ marginBottom: 8 }}>
-        You can paste it here — otherwise we&apos;ll use ours, though it may not be as good as your own. You can also add it
-        later in Settings.
+        We recommend pasting your own AI key here — it gives you faster, better answers from the hub&apos;s assistant.
+        Don&apos;t have one, or don&apos;t want to? That&apos;s fine — you can use our built-in AI, but it will be slower and
+        not as good. You can add or change this any time in Settings.
       </p>
       <AiKeyForm ref={keyForm} standalone={false} />
 
