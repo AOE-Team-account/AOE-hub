@@ -1,6 +1,6 @@
 # AOEhub Marketplace Update — Planning Memory
 
-**Read this first.** This file holds *only* the planned marketplace update: what is settled, what is still open (with the options on the table), and what Clara asked to be reminded about. It is **not** part of the hub as it launches. Everything about the hub before launch lives in `CLAUDE.md` — **do not merge the two.** Where this update touches the pre-launch hub (the heads-up wording, and the "build-now" rules that keep the update from needing rewrites), `CLAUDE.md` carries only that small piece, in the section "Planned future update: marketplace."
+**Read this first.** This file holds *only* the planned marketplace update: what is settled, what is still open (with the options on the table), and what Clara asked to be reminded about. It is **not** part of the hub as it launches. Everything about the hub before launch lives in the main memory file (currently `AOEhub memory from chat5.md`; the number goes up each time it is edited) — **do not merge the two.** Where this update touches the pre-launch hub (the heads-up wording, and the "build-now" rules that keep the update from needing rewrites), the main memory file carries only that small piece, in the section "Planned future update: marketplace."
 
 **Status:** planning only. Nothing here is built. The prototype has no marketplace. This is a plan, not a promise — it depends on registering a business, legal review, and decisions still open below, and it may change or slip.
 
@@ -8,7 +8,7 @@
 
 **How to read it:** **SETTLED** = Clara decided. **OPEN** = not decided; the options are listed (letters are just labels, not a ranking). **REMINDER** = Clara asked to be reminded.
 
-**Not in this file, on purpose:** pinning. The Answerer auto-pin and the Verified "From verified voices" self-pin are finished and live in `CLAUDE.md` (hub only). No promoted, pinned, or sponsored marketplace listings are planned. The hub's own wording is now "no ads *for now*": whether real ads ever appear later is undecided (tracked in `CLAUDE.md`, not here), so do not rely on "no ads" as a permanent promise anywhere in marketplace copy.
+**Not in this file, on purpose:** pinning. The Answerer auto-pin and the Verified "From verified voices" self-pin are finished and live in the main memory file (hub only). No promoted, pinned, or sponsored marketplace listings are planned. The hub's own wording is now "no ads *for now*": whether real ads ever appear later is undecided (tracked in the main memory file, not here), so do not rely on "no ads" as a permanent promise anywhere in marketplace copy.
 
 ---
 
@@ -18,7 +18,7 @@
 - **Launch the free hub first, add the marketplace later as an update.** Reasons: it proves the free community before commerce is added; it postpones business registration, tax, and legal work until it is actually needed; and the warnings/reporting system will already be tested on real behavior before money is involved.
 - **The update is additive.** New pages and new tables next to what exists. The Experience Board and File Board stay free and unchanged. Nothing existing is rewritten.
 - **New terms.** Older members keep using the free boards under the terms they already accepted. The new terms must be viewed and accepted **before using the marketplace** (buying or selling). People who join after the update accept the new terms at sign-up. *(A lawyer confirms this is sufficient.)*
-- **Tell people.** The hub carries a heads-up now (see `CLAUDE.md`). At the update, announce clearly what is changing and what is not (the two boards stay free).
+- **Tell people.** The hub carries a heads-up now (see the main memory file). At the update, announce clearly what is changing and what is not (the two boards stay free).
 - **Watchers and Deacons get new rules and new powers** at the update (details open in section 9).
 
 **OPEN — what the first release contains**
@@ -234,7 +234,7 @@ Business registration (11a); a **new Terms of Service for the marketplace** writ
 - **Likely new tables (a sketch, not a schema):** listings and media; carts and cart items; orders and order items; seller accounts and payouts (Stripe Connect IDs); reviews; item comments; conversations and messages (only if 13a keeps private messaging); disputes/reports; child profiles (pen names).
 - **Reuses what exists:** reports, warnings and evidence, the activity log, notifications, and the protected-panel design (the server checks the role on every request).
 - **Paid files:** private storage with expiring download links, always virus-scanned, **never sent to the Internet Archive** (public and permanent), and **never indexed by the hub AI**.
-- **Build-now rules** that make this update additive are in `CLAUDE.md`, section "Planned future update: marketplace."
+- **Build-now rules** that make this update additive are in the main memory file, section "Planned future update: marketplace."
 - **OPEN — the hub AI and listings.** A. The AI never mentions marketplace items (keeps it neutral; fits the current no-ads stance). B. Only when someone asks for paid resources, clearly labeled.
 
 ---
