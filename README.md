@@ -14,7 +14,7 @@ The hub is fully wired to real backends everywhere — no mock data anywhere in 
 | Database schema | **Real**, live-tested end to end | `supabase/schema.sql` |
 | pgvector (for RAG) | **In use** — 768-dimension HNSW-indexed chunks, each tagged with the embedding model that made it | `supabase/schema.sql` (`kb_documents`, `kb_chunks`, `match_kb_chunks`) |
 | Points | **Real formula**, server-enforced via triggers/functions | `supabase/schema.sql` (`award_points`, `record_view`, `record_download`), `src/lib/points.ts` |
-| Every board, Groups, Admin Dashboard, notifications, your own profile | **Real queries and real writes** | `src/lib/data/*.ts`, plus direct browser-client calls in each page |
+| Every board, Admin Dashboard, notifications, your own profile | **Real queries and real writes** | `src/lib/data/*.ts`, plus direct browser-client calls in each page |
 | File uploads | **Real** — routes to Cloudflare R2 (small files) or Internet Archive (large files) automatically, gated by a real VirusTotal malware scan | `src/app/api/upload/route.ts`, `src/lib/storage/`, `src/lib/malware-scan/` |
 | File downloads | **Real** — signed URL (R2) or direct IA URL, only for scan-confirmed-clean files; increments the download counter and awards points | `src/app/api/download/[assetId]/route.ts` |
 | Database backups | **Real** — nightly GitHub Action dumps Supabase Postgres to Backblaze B2; retention via B2's own version-lifecycle rule, not custom code | `.github/workflows/backup-database.yml` |
@@ -34,7 +34,7 @@ The hub is fully wired to real backends everywhere — no mock data anywhere in 
 - Files over 200MB are rejected — very large uploads would need a presigned direct-to-storage upload instead of routing bytes through this server, a bigger change than this pass needed.
 - The "remix" authorship field is a free-text hint, not a real link to the original post yet — no search-and-select UI for it.
 - The preview image/video picker on the upload form is still a placeholder — doesn't upload anything.
-- `profiles.groups_count`, `files_count`, `followers_count`, `following_count` are denormalized columns not yet kept current by triggers (only `points` has that). The Profile page works around this for its own files count by counting real rows directly.
+- `files_count`, `followers_count`, `following_count` are denormalized columns not yet kept current by triggers (only `points` has that). The Profile page works around this for its own files count by counting real rows directly.
 
 ## Setting up your own Supabase project
 
@@ -113,7 +113,7 @@ Then open http://localhost:3000.
 src/
   app/                    routes (App Router) — one folder per page in hub-prototype.html
     login/, signup/        real Supabase auth forms
-    experience/, files/, groups/, admin/   each has a Server Component page.tsx (real data fetch)
+    experience/, files/, admin/   each has a Server Component page.tsx (real data fetch)
                                             + a *Client.tsx sibling (interactivity, real writes)
     api/
       upload/               receives a file, scans it, routes it to storage

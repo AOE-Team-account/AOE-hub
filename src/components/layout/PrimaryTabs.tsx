@@ -7,12 +7,10 @@ import { useAuth } from "@/contexts/AuthContext";
 // Deliberate deviation from hub-prototype.html: the prototype hid the File
 // Board tab from logged-out visitors, which stranded them on the Experience
 // Board with no way back except the homepage. Both boards are readable
-// without an account, so both tabs show for everyone; Groups stays hidden
-// until sign-in because logged-out visitors can't join or post in groups.
+// without an account, so both tabs show for everyone.
 const TABS = [
   { href: "/experience", label: "Experience board", hideWhenLoggedOut: false },
   { href: "/files", label: "File board", hideWhenLoggedOut: false },
-  { href: "/groups", label: "Groups", hideWhenLoggedOut: true },
 ];
 
 export function PrimaryTabs() {

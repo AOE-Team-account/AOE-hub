@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 // Deleting an account needs the service role (auth.admin.deleteUser isn't
 // callable from the browser under any RLS policy). Everything referencing
-// profiles.id cascades — file/experience posts, comments, groups, follows,
+// profiles.id cascades — file/experience posts, comments, follows,
 // memberships, notifications, reports, AI settings — the same cascade this
 // project's own disposable test accounts have relied on since Phase 3.
 export async function DELETE(request: Request) {

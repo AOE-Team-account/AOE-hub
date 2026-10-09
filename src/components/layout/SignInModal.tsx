@@ -12,8 +12,8 @@ export function SignInModal() {
     <Modal open={isSignInModalOpen} onClose={closeSignInModal}>
       <p className="title">Sign in to continue</p>
       <p className="muted">
-        Browsing is always free. Downloading, posting, uploading, remixing, commenting, following, reporting, and
-        joining groups need an account.
+        Browsing is always free. Downloading, posting, uploading, remixing, commenting, following, and reporting
+        need an account.
       </p>
       <div className="row" style={{ gap: 8 }}>
         <button

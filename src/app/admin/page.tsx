@@ -1,7 +1,7 @@
-import { listOpenReports, listReportedGroups } from "@/lib/data/admin";
+import { listOpenReports } from "@/lib/data/admin";
 import { AdminDashboardClient } from "./AdminDashboardClient";
 
 export default async function AdminDashboardPage() {
-  const [reports, reportedGroups] = await Promise.all([listOpenReports(), listReportedGroups()]);
-  return <AdminDashboardClient reports={reports} reportedGroups={reportedGroups} />;
+  const reports = await listOpenReports();
+  return <AdminDashboardClient reports={reports} />;
 }

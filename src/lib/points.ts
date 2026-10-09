@@ -1,5 +1,5 @@
 // Points formula — exact values from project memory. Only File Board and
-// Experience Board activity earns points; private Groups never do.
+// File Board and Experience Board activity earns points.
 
 export const POINTS = {
   VIEW: 1, // rate-limited to once per person per day

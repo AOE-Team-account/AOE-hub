@@ -9,9 +9,7 @@
 --    award_points() function below — never written to directly by clients.
 --  - Search-ranking compression (log-scale) happens in application code
 --    (src/lib/points.ts), not here — the DB only stores raw point events.
---  - File Board + Experience Board earn points; Groups (public or private)
---    never do — enforced by simply never calling award_points() for group
---    activity.
+--  - Only File Board + Experience Board activity earns points.
 --  - The hub launches with these tables empty; there is no seed data here
 --    on purpose (see the "launches empty" note in the memory doc).
 
@@ -36,7 +34,6 @@ create table if not exists public.profiles (
   followers_count integer not null default 0,
   following_count integer not null default 0,
   files_count integer not null default 0,
-  groups_count integer not null default 0,
   onboarding_experience text check (onboarding_experience in ('homeschooling', 'in-school', 'unschooling', 'want-to-know-more', 'new-way-of-learning')),
   onboarding_reason text check (onboarding_reason in ('curriculum', 'community', 'philosophy', 'notsure')),
   referral_source text check (referral_source is null or referral_source in ('friend', 'web-search', 'social-media', 'youtube', 'other')),
@@ -184,12 +181,12 @@ create trigger experience_posts_announcement_check
   for each row execute function public.announcement_author_must_be_admin();
 
 -- ============================================================================
--- Comments — shared by File Board, Experience Board, and Group discussions
+-- Comments — shared by File Board and Experience Board
 -- ============================================================================
 
 create table if not exists public.comments (
   id uuid primary key default gen_random_uuid(),
-  parent_type text not null check (parent_type in ('file', 'experience-post', 'group')),
+  parent_type text not null check (parent_type in ('file', 'experience-post')),
   parent_id uuid not null,
   parent_comment_id uuid references public.comments (id) on delete cascade,
   author_id uuid not null references public.profiles (id) on delete cascade,
@@ -201,108 +198,12 @@ create table if not exists public.comments (
 create index if not exists comments_parent_idx on public.comments (parent_type, parent_id);
 
 -- ============================================================================
--- Groups
--- ============================================================================
-
-create table if not exists public.groups (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  description text,
-  visibility text not null check (visibility in ('public', 'private')),
-  created_by uuid not null references public.profiles (id) on delete cascade,
-  reported boolean not null default false,
-  created_at timestamptz not null default now()
-);
-
--- Eligibility to create a group (memory doc: 500+ points, 90+ day old
--- account, no unresolved reports) — enforced structurally, not just in the
--- client UI, same pattern as the authorship field on file uploads.
-create or replace function public.creator_must_be_eligible_for_group()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  creator public.profiles%rowtype;
-  has_unresolved_report boolean;
-begin
-  select * into creator from public.profiles where id = new.created_by;
-
-  if creator.is_admin then
-    return new; -- admins bypass the eligibility gate
-  end if;
-
-  if creator.points < 500 then
-    raise exception 'Creating a group requires 500+ points (you have %)', creator.points;
-  end if;
-
-  if creator.member_since > now() - interval '90 days' then
-    raise exception 'Creating a group requires an account older than 90 days';
-  end if;
-
-  select exists (
-    select 1 from public.reports
-    where target_type = 'user' and target_id = new.created_by and status = 'open'
-  ) into has_unresolved_report;
-
-  if has_unresolved_report then
-    raise exception 'Creating a group requires no unresolved reports against your account';
-  end if;
-
-  return new;
-end;
-$$;
-
-drop trigger if exists groups_eligibility_check on public.groups;
-create trigger groups_eligibility_check
-  before insert on public.groups
-  for each row execute function public.creator_must_be_eligible_for_group();
-
-create table if not exists public.group_members (
-  group_id uuid not null references public.groups (id) on delete cascade,
-  user_id uuid not null references public.profiles (id) on delete cascade,
-  joined_at timestamptz not null default now(),
-  primary key (group_id, user_id)
-);
-
--- A group's creator is always its first member — structural, so no client
--- code path can forget to add them.
-create or replace function public.add_creator_as_group_member()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  insert into public.group_members (group_id, user_id) values (new.id, new.created_by)
-  on conflict do nothing;
-  return new;
-end;
-$$;
-
-drop trigger if exists groups_add_creator_as_member on public.groups;
-create trigger groups_add_creator_as_member
-  after insert on public.groups
-  for each row execute function public.add_creator_as_group_member();
-
-create table if not exists public.group_invites (
-  id uuid primary key default gen_random_uuid(),
-  group_id uuid not null references public.groups (id) on delete cascade,
-  code text not null unique,
-  created_by uuid not null references public.profiles (id) on delete cascade,
-  used_by uuid references public.profiles (id) on delete set null,
-  created_at timestamptz not null default now(),
-  used_at timestamptz
-);
-
--- ============================================================================
 -- Reports
 -- ============================================================================
 
 create table if not exists public.reports (
   id uuid primary key default gen_random_uuid(),
-  target_type text not null check (target_type in ('file', 'experience-post', 'comment', 'group', 'user')),
+  target_type text not null check (target_type in ('file', 'experience-post', 'comment', 'user')),
   target_id uuid not null,
   reason text not null check (reason in ('scam', 'off-topic', 'inappropriate', 'paywalled', 'copyright', 'other')),
   details text,
@@ -313,34 +214,31 @@ create table if not exists public.reports (
 
 create index if not exists reports_status_idx on public.reports (status);
 
--- Keeps groups.reported (what the admin dashboard actually filters on) in
--- sync with whether the group has any open report against it — fires on
--- both a new report and an admin resolving/dismissing one.
-create or replace function public.sync_group_reported_flag()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_group_id uuid;
-begin
-  v_group_id := coalesce(new.target_id, old.target_id);
-  if coalesce(new.target_type, old.target_type) <> 'group' then
-    return coalesce(new, old);
-  end if;
-  update public.groups
-     set reported = exists (
-       select 1 from public.reports where target_type = 'group' and target_id = v_group_id and status = 'open'
-     )
-   where id = v_group_id;
-  return coalesce(new, old);
-end;
-$$;
+-- ----------------------------------------------------------------------------
+-- Groups were removed entirely (project memory doc chat5, 2026-10-08).
+-- Older databases still have the groups tables, so this removes them. Every
+-- statement is a no-op once the objects are gone, so re-running is safe.
+-- (is_group_member() and group_member_count() are dropped further down,
+-- after the comment policies that used to call them have been rewritten.)
+-- ----------------------------------------------------------------------------
+delete from public.comments where parent_type = 'group';
+alter table public.comments drop constraint if exists comments_parent_type_check;
+alter table public.comments add constraint comments_parent_type_check
+  check (parent_type in ('file', 'experience-post'));
+
+delete from public.reports where target_type = 'group';
+alter table public.reports drop constraint if exists reports_target_type_check;
+alter table public.reports add constraint reports_target_type_check
+  check (target_type in ('file', 'experience-post', 'comment', 'user'));
 
 drop trigger if exists reports_sync_group_flag on public.reports;
-create trigger reports_sync_group_flag after insert or update on public.reports
-  for each row execute function public.sync_group_reported_flag();
+drop function if exists public.sync_group_reported_flag();
+drop table if exists public.group_invites;
+drop table if exists public.group_members;
+drop table if exists public.groups;
+drop function if exists public.creator_must_be_eligible_for_group();
+drop function if exists public.add_creator_as_group_member();
+alter table public.profiles drop column if exists groups_count;
 
 -- Lets an admin notify a member (e.g. a moderation warning) without a client
 -- insert policy on notifications — every other write to that table already
@@ -497,8 +395,6 @@ as $$
 declare
   post_author uuid;
 begin
-  -- Group discussions never earn points (memory doc: Groups are outside
-  -- the points system entirely).
   if new.parent_type = 'file' then
     select author_id into post_author from public.file_posts where id = new.parent_id;
   elsif new.parent_type = 'experience-post' then
@@ -634,9 +530,6 @@ alter table public.file_posts enable row level security;
 alter table public.file_assets enable row level security;
 alter table public.experience_posts enable row level security;
 alter table public.comments enable row level security;
-alter table public.groups enable row level security;
-alter table public.group_members enable row level security;
-alter table public.group_invites enable row level security;
 alter table public.reports enable row level security;
 alter table public.points_events enable row level security;
 alter table public.post_views enable row level security;
@@ -655,35 +548,6 @@ as $$
   select coalesce((select is_admin from public.profiles where id = p_user_id), false);
 $$;
 
-create or replace function public.is_group_member(p_group_id uuid, p_user_id uuid)
-returns boolean
-language sql
-security definer
-stable
-set search_path = public
-as $$
-  select exists (
-    select 1 from public.group_members where group_id = p_group_id and user_id = p_user_id
-  );
-$$;
-
--- The group_members SELECT policy below (correctly) restricts reading the
--- actual roster to members + admins, so anyone else fetching a *public*
--- group's row would otherwise see its member count as 0. A count alone
--- isn't sensitive (the app already shows it on public group cards), and
--- this is only ever called for a group row the caller could already see
--- (RLS on `groups` already gated that), so bypassing RLS here to return
--- just a number is safe.
-create or replace function public.group_member_count(p_group_id uuid)
-returns integer
-language sql
-security definer
-stable
-set search_path = public
-as $$
-  select count(*)::integer from public.group_members where group_id = p_group_id;
-$$;
-
 -- profiles: readable by everyone (public profile pages); only the owner
 -- can update their own row (points/admin/counters are function/trigger
 -- managed, not client-writable — see the column grants below).
@@ -695,7 +559,7 @@ drop policy if exists "users can update their own profile" on public.profiles;
 create policy "users can update their own profile" on public.profiles
   for update using (auth.uid() = id) with check (auth.uid() = id);
 
-revoke update (points, is_admin, followers_count, following_count, files_count, groups_count, member_since)
+revoke update (points, is_admin, followers_count, following_count, files_count, member_since)
   on public.profiles from authenticated;
 
 -- follows: readable by everyone; only the follower can create/delete their
@@ -762,73 +626,28 @@ drop policy if exists "authors and admins can delete experience posts" on public
 create policy "authors and admins can delete experience posts" on public.experience_posts
   for delete using (auth.uid() = author_id or public.is_admin(auth.uid()));
 
--- Comments: public for file/experience parents; for group-parented
--- comments, only members (or admins) can read — private groups stay
--- private from other members, per the memory doc, though always visible
--- to admins for moderation.
+-- Comments: everything on the hub is public (Groups, the only private space,
+-- was removed), so comments on files and posts are readable by everyone.
 drop policy if exists "comments are readable per parent visibility" on public.comments;
-create policy "comments are readable per parent visibility" on public.comments
-  for select using (
-    parent_type in ('file', 'experience-post')
-    or (parent_type = 'group' and (public.is_group_member(parent_id, auth.uid()) or public.is_admin(auth.uid())))
-  );
+drop policy if exists "comments are publicly readable" on public.comments;
+create policy "comments are publicly readable" on public.comments
+  for select using (true);
 
 drop policy if exists "signed-in users can comment" on public.comments;
 create policy "signed-in users can comment" on public.comments
   for insert with check (
     auth.uid() = author_id
-    and (
-      parent_type in ('file', 'experience-post')
-      or (parent_type = 'group' and public.is_group_member(parent_id, auth.uid()))
-    )
+    and parent_type in ('file', 'experience-post')
   );
 
 drop policy if exists "authors and admins can delete comments" on public.comments;
 create policy "authors and admins can delete comments" on public.comments
   for delete using (auth.uid() = author_id or public.is_admin(auth.uid()));
 
--- Groups: public groups are listable by everyone; private groups are
--- visible only to members and admins ("private" means private from other
--- members, not from the platform).
-drop policy if exists "groups are visible per visibility rules" on public.groups;
-create policy "groups are visible per visibility rules" on public.groups
-  for select using (
-    visibility = 'public'
-    or public.is_group_member(id, auth.uid())
-    or public.is_admin(auth.uid())
-  );
-
-drop policy if exists "signed-in users can create groups" on public.groups;
-create policy "signed-in users can create groups" on public.groups
-  for insert with check (auth.uid() = created_by);
-
-drop policy if exists "creators and admins can update groups" on public.groups;
-create policy "creators and admins can update groups" on public.groups
-  for update using (auth.uid() = created_by or public.is_admin(auth.uid()));
-
-drop policy if exists "creators and admins can delete groups" on public.groups;
-create policy "creators and admins can delete groups" on public.groups
-  for delete using (auth.uid() = created_by or public.is_admin(auth.uid()));
-
--- group_members: members of a group (+ admins) can see its roster; users
--- manage their own membership row (join/leave).
-drop policy if exists "group rosters visible to members and admins" on public.group_members;
-create policy "group rosters visible to members and admins" on public.group_members
-  for select using (public.is_group_member(group_id, auth.uid()) or public.is_admin(auth.uid()));
-
-drop policy if exists "users manage their own membership" on public.group_members;
-create policy "users manage their own membership" on public.group_members
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
--- group_invites: only group members can create invites; only the invited
--- flow (matching by code) or an admin can read one.
-drop policy if exists "members create invites" on public.group_invites;
-create policy "members create invites" on public.group_invites
-  for insert with check (public.is_group_member(group_id, auth.uid()));
-
-drop policy if exists "invite creators and admins can view invites" on public.group_invites;
-create policy "invite creators and admins can view invites" on public.group_invites
-  for select using (auth.uid() = created_by or public.is_admin(auth.uid()));
+-- Nothing calls these any more (the comment policies above were the last
+-- users), so they can finally go. Must stay below those policies.
+drop function if exists public.is_group_member(uuid, uuid);
+drop function if exists public.group_member_count(uuid);
 
 -- Reports: anyone signed in can file one; only admins can read/manage the
 -- queue (the admin dashboard's whole reason for existing).
@@ -903,59 +722,6 @@ create trigger file_posts_remove_kb after delete on public.file_posts
 drop trigger if exists experience_posts_remove_kb on public.experience_posts;
 create trigger experience_posts_remove_kb after delete on public.experience_posts
   for each row execute function public.remove_kb_document_for_deleted_post();
-
--- Same rule for a deleted admin_questions row — this one was missed in the
--- first Phase 5 pass (found 2026-09-24: retracting a wrong answer needs the
--- indexed copy gone too, and this covers any future direct deletion as well).
-create or replace function public.remove_kb_document_for_deleted_question()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  delete from public.kb_documents where source_type = 'admin-answer' and source_id = old.id;
-  return old;
-end;
-$$;
-
-drop trigger if exists admin_questions_remove_kb on public.admin_questions;
-create trigger admin_questions_remove_kb after delete on public.admin_questions
-  for each row execute function public.remove_kb_document_for_deleted_question();
-
--- Undoes a wrong answer: removes it from the AI's index immediately, reopens
--- the question (so the same "answer" flow can fix it properly), and tells
--- the asker rather than letting an answer silently vanish.
-create or replace function public.retract_admin_answer(p_id uuid)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_q public.admin_questions;
-begin
-  if not public.is_admin(auth.uid()) then
-    raise exception 'Only admins can retract an answer.';
-  end if;
-
-  update public.admin_questions
-     set status = 'open', answer = null, answered_by = null, answered_at = null
-   where id = p_id and status = 'answered'
-   returning * into v_q;
-  if v_q.id is null then
-    raise exception 'That question was not found or has no answer to retract.';
-  end if;
-
-  delete from public.kb_documents where source_type = 'admin-answer' and source_id = p_id;
-
-  insert into public.notifications (user_id, body, kind)
-  values (v_q.asker_id, 'An admin is revisiting the answer to your question: "' || left(v_q.question, 80) || '" — you''ll hear back again soon.', 'admin-answer-retracted');
-end;
-$$;
-
-revoke execute on function public.retract_admin_answer(uuid) from public, anon;
-grant execute on function public.retract_admin_answer(uuid) to authenticated;
 
 -- ---- Similarity search -----------------------------------------------------
 
@@ -1035,6 +801,61 @@ create policy "members ask the admins" on public.admin_questions
 drop policy if exists "askers and admins read questions" on public.admin_questions;
 create policy "askers and admins read questions" on public.admin_questions
   for select using (auth.uid() = asker_id or public.is_admin(auth.uid()));
+
+-- (Defined here, after the admin_questions table exists — creating a trigger
+-- on a table that isn't there yet breaks a fresh install.)
+-- Same rule for a deleted admin_questions row — this one was missed in the
+-- first Phase 5 pass (found 2026-09-24: retracting a wrong answer needs the
+-- indexed copy gone too, and this covers any future direct deletion as well).
+create or replace function public.remove_kb_document_for_deleted_question()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.kb_documents where source_type = 'admin-answer' and source_id = old.id;
+  return old;
+end;
+$$;
+
+drop trigger if exists admin_questions_remove_kb on public.admin_questions;
+create trigger admin_questions_remove_kb after delete on public.admin_questions
+  for each row execute function public.remove_kb_document_for_deleted_question();
+
+-- Undoes a wrong answer: removes it from the AI's index immediately, reopens
+-- the question (so the same "answer" flow can fix it properly), and tells
+-- the asker rather than letting an answer silently vanish.
+create or replace function public.retract_admin_answer(p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_q public.admin_questions;
+begin
+  if not public.is_admin(auth.uid()) then
+    raise exception 'Only admins can retract an answer.';
+  end if;
+
+  update public.admin_questions
+     set status = 'open', answer = null, answered_by = null, answered_at = null
+   where id = p_id and status = 'answered'
+   returning * into v_q;
+  if v_q.id is null then
+    raise exception 'That question was not found or has no answer to retract.';
+  end if;
+
+  delete from public.kb_documents where source_type = 'admin-answer' and source_id = p_id;
+
+  insert into public.notifications (user_id, body, kind)
+  values (v_q.asker_id, 'An admin is revisiting the answer to your question: "' || left(v_q.question, 80) || '" — you''ll hear back again soon.', 'admin-answer-retracted');
+end;
+$$;
+
+revoke execute on function public.retract_admin_answer(uuid) from public, anon;
+grant execute on function public.retract_admin_answer(uuid) to authenticated;
 
 -- Answering goes through this function only: it records the answer, tells the
 -- asker, and adds the Q&A to the knowledge base so the AI can answer the same

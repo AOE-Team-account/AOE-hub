@@ -19,6 +19,7 @@ export interface UiDictionary {
   signupStrong: string;
   heroPullquote: string;
   heroTaglineSmall: string;
+  heroMarketplaceNote: string;
 }
 
 export const UI_DICTIONARIES: Record<LanguageCode, UiDictionary> = {
@@ -38,7 +39,9 @@ export const UI_DICTIONARIES: Record<LanguageCode, UiDictionary> = {
     signupStrong: "Sign up or log in — it's free.",
     heroPullquote: '"Education is an atmosphere, a discipline, and a life."',
     heroTaglineSmall:
-      "Always free · No ads · No scams · Built by those who've walked this path, are walking it now, and are just starting.",
+      "The Experience Board and File Board are always free · Built by those who've walked this path, are walking it now, and are just starting.",
+    heroMarketplaceNote:
+      "Heads-up: we plan to add a marketplace in a later update, where members can buy and sell. The Experience Board and File Board will stay free. We work hard to prevent scams, but we can't guarantee none will happen.",
   },
   "zh-CN": {
     heroTaglineEyebrow: "AOEhub（Alpha Omega Education）— 无论在家自学、非学校教育还是学校教育的家庭都欢迎",
@@ -54,7 +57,8 @@ export const UI_DICTIONARIES: Record<LanguageCode, UiDictionary> = {
     signupPre: "想下载文件、发布内容或留言吗？",
     signupStrong: "免费注册或登录。",
     heroPullquote: '"教育是一种氛围、一种纪律、一种生活。"',
-    heroTaglineSmall: "永远免费 · 无广告 · 无诈骗 · 由走过这条路、正在走这条路、刚刚开始这条路的人共同建立。",
+    heroTaglineSmall: "经验分享板和资源板永远免费 · 由走过这条路、正在走这条路、刚刚开始这条路的人共同建立。",
+    heroMarketplaceNote: "提前告知：我们计划在之后的更新中加入一个市场，成员可以在其中买卖商品。经验分享板和资源板将继续免费。我们会尽力防范诈骗，但无法保证绝不发生。",
   },
   "zh-TW": {
     heroTaglineEyebrow: "AOEhub（Alpha Omega Education）— 無論在家自學、非學校教育還是學校教育的家庭都歡迎",
@@ -70,7 +74,8 @@ export const UI_DICTIONARIES: Record<LanguageCode, UiDictionary> = {
     signupPre: "想下載文件、發布內容或留言嗎？",
     signupStrong: "免費註冊或登入。",
     heroPullquote: '"教育是一種氛圍、一種紀律、一種生活。"',
-    heroTaglineSmall: "永遠免費 · 無廣告 · 無詐騙 · 由走過這條路、正在走這條路、剛剛開始這條路的人共同建立。",
+    heroTaglineSmall: "經驗分享板和資源板永遠免費 · 由走過這條路、正在走這條路、剛剛開始這條路的人共同建立。",
+    heroMarketplaceNote: "事先告知：我們計劃在之後的更新中加入一個市集，成員可以在其中買賣商品。經驗分享板和資源板將繼續免費。我們會盡力防範詐騙，但無法保證絕不發生。",
   },
 };
 

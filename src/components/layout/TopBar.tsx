@@ -78,7 +78,7 @@ export function TopBar() {
             <path d="M21 21l-4.3-4.3" />
           </svg>
           <input
-            placeholder="Search files, experiences, groups..."
+            placeholder="Search files and experiences..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={onSearchKeyDown}

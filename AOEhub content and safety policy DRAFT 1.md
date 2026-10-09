@@ -1,3 +1,5 @@
+> **OUTDATED (2026-10-09):** written before chat5/chat6. It still mentions Groups, "four admins", public announcements and "No ads. No scams." — all replaced. Do not use as-is; DRAFT 2 will be written after the "wrong ideas" / "harmful ideology" wording is approved.
+
 # AOEhub — Content Policy and Safety Policy (DRAFT 1)
 
 **This is a starting draft for you to react to, not final text and not legal advice.** Items in [square brackets] are decisions or facts only you can supply. Section "Notes for you" at the bottom is NOT part of the policy — it lists what I need from you and what a lawyer should check.

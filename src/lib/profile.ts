@@ -18,7 +18,6 @@ export interface ProfileRow {
   followers_count: number;
   following_count: number;
   files_count: number;
-  groups_count: number;
 }
 
 export function userFromProfileRow(row: ProfileRow): User {
@@ -33,6 +32,5 @@ export function userFromProfileRow(row: ProfileRow): User {
     followers: row.followers_count,
     following: row.following_count,
     filesCount: row.files_count,
-    groupsCount: row.groups_count,
   };
 }

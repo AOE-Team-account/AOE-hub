@@ -57,6 +57,9 @@ export default function HomePage() {
         <Reveal>
           <p className="hero-tagline-small">{dict.heroTaglineSmall}</p>
         </Reveal>
+        <Reveal>
+          <p className="hero-tagline-small" style={{ marginTop: 2 }}>{dict.heroMarketplaceNote}</p>
+        </Reveal>
       </div>
 
       <Reveal className="feature-row">
@@ -91,23 +94,6 @@ export default function HomePage() {
         <p className="feature-eyebrow">File Board</p>
         <h3 className="feature-title">Free curriculum, books, cards, games, and printables</h3>
         <p className="feature-desc">Download, use, and remix anything — always at no cost, and always credited back to whoever made it first.</p>
-      </Reveal>
-
-      <Reveal className="feature-row">
-        <div className="feature-icon-wrap">
-          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-            <circle cx="6" cy="7" r="3" />
-            <circle cx="18" cy="7" r="3" />
-            <circle cx="12" cy="17" r="3" />
-            <path d="M8.5 9 10 15M15.5 9 14 15M9 6h6" />
-          </svg>
-        </div>
-        <p className="feature-eyebrow">Groups</p>
-        <h3 className="feature-title">Find or start a circle of families</h3>
-        <p className="feature-desc">
-          Some groups are public and searchable, some are private and invite-only — either way, a real place to talk
-          with people on the same path.
-        </p>
       </Reveal>
 
       <div className="hero-bottom-cta">

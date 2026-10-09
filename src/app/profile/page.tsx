@@ -155,7 +155,6 @@ export default function ProfilePage() {
       <div className="card row wrap" style={{ gap: 18 }}>
         <Stat label="points" value={user.points.toLocaleString()} />
         <Stat label="files" value={String(myFiles.length)} />
-        <Stat label="groups" value={String(user.groupsCount)} />
         <Stat label="followers" value={user.followers.toLocaleString()} />
         <Stat label="following" value={user.following.toLocaleString()} />
       </div>

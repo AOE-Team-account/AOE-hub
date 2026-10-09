@@ -57,7 +57,7 @@ export default function SignupPage() {
   return (
     <>
       <p className="title" style={{ marginBottom: 4 }}>Sign up</p>
-      <p className="muted" style={{ marginBottom: 14 }}>Free, forever — no ads, no scams.</p>
+      <p className="muted" style={{ marginBottom: 14 }}>Free, always — the Experience Board and File Board.</p>
       <form onSubmit={handleSubmit}>
         <label className="field-label" style={{ marginTop: 0 }}>Your name</label>
         <input required value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />

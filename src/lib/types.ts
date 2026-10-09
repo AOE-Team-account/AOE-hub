@@ -40,9 +40,8 @@ export type ReportReason =
   | "copyright"
   | "other";
 
-export type ReportTargetType = "file" | "experience-post" | "comment" | "group" | "user";
+export type ReportTargetType = "file" | "experience-post" | "comment" | "user";
 
-export type GroupVisibility = "public" | "private";
 
 export interface User {
   id: string;
@@ -55,7 +54,6 @@ export interface User {
   followers: number;
   following: number;
   filesCount: number;
-  groupsCount: number;
 }
 
 export type ScanStatus = "pending" | "clean" | "flagged";
@@ -86,7 +84,7 @@ export interface FilePost {
 
 export interface Comment {
   id: string;
-  parentType: "file" | "experience-post" | "group";
+  parentType: "file" | "experience-post";
   parentId: string;
   authorId: string;
   type: CommentType;
@@ -106,16 +104,6 @@ export interface ExperiencePost {
   createdAt: string;
   pinned?: boolean;
   isAnnouncement?: boolean;
-}
-
-export interface Group {
-  id: string;
-  name: string;
-  description: string;
-  visibility: GroupVisibility;
-  memberCount: number;
-  createdAt: string;
-  reported?: boolean;
 }
 
 export interface AdminReport {

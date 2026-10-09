@@ -3,7 +3,7 @@
 // Admin moderation actions, called from the browser client with the admin's
 // own session. Content removal and warnings rely on the existing RLS
 // policies ("... or is_admin(auth.uid())" on file_posts/experience_posts/
-// comments/groups, and reports/notifications) — no service role needed here.
+// comments, and reports/notifications) — no service role needed here.
 // Account deletion is the one exception (see /api/admin/users) because
 // deleting an auth.users row isn't something RLS can grant to a browser.
 
@@ -15,7 +15,6 @@ type Supabase = ReturnType<typeof createClient>;
 const CONTENT_TABLE: Partial<Record<AdminReport["targetType"], { table: string; authorColumn: string }>> = {
   file: { table: "file_posts", authorColumn: "author_id" },
   "experience-post": { table: "experience_posts", authorColumn: "author_id" },
-  group: { table: "groups", authorColumn: "created_by" },
   comment: { table: "comments", authorColumn: "author_id" },
 };
 
@@ -27,9 +26,6 @@ export function reportTargetHref(report: Pick<AdminReport, "targetType" | "targe
       return `/experience/${report.targetId}`;
     case "user":
       return `/u/${report.targetId}`;
-    case "group":
-      // No single-group page exists yet — the Groups tab is the closest real destination.
-      return "/groups";
     default:
       return null;
   }
@@ -71,15 +67,6 @@ export async function warnReportedUser(report: AdminReport): Promise<{ error?: s
 export async function dismissReport(reportId: string): Promise<{ error?: string }> {
   const supabase = createClient();
   const { error } = await supabase.from("reports").update({ status: "dismissed" }).eq("id", reportId);
-  return error ? { error: error.message } : {};
-}
-
-export async function deleteGroup(groupId: string): Promise<{ error?: string }> {
-  const supabase = createClient();
-  // Resolve any open reports on it first so the reports queue doesn't keep a
-  // stale row pointing at a group that no longer exists.
-  await supabase.from("reports").update({ status: "resolved" }).eq("target_type", "group").eq("target_id", groupId).eq("status", "open");
-  const { error } = await supabase.from("groups").delete().eq("id", groupId);
   return error ? { error: error.message } : {};
 }
 
