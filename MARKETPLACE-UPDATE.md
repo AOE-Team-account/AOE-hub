@@ -8,7 +8,7 @@
 
 **How to read it:** **SETTLED** = Clara decided. **OPEN** = not decided; the options are listed (letters are just labels, not a ranking). **REMINDER** = Clara asked to be reminded.
 
-**Not in this file, on purpose:** pinning. The Answerer auto-pin and the Verified "From verified voices" self-pin are finished and live in the main memory file (hub only). No promoted, pinned, or sponsored marketplace listings are planned. The hub's own wording is now "no ads *for now*": whether real ads ever appear later is undecided (tracked in the main memory file, not here), so do not rely on "no ads" as a permanent promise anywhere in marketplace copy.
+**Not in this file, on purpose:** pinning. The Answerer auto-pin and the Verified "From verified voices" self-pin are finished and live in the main memory file (hub only). No promoted, pinned, or sponsored marketplace listings are planned. The hub's own wording now says nothing about ads either way (Clara, chat5): whether real ads ever appear later is undecided (tracked in the main memory file, not here), so marketplace copy must not promise "no ads" or claim anything about ads.
 
 ---
 
@@ -235,7 +235,7 @@ Business registration (11a); a **new Terms of Service for the marketplace** writ
 - **Reuses what exists:** reports, warnings and evidence, the activity log, notifications, and the protected-panel design (the server checks the role on every request).
 - **Paid files:** private storage with expiring download links, always virus-scanned, **never sent to the Internet Archive** (public and permanent), and **never indexed by the hub AI**.
 - **Build-now rules** that make this update additive are in the main memory file, section "Planned future update: marketplace."
-- **OPEN — the hub AI and listings.** A. The AI never mentions marketplace items (keeps it neutral; fits the current no-ads stance). B. Only when someone asks for paid resources, clearly labeled.
+- **OPEN — the hub AI and listings.** A. The AI never mentions marketplace items (keeps it neutral; fits keeping the hub neutral). B. Only when someone asks for paid resources, clearly labeled.
 
 ---
 
