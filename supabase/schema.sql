@@ -28,7 +28,6 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   name text not null,
   display_name text,
-  is_admin boolean not null default false,
   member_since timestamptz not null default now(),
   points integer not null default 0,
   followers_count integer not null default 0,
@@ -63,9 +62,27 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_age integer;
 begin
-  insert into public.profiles (id, name)
-  values (new.id, coalesce(new.raw_user_meta_data ->> 'name', split_part(new.email, '@', 1)));
+  -- The sign-up form records an age attestation and terms acceptance as
+  -- metadata. Anything under 13 is ignored (nobody can attest to that).
+  v_age := case when (new.raw_user_meta_data ->> 'age_attested_min') ~ '^[0-9]{1,3}$'
+                then (new.raw_user_meta_data ->> 'age_attested_min')::integer end;
+  if v_age is not null and v_age < 13 then v_age := null; end if;
+
+  insert into public.profiles (id, name, age_attested_min, age_attested_at)
+  values (new.id, coalesce(new.raw_user_meta_data ->> 'name', split_part(new.email, '@', 1)),
+          v_age, case when v_age is not null then now() end);
+
+  if (new.raw_user_meta_data ->> 'accepted_terms') = 'true' then
+    insert into public.terms_acceptances (user_id, kind, version)
+    select new.id, tv.kind, tv.version
+      from public.terms_versions tv
+     where tv.scope = 'hub'
+       and tv.published_at = (select max(t2.published_at) from public.terms_versions t2 where t2.kind = tv.kind and t2.scope = tv.scope)
+    on conflict do nothing;
+  end if;
   return new;
 end;
 $$;
@@ -74,6 +91,380 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- ============================================================================
+-- Foundation for roles, moderation records and terms tracking
+-- (project memory doc chat6: "Roles & moderation powers", Trust & safety,
+--  and the marketplace "build-now rules"). Everything here is data-driven so
+-- new roles, reasons and content kinds (e.g. a marketplace "listing") are
+-- added as rows, not new if-statements.
+-- ============================================================================
+
+-- A schema the API does NOT expose. Supabase only publishes the `public`
+-- schema over its REST/RPC interface, so helpers placed here can be used by
+-- row-level-security policies and by other SQL functions but can never be
+-- called by a browser. That matters for roles: "who is a Watcher or Deacon"
+-- must stay secret (anonymity rule), and a public has_role(user, role) RPC
+-- would let anyone ask it about anyone.
+create schema if not exists private;
+revoke all on schema private from public;
+grant usage on schema private to anon, authenticated, service_role;
+alter default privileges in schema private revoke execute on functions from public;
+
+-- ---- Roles (independent flags; one row per role a person holds) -----------
+
+create table if not exists public.role_definitions (
+  code text primary key,
+  label text not null,
+  description text not null,
+  is_reviewer boolean not null default false,
+  is_public_badge boolean not null default false,
+  sort_order integer not null default 0
+);
+
+comment on table public.role_definitions is 'The kinds of role that exist. Add a row to add a role (e.g. a seller role later); roles are independent of each other.';
+
+insert into public.role_definitions (code, label, description, is_reviewer, is_public_badge, sort_order) values
+  ('creator',  'Creator',  'Total power over the hub. Does not post; uses an ordinary account for that. Invisible to everyone else.', true,  false, 1),
+  ('watcher',  'Watcher',  'Sees every post, comment, file and report; can add a notice, warn, delete or dismiss. Invisible to everyone else.', true,  false, 2),
+  ('deacon',   'Deacon',   'Like a Watcher, but for posts and comments only, never files. Invisible to everyone else.', true,  false, 3),
+  ('answerer', 'Answerer', 'Posts, files and comments are pinned to the top. Shows the A badge.', false, true,  4),
+  ('verified', 'Verified', 'The Creator agrees with their ideas. Shows the V badge; comments are highlighted.', false, true,  5)
+on conflict (code) do update
+  set label = excluded.label, description = excluded.description, is_reviewer = excluded.is_reviewer,
+      is_public_badge = excluded.is_public_badge, sort_order = excluded.sort_order;
+
+create table if not exists public.user_roles (
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  role text not null references public.role_definitions (code),
+  granted_by uuid,
+  granted_at timestamptz not null default now(),
+  primary key (user_id, role)
+);
+
+create index if not exists user_roles_role_idx on public.user_roles (role);
+
+-- Role checks used by policies and functions. SECURITY DEFINER so they can
+-- read user_roles regardless of who is asking; living in `private` keeps them
+-- off the public API.
+create or replace function private.has_role(p_user_id uuid, p_role text)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (select 1 from public.user_roles where user_id = p_user_id and role = p_role);
+$$;
+
+create or replace function private.is_reviewer(p_user_id uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.user_roles r join public.role_definitions d on d.code = r.role
+     where r.user_id = p_user_id and d.is_reviewer
+  );
+$$;
+
+-- Legacy meaning of "admin" (the old is_admin flag): Creator or Watcher.
+-- Only still used by the admin inbox and the admin dashboard, which the new
+-- panels replace. New code uses reviewer_can() / has_role() instead.
+create or replace function private.is_admin(p_user_id uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (select 1 from public.user_roles where user_id = p_user_id and role in ('creator', 'watcher'));
+$$;
+
+-- The highest reviewer tier a person holds, for the activity log.
+create or replace function private.top_reviewer_role(p_user_id uuid)
+returns text
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select r.role from public.user_roles r
+   where r.user_id = p_user_id and r.role in ('creator', 'watcher', 'deacon')
+   order by case r.role when 'creator' then 1 when 'watcher' then 2 else 3 end
+   limit 1;
+$$;
+
+-- ---- Moderation reasons and reviewer permissions (data, not if-statements) --
+
+-- One fixed list. `level` is what a warning with this reason counts as
+-- (green/yellow/red) — the reviewer never picks the level. `applies_to` says
+-- which actions the reason can be used for. `section` lets the marketplace
+-- have its own list later (e.g. "paywalled" is a reason on the free boards
+-- only). Rows marked "assumed" were not spelled out in the memory doc.
+create table if not exists public.moderation_reasons (
+  code text primary key,
+  label text not null,
+  level text check (level in ('green', 'yellow', 'red')),
+  applies_to text[] not null default '{delete,warn}',
+  section text not null default 'boards',
+  sort_order integer not null default 0,
+  active boolean not null default true,
+  note text
+);
+
+insert into public.moderation_reasons (code, label, level, applies_to, sort_order, note) values
+  ('scam',             'Scam or asking for money',                          'red',    '{delete,warn}', 10, null),
+  ('harmful',          'Harmful ideology or harmful content',               'red',    '{delete,warn}', 20, null),
+  ('inappropriate',    'Inappropriate content',                             'red',    '{delete,warn}', 30, 'Level assumed (memory doc chat6).'),
+  ('wrong-ideas',      'Wrong ideas (as defined in the content policy)',    'yellow', '{delete,warn}', 40, 'Wording to be defined in the content policy before launch.'),
+  ('ads',              'Ads or self-promotion',                             'yellow', '{delete,warn}', 50, null),
+  ('paywalled',        'Paywalled or costs money',                          'yellow', '{delete,warn}', 60, 'Level assumed (memory doc chat6).'),
+  ('copyright',        'Copyright — not their work',                        'yellow', '{delete,warn}', 70, 'Level assumed (memory doc chat6).'),
+  ('off-topic',        'Off-topic / not education related',                 'green',  '{delete,warn}', 80, null),
+  ('other',            'Something else',                                    null,     '{delete}',      90, 'Delete only: a warning needs a reason that sets a level.'),
+  ('no-violation',     'No rule was broken',                                null,     '{dismiss}',    110, 'DRAFT dismissal reason — Clara to edit.'),
+  ('already-handled',  'Already handled',                                   null,     '{dismiss}',    120, 'DRAFT dismissal reason — Clara to edit.'),
+  ('mistaken-report',  'The report was a mistake',                          null,     '{dismiss}',    130, 'DRAFT dismissal reason — Clara to edit.')
+on conflict (code) do update
+  set label = excluded.label, level = excluded.level, applies_to = excluded.applies_to,
+      sort_order = excluded.sort_order, note = excluded.note;
+
+-- What each reviewer role may do to each kind of content. `kind` is the kind
+-- of the thing (file, post, comment, user), not the board it sits on.
+create table if not exists public.reviewer_permissions (
+  role text not null references public.role_definitions (code),
+  kind text not null,
+  action text not null check (action in ('view', 'notice', 'warn', 'delete', 'dismiss')),
+  primary key (role, kind, action)
+);
+
+insert into public.reviewer_permissions (role, kind, action)
+select r.role, k.kind, a.action
+  from (values ('creator'), ('watcher')) as r(role)
+  cross join (values ('file'), ('post'), ('comment')) as k(kind)
+  cross join (values ('view'), ('notice'), ('warn'), ('delete'), ('dismiss')) as a(action)
+on conflict do nothing;
+
+insert into public.reviewer_permissions (role, kind, action)
+select 'deacon', k.kind, a.action
+  from (values ('post'), ('comment')) as k(kind)
+  cross join (values ('view'), ('notice'), ('warn'), ('delete'), ('dismiss')) as a(action)
+on conflict do nothing;
+
+-- Reports about accounts go to the Creator only (the memory doc only gives
+-- Watchers and Deacons post/comment/file reports).
+insert into public.reviewer_permissions (role, kind, action) values
+  ('creator', 'user', 'view'), ('creator', 'user', 'dismiss')
+on conflict do nothing;
+
+create or replace function private.reviewer_can(p_user_id uuid, p_kind text, p_action text)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (
+    select 1
+      from public.user_roles r
+      join public.reviewer_permissions p on p.role = r.role
+     where r.user_id = p_user_id and p.kind = p_kind and p.action = p_action
+  );
+$$;
+
+-- Report target types and content kinds are spelled differently.
+create or replace function private.report_kind(p_target_type text)
+returns text
+language sql
+immutable
+as $$
+  select case p_target_type when 'experience-post' then 'post' else p_target_type end;
+$$;
+
+-- Who wrote a file post / experience post / comment (null for anything else).
+create or replace function private.item_author(p_kind text, p_id uuid)
+returns uuid
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+begin
+  -- plpgsql (not sql) so this can be created before the content tables exist.
+  return case p_kind
+    when 'file'    then (select author_id from public.file_posts where id = p_id)
+    when 'post'    then (select author_id from public.experience_posts where id = p_id)
+    when 'comment' then (select author_id from public.comments where id = p_id)
+    when 'user'    then p_id
+  end;
+end;
+$$;
+
+grant execute on function private.has_role(uuid, text) to anon, authenticated, service_role;
+grant execute on function private.is_reviewer(uuid) to anon, authenticated, service_role;
+grant execute on function private.is_admin(uuid) to anon, authenticated, service_role;
+grant execute on function private.reviewer_can(uuid, text, text) to anon, authenticated, service_role;
+grant execute on function private.report_kind(text) to anon, authenticated, service_role;
+grant execute on function private.item_author(text, uuid) to anon, authenticated, service_role;
+grant execute on function private.top_reviewer_role(uuid) to service_role;
+
+-- ---- Activity log (append-only; only the Creator can read it) --------------
+
+-- One row per reviewer action: what, when, who. Generic on purpose (an event
+-- type plus details) so order/payout events can use it later. Nothing
+-- references profiles, so the record survives an account being deleted.
+-- Undoing something never edits a row: it appends a new row whose `undoes`
+-- points at the original.
+create table if not exists public.activity_log (
+  id bigint generated always as identity primary key,
+  created_at timestamptz not null default now(),
+  actor_id uuid,
+  actor_role text,
+  action text not null,
+  target_kind text,
+  target_id uuid,
+  subject_user_id uuid,
+  reason_code text,
+  details jsonb not null default '{}'::jsonb,
+  undoes bigint references public.activity_log (id)
+);
+
+create unique index if not exists activity_log_undoes_key on public.activity_log (undoes) where undoes is not null;
+create index if not exists activity_log_target_idx on public.activity_log (target_kind, target_id, id);
+create index if not exists activity_log_created_idx on public.activity_log (created_at desc);
+create index if not exists activity_log_subject_idx on public.activity_log (subject_user_id);
+
+create or replace function private.activity_log_is_append_only()
+returns trigger
+language plpgsql
+as $$
+begin
+  raise exception 'The activity log is append-only.';
+end;
+$$;
+
+drop trigger if exists activity_log_no_change on public.activity_log;
+create trigger activity_log_no_change before update or delete on public.activity_log
+  for each row execute function private.activity_log_is_append_only();
+
+drop trigger if exists activity_log_no_truncate on public.activity_log;
+create trigger activity_log_no_truncate before truncate on public.activity_log
+  for each statement execute function private.activity_log_is_append_only();
+
+-- The only way a row gets in. Not granted to anyone: it is called from inside
+-- the SECURITY DEFINER functions below.
+create or replace function private.log_activity(
+  p_actor uuid,
+  p_action text,
+  p_target_kind text,
+  p_target_id uuid,
+  p_subject uuid,
+  p_reason text,
+  p_details jsonb,
+  p_undoes bigint default null
+)
+returns bigint
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id bigint;
+begin
+  insert into public.activity_log (actor_id, actor_role, action, target_kind, target_id, subject_user_id, reason_code, details, undoes)
+  values (p_actor, private.top_reviewer_role(p_actor), p_action, p_target_kind, p_target_id, p_subject, p_reason, coalesce(p_details, '{}'::jsonb), p_undoes)
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+
+alter table public.activity_log enable row level security;
+revoke all on public.activity_log from anon, authenticated;
+grant select on public.activity_log to authenticated;
+
+drop policy if exists "only the Creator reads the activity log" on public.activity_log;
+create policy "only the Creator reads the activity log" on public.activity_log
+  for select using (private.has_role(auth.uid(), 'creator'));
+
+-- ---- Terms, policies and age attestation ------------------------------------
+
+-- Which version of each document exists. `scope` says what accepting it
+-- unlocks: 'hub' for the whole site, 'marketplace' later for buying/selling
+-- only, so a new version can gate one feature without locking everyone out.
+create table if not exists public.terms_versions (
+  kind text not null check (kind in ('terms', 'content-policy', 'safety-policy', 'privacy')),
+  version text not null,
+  scope text not null default 'hub' check (scope in ('hub', 'marketplace')),
+  published_at timestamptz not null default now(),
+  summary text,
+  primary key (kind, version)
+);
+
+insert into public.terms_versions (kind, version, scope, summary) values
+  ('terms',         'draft-1', 'hub', 'Placeholder until the final Terms of Service text is approved.'),
+  ('content-policy','draft-1', 'hub', 'Placeholder until the final content policy text is approved.'),
+  ('safety-policy', 'draft-1', 'hub', 'Placeholder until the final safety policy text is approved.')
+on conflict (kind, version) do nothing;
+
+create table if not exists public.terms_acceptances (
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  kind text not null,
+  version text not null,
+  accepted_at timestamptz not null default now(),
+  primary key (user_id, kind, version),
+  foreign key (kind, version) references public.terms_versions (kind, version)
+);
+
+-- Age attestation is its own explicit field (13+ now) so an 18+ confirmation
+-- can be added later for selling.
+alter table public.profiles add column if not exists age_attested_min integer check (age_attested_min is null or age_attested_min >= 13);
+alter table public.profiles add column if not exists age_attested_at timestamptz;
+
+alter table public.terms_versions enable row level security;
+alter table public.terms_acceptances enable row level security;
+revoke all on public.terms_versions, public.terms_acceptances from anon, authenticated;
+grant select on public.terms_versions to anon, authenticated;
+grant select on public.terms_acceptances to authenticated;
+
+drop policy if exists "terms versions are public" on public.terms_versions;
+create policy "terms versions are public" on public.terms_versions for select using (true);
+
+drop policy if exists "people see their own acceptances" on public.terms_acceptances;
+create policy "people see their own acceptances" on public.terms_acceptances
+  for select using (auth.uid() = user_id);
+
+alter table public.role_definitions enable row level security;
+alter table public.user_roles enable row level security;
+alter table public.moderation_reasons enable row level security;
+alter table public.reviewer_permissions enable row level security;
+revoke all on public.role_definitions, public.user_roles, public.moderation_reasons, public.reviewer_permissions from anon, authenticated;
+grant select on public.role_definitions, public.user_roles, public.moderation_reasons to anon, authenticated;
+grant select on public.reviewer_permissions to authenticated;
+
+drop policy if exists "role definitions are public" on public.role_definitions;
+create policy "role definitions are public" on public.role_definitions for select using (true);
+
+-- Anonymity rule: only the A and V badges are ever visible. Everyone can see
+-- who holds a public-badge role; anything else is visible to the person
+-- themselves and to the Creator alone.
+drop policy if exists "roles are visible only as badges, to oneself, or to the Creator" on public.user_roles;
+create policy "roles are visible only as badges, to oneself, or to the Creator" on public.user_roles
+  for select using (
+    auth.uid() = user_id
+    or private.has_role(auth.uid(), 'creator')
+    or exists (select 1 from public.role_definitions d where d.code = role and d.is_public_badge)
+  );
+
+drop policy if exists "moderation reasons are readable" on public.moderation_reasons;
+create policy "moderation reasons are readable" on public.moderation_reasons for select using (true);
+
+drop policy if exists "reviewers read the permission table" on public.reviewer_permissions;
+create policy "reviewers read the permission table" on public.reviewer_permissions
+  for select using (private.is_reviewer(auth.uid()));
+
 
 -- ============================================================================
 -- follows
@@ -166,10 +557,8 @@ security definer
 set search_path = public
 as $$
 begin
-  if new.is_announcement and not exists (
-    select 1 from public.profiles where id = new.author_id and is_admin
-  ) then
-    raise exception 'Only admins may post announcements';
+  if new.is_announcement and not private.has_role(new.author_id, 'creator') then
+    raise exception 'Only the Creator may post announcements';
   end if;
   return new;
 end;
@@ -215,6 +604,31 @@ create table if not exists public.reports (
 create index if not exists reports_status_idx on public.reports (status);
 
 -- ----------------------------------------------------------------------------
+-- Trash (soft delete). A reviewer's deletion hides an item instead of
+-- removing the row, so the Creator can restore it exactly as it was. The
+-- public read policies below hide anything with deleted_at set; the Creator
+-- reads the trash through list_trash(). (A member deleting their own post
+-- still removes it for good, as before.)
+-- ----------------------------------------------------------------------------
+alter table public.file_posts
+  add column if not exists deleted_at timestamptz,
+  add column if not exists deleted_by uuid,
+  add column if not exists deleted_reason text;
+alter table public.experience_posts
+  add column if not exists deleted_at timestamptz,
+  add column if not exists deleted_by uuid,
+  add column if not exists deleted_reason text;
+alter table public.comments
+  add column if not exists deleted_at timestamptz,
+  add column if not exists deleted_by uuid,
+  add column if not exists deleted_reason text;
+
+create index if not exists file_posts_deleted_idx on public.file_posts (deleted_at) where deleted_at is not null;
+create index if not exists experience_posts_deleted_idx on public.experience_posts (deleted_at) where deleted_at is not null;
+create index if not exists comments_deleted_idx on public.comments (deleted_at) where deleted_at is not null;
+
+
+-- ----------------------------------------------------------------------------
 -- Groups were removed entirely (project memory doc chat5, 2026-10-08).
 -- Older databases still have the groups tables, so this removes them. Every
 -- statement is a no-op once the objects are gone, so re-running is safe.
@@ -251,7 +665,7 @@ security definer
 set search_path = public
 as $$
 begin
-  if not public.is_admin(auth.uid()) then
+  if not private.is_admin(auth.uid()) then
     raise exception 'Only admins can send this notification.';
   end if;
   if p_body is null or char_length(btrim(p_body)) not between 1 and 500 then
@@ -455,6 +869,10 @@ create table if not exists public.notifications (
 
 create index if not exists notifications_user_id_idx on public.notifications (user_id, read);
 
+-- Generic notification payload (event type is `kind`; details go here), so
+-- order, payout and report events can use the same table later.
+alter table public.notifications add column if not exists data jsonb not null default '{}'::jsonb;
+
 -- ============================================================================
 -- RAG knowledge base (Phase 6 uses these; created now since pgvector needs
 -- to be enabled anyway, and the shape is settled)
@@ -537,17 +955,6 @@ alter table public.notifications enable row level security;
 alter table public.kb_documents enable row level security;
 alter table public.kb_chunks enable row level security;
 
--- Small helper used by several policies below.
-create or replace function public.is_admin(p_user_id uuid)
-returns boolean
-language sql
-security definer
-stable
-set search_path = public
-as $$
-  select coalesce((select is_admin from public.profiles where id = p_user_id), false);
-$$;
-
 -- profiles: readable by everyone (public profile pages); only the owner
 -- can update their own row (points/admin/counters are function/trigger
 -- managed, not client-writable — see the column grants below).
@@ -559,7 +966,7 @@ drop policy if exists "users can update their own profile" on public.profiles;
 create policy "users can update their own profile" on public.profiles
   for update using (auth.uid() = id) with check (auth.uid() = id);
 
-revoke update (points, is_admin, followers_count, following_count, files_count, member_since)
+revoke update (points, followers_count, following_count, files_count, member_since)
   on public.profiles from authenticated;
 
 -- follows: readable by everyone; only the follower can create/delete their
@@ -575,19 +982,23 @@ create policy "users manage their own follows" on public.follows
 -- access model. Writes require auth; only the author (or an admin) may
 -- update/delete their own posts.
 drop policy if exists "file posts are publicly readable" on public.file_posts;
-create policy "file posts are publicly readable" on public.file_posts for select using (true);
+create policy "file posts are publicly readable" on public.file_posts for select using (deleted_at is null);
 
 drop policy if exists "signed-in users can post files" on public.file_posts;
 create policy "signed-in users can post files" on public.file_posts
   for insert with check (auth.uid() = author_id);
 
+-- Reviewers never edit or hard-delete members' posts directly: they act
+-- through soft_delete_item() (trash, reason, log), so only authors appear here.
 drop policy if exists "authors and admins can update file posts" on public.file_posts;
-create policy "authors and admins can update file posts" on public.file_posts
-  for update using (auth.uid() = author_id or public.is_admin(auth.uid()));
+drop policy if exists "authors can update file posts" on public.file_posts;
+create policy "authors can update file posts" on public.file_posts
+  for update using (auth.uid() = author_id);
 
 drop policy if exists "authors and admins can delete file posts" on public.file_posts;
-create policy "authors and admins can delete file posts" on public.file_posts
-  for delete using (auth.uid() = author_id or public.is_admin(auth.uid()));
+drop policy if exists "authors can delete file posts" on public.file_posts;
+create policy "authors can delete file posts" on public.file_posts
+  for delete using (auth.uid() = author_id);
 
 -- Per project memory: "flagged files get quarantined automatically, never
 -- shown publicly." Only clean assets are visible to everyone; the
@@ -596,42 +1007,44 @@ create policy "authors and admins can delete file posts" on public.file_posts
 drop policy if exists "clean file assets are publicly readable" on public.file_assets;
 create policy "clean file assets are publicly readable" on public.file_assets
   for select using (
-    scan_status = 'clean'
-    or exists (select 1 from public.file_posts where id = file_post_id and author_id = auth.uid())
-    or public.is_admin(auth.uid())
+    (scan_status = 'clean'
+       and exists (select 1 from public.file_posts where id = file_post_id and deleted_at is null))
+    or exists (select 1 from public.file_posts where id = file_post_id and author_id = auth.uid() and deleted_at is null)
+    or private.reviewer_can(auth.uid(), 'file', 'view')
   );
 
 drop policy if exists "post authors manage their file assets" on public.file_assets;
 create policy "post authors manage their file assets" on public.file_assets
   for all using (
     exists (select 1 from public.file_posts where id = file_post_id and author_id = auth.uid())
-    or public.is_admin(auth.uid())
   );
 
 -- Experience Board: same public-read / authed-write shape. The
 -- announcement_author_must_be_admin trigger (above) is the real guard on
 -- is_announcement; this policy just gates writes to signed-in users.
 drop policy if exists "experience posts are publicly readable" on public.experience_posts;
-create policy "experience posts are publicly readable" on public.experience_posts for select using (true);
+create policy "experience posts are publicly readable" on public.experience_posts for select using (deleted_at is null);
 
 drop policy if exists "signed-in users can post experiences" on public.experience_posts;
 create policy "signed-in users can post experiences" on public.experience_posts
   for insert with check (auth.uid() = author_id);
 
 drop policy if exists "authors and admins can update experience posts" on public.experience_posts;
-create policy "authors and admins can update experience posts" on public.experience_posts
-  for update using (auth.uid() = author_id or public.is_admin(auth.uid()));
+drop policy if exists "authors can update experience posts" on public.experience_posts;
+create policy "authors can update experience posts" on public.experience_posts
+  for update using (auth.uid() = author_id);
 
 drop policy if exists "authors and admins can delete experience posts" on public.experience_posts;
-create policy "authors and admins can delete experience posts" on public.experience_posts
-  for delete using (auth.uid() = author_id or public.is_admin(auth.uid()));
+drop policy if exists "authors can delete experience posts" on public.experience_posts;
+create policy "authors can delete experience posts" on public.experience_posts
+  for delete using (auth.uid() = author_id);
 
 -- Comments: everything on the hub is public (Groups, the only private space,
 -- was removed), so comments on files and posts are readable by everyone.
 drop policy if exists "comments are readable per parent visibility" on public.comments;
 drop policy if exists "comments are publicly readable" on public.comments;
 create policy "comments are publicly readable" on public.comments
-  for select using (true);
+  for select using (deleted_at is null);
 
 drop policy if exists "signed-in users can comment" on public.comments;
 create policy "signed-in users can comment" on public.comments
@@ -641,27 +1054,31 @@ create policy "signed-in users can comment" on public.comments
   );
 
 drop policy if exists "authors and admins can delete comments" on public.comments;
-create policy "authors and admins can delete comments" on public.comments
-  for delete using (auth.uid() = author_id or public.is_admin(auth.uid()));
+drop policy if exists "authors can delete comments" on public.comments;
+create policy "authors can delete comments" on public.comments
+  for delete using (auth.uid() = author_id);
 
 -- Nothing calls these any more (the comment policies above were the last
 -- users), so they can finally go. Must stay below those policies.
 drop function if exists public.is_group_member(uuid, uuid);
 drop function if exists public.group_member_count(uuid);
 
--- Reports: anyone signed in can file one; only admins can read/manage the
--- queue (the admin dashboard's whole reason for existing).
+-- Reports: anyone signed in can file one; reviewers read them per the
+-- permission table (see below).
 drop policy if exists "signed-in users can file reports" on public.reports;
 create policy "signed-in users can file reports" on public.reports
   for insert with check (auth.uid() = reported_by);
 
+-- Who sees which reports comes from the permission table: Watchers and the
+-- Creator see post, comment and file reports; Deacons post and comment
+-- reports; account reports go to the Creator. Settling a report goes through
+-- dismiss_report() / soft_delete_item(), so there is no update policy.
 drop policy if exists "admins manage reports" on public.reports;
-create policy "admins manage reports" on public.reports
-  for select using (public.is_admin(auth.uid()));
+drop policy if exists "reviewers read reports in their scope" on public.reports;
+create policy "reviewers read reports in their scope" on public.reports
+  for select using (private.reviewer_can(auth.uid(), private.report_kind(target_type), 'view'));
 
 drop policy if exists "admins update reports" on public.reports;
-create policy "admins update reports" on public.reports
-  for update using (public.is_admin(auth.uid()));
 
 -- points_events: written only by award_points() (SECURITY DEFINER, runs as
 -- the function owner, bypassing RLS) — no direct client insert policy on
@@ -669,7 +1086,7 @@ create policy "admins update reports" on public.reports
 -- transparency) and admins.
 drop policy if exists "users see their own points history" on public.points_events;
 create policy "users see their own points history" on public.points_events
-  for select using (auth.uid() = user_id or public.is_admin(auth.uid()));
+  for select using (auth.uid() = user_id or private.is_admin(auth.uid()));
 
 -- post_views: written only via record_view() (SECURITY DEFINER). No
 -- client-facing policies needed at all.
@@ -800,7 +1217,7 @@ create policy "members ask the admins" on public.admin_questions
 
 drop policy if exists "askers and admins read questions" on public.admin_questions;
 create policy "askers and admins read questions" on public.admin_questions
-  for select using (auth.uid() = asker_id or public.is_admin(auth.uid()));
+  for select using (auth.uid() = asker_id or private.is_admin(auth.uid()));
 
 -- (Defined here, after the admin_questions table exists — creating a trigger
 -- on a table that isn't there yet breaks a fresh install.)
@@ -835,7 +1252,7 @@ as $$
 declare
   v_q public.admin_questions;
 begin
-  if not public.is_admin(auth.uid()) then
+  if not private.is_admin(auth.uid()) then
     raise exception 'Only admins can retract an answer.';
   end if;
 
@@ -870,7 +1287,7 @@ declare
   v_q public.admin_questions;
   v_text text;
 begin
-  if not public.is_admin(auth.uid()) then
+  if not private.is_admin(auth.uid()) then
     raise exception 'Only admins can answer questions.';
   end if;
   if p_answer is null or char_length(btrim(p_answer)) not between 1 and 4000 then
@@ -997,3 +1414,389 @@ revoke execute on function public.remove_my_ai_key() from public, anon;
 grant execute on function public.remove_my_ai_key() to authenticated;
 revoke execute on function public.get_user_ai_key(uuid) from public, anon, authenticated;
 grant execute on function public.get_user_ai_key(uuid) to service_role;
+
+-- ============================================================================
+-- Moderation actions (chat6: Roles & moderation powers; Trust & safety)
+-- Every one of these checks the caller's role on the server, every time,
+-- writes the activity log, and tells the affected person privately. None of
+-- them announces anything publicly.
+-- ============================================================================
+
+-- Delete (to the trash) a file post, experience post or comment.
+create or replace function public.soft_delete_item(p_kind text, p_id uuid, p_reason text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_author uuid;
+  v_row jsonb;
+  v_reason public.moderation_reasons;
+  v_reports uuid[];
+  v_report_type text;
+  v_label text;
+begin
+  if v_uid is null then raise exception 'Sign in required.'; end if;
+  if p_kind not in ('file', 'post', 'comment') then raise exception 'Unknown kind of item.'; end if;
+  if not private.reviewer_can(v_uid, p_kind, 'delete') then
+    raise exception 'You are not allowed to delete this kind of item.';
+  end if;
+
+  select * into v_reason from public.moderation_reasons
+   where code = p_reason and active and 'delete' = any (applies_to);
+  if not found then raise exception 'Pick a reason from the list.'; end if;
+
+  if p_kind = 'file' then
+    select author_id, to_jsonb(t) into v_author, v_row from public.file_posts t where id = p_id and deleted_at is null;
+  elsif p_kind = 'post' then
+    select author_id, to_jsonb(t) into v_author, v_row from public.experience_posts t where id = p_id and deleted_at is null;
+  else
+    select author_id, to_jsonb(t) into v_author, v_row from public.comments t where id = p_id and deleted_at is null;
+  end if;
+  if v_row is null then raise exception 'That item does not exist or is already deleted.'; end if;
+
+  -- No self-review: you may see reports about your own item but never act on it.
+  if v_author = v_uid then
+    raise exception 'This one is yours. Another reviewer will handle it.';
+  end if;
+
+  if p_kind = 'file' then
+    update public.file_posts set deleted_at = now(), deleted_by = v_uid, deleted_reason = p_reason where id = p_id;
+    delete from public.kb_documents where source_type = 'file-post' and source_id = p_id;
+  elsif p_kind = 'post' then
+    update public.experience_posts set deleted_at = now(), deleted_by = v_uid, deleted_reason = p_reason where id = p_id;
+    delete from public.kb_documents where source_type = 'experience-post' and source_id = p_id;
+  else
+    update public.comments set deleted_at = now(), deleted_by = v_uid, deleted_reason = p_reason where id = p_id;
+  end if;
+
+  -- Reports about it are settled by this deletion; remember which, so undoing
+  -- the deletion can reopen exactly those.
+  v_report_type := case p_kind when 'file' then 'file' when 'post' then 'experience-post' else 'comment' end;
+  select coalesce(array_agg(id), '{}') into v_reports
+    from public.reports where target_type = v_report_type and target_id = p_id and status = 'open';
+  update public.reports set status = 'resolved' where id = any (v_reports);
+
+  perform private.log_activity(
+    v_uid, 'delete', p_kind, p_id, v_author, p_reason,
+    jsonb_build_object('reason_label', v_reason.label, 'resolved_reports', to_jsonb(v_reports), 'snapshot', v_row)
+  );
+
+  v_label := case p_kind when 'file' then 'file' when 'post' then 'post' else 'comment' end;
+  insert into public.notifications (user_id, body, kind, data)
+  values (
+    v_author,
+    format('Your %s was removed because it broke our rules: %s.', v_label, v_reason.label),
+    'content-removed',
+    jsonb_build_object('item_kind', p_kind, 'reason', p_reason)
+  );
+end;
+$$;
+
+-- Settle a report without acting on the content.
+create or replace function public.dismiss_report(p_report_id uuid, p_reason text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_report public.reports;
+  v_kind text;
+  v_author uuid;
+  v_reason public.moderation_reasons;
+begin
+  if v_uid is null then raise exception 'Sign in required.'; end if;
+
+  select * into v_report from public.reports where id = p_report_id and status = 'open';
+  if not found then raise exception 'That report does not exist or is already settled.'; end if;
+
+  v_kind := private.report_kind(v_report.target_type);
+  if not private.reviewer_can(v_uid, v_kind, 'dismiss') then
+    raise exception 'You are not allowed to dismiss this kind of report.';
+  end if;
+
+  select * into v_reason from public.moderation_reasons
+   where code = p_reason and active and 'dismiss' = any (applies_to);
+  if not found then raise exception 'Pick a reason from the list.'; end if;
+
+  v_author := private.item_author(v_kind, v_report.target_id);
+  if v_author = v_uid then
+    raise exception 'This one is yours. Another reviewer will handle it.';
+  end if;
+
+  update public.reports set status = 'dismissed' where id = p_report_id;
+
+  perform private.log_activity(
+    v_uid, 'dismiss-report', 'report', p_report_id, v_author, p_reason,
+    jsonb_build_object('reason_label', v_reason.label, 'report_target_type', v_report.target_type,
+                       'report_target_id', v_report.target_id, 'report_reason', v_report.reason)
+  );
+end;
+$$;
+
+-- Creator only: take back a deletion or a dismissed report. Nothing is
+-- edited in the log: a new "undo" row points at the original. Changes on one
+-- item are undone newest first.
+create or replace function public.undo_activity(p_log_id bigint)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_log public.activity_log;
+  v_report_id uuid;
+begin
+  if v_uid is null or not private.has_role(v_uid, 'creator') then
+    raise exception 'Only the Creator can undo.';
+  end if;
+
+  select * into v_log from public.activity_log where id = p_log_id for update;
+  if not found then raise exception 'That entry does not exist.'; end if;
+  if v_log.undoes is not null then raise exception 'An undo cannot be undone.'; end if;
+  if exists (select 1 from public.activity_log where undoes = p_log_id) then raise exception 'That entry was already undone.'; end if;
+  if v_log.action not in ('delete', 'dismiss-report') then raise exception 'That kind of entry cannot be undone yet.'; end if;
+
+  if exists (
+    select 1 from public.activity_log n
+     where n.id > v_log.id and n.target_kind = v_log.target_kind and n.target_id = v_log.target_id
+       and n.undoes is null
+       and not exists (select 1 from public.activity_log u where u.undoes = n.id)
+  ) then
+    raise exception 'Undo the newer change on this item first.';
+  end if;
+
+  if v_log.action = 'delete' then
+    if v_log.target_kind = 'file' then
+      update public.file_posts set deleted_at = null, deleted_by = null, deleted_reason = null where id = v_log.target_id and deleted_at is not null;
+    elsif v_log.target_kind = 'post' then
+      update public.experience_posts set deleted_at = null, deleted_by = null, deleted_reason = null where id = v_log.target_id and deleted_at is not null;
+    else
+      update public.comments set deleted_at = null, deleted_by = null, deleted_reason = null where id = v_log.target_id and deleted_at is not null;
+    end if;
+    if not found then raise exception 'The item no longer exists.'; end if;
+
+    for v_report_id in select (jsonb_array_elements_text(v_log.details -> 'resolved_reports'))::uuid loop
+      update public.reports set status = 'open' where id = v_report_id and status = 'resolved';
+    end loop;
+  else
+    update public.reports set status = 'open' where id = v_log.target_id and status = 'dismissed';
+    if not found then raise exception 'The report no longer exists.'; end if;
+  end if;
+
+  perform private.log_activity(
+    v_uid, 'undo', v_log.target_kind, v_log.target_id, v_log.subject_user_id, v_log.reason_code,
+    jsonb_build_object('undid_action', v_log.action), p_log_id
+  );
+end;
+$$;
+
+-- Creator only: put a deleted item back (the same as undoing its deletion).
+create or replace function public.restore_item(p_kind text, p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_log_id bigint;
+begin
+  if auth.uid() is null or not private.has_role(auth.uid(), 'creator') then
+    raise exception 'Only the Creator can restore.';
+  end if;
+  select l.id into v_log_id from public.activity_log l
+   where l.action = 'delete' and l.target_kind = p_kind and l.target_id = p_id
+     and not exists (select 1 from public.activity_log u where u.undoes = l.id)
+   order by l.id desc limit 1;
+  if v_log_id is null then raise exception 'That item is not in the trash.'; end if;
+  perform public.undo_activity(v_log_id);
+end;
+$$;
+
+-- Creator only: everything currently in the trash, with a snapshot.
+create or replace function public.list_trash()
+returns table (kind text, id uuid, title text, author_id uuid, deleted_at timestamptz, deleted_by uuid, deleted_reason text, snapshot jsonb)
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+begin
+  if auth.uid() is null or not private.has_role(auth.uid(), 'creator') then
+    raise exception 'Only the Creator can see deleted items.';
+  end if;
+  return query
+    select 'file'::text, t.id, t.title, t.author_id, t.deleted_at, t.deleted_by, t.deleted_reason, to_jsonb(t)
+      from public.file_posts t where t.deleted_at is not null
+    union all
+    select 'post'::text, t.id, coalesce(t.title, left(t.body, 80)), t.author_id, t.deleted_at, t.deleted_by, t.deleted_reason, to_jsonb(t)
+      from public.experience_posts t where t.deleted_at is not null
+    union all
+    select 'comment'::text, t.id, left(t.body, 80), t.author_id, t.deleted_at, t.deleted_by, t.deleted_reason, to_jsonb(t)
+      from public.comments t where t.deleted_at is not null
+    order by 5 desc;
+end;
+$$;
+
+-- Creator only: give or take away a role. The Creator role itself is never
+-- handed out here (it is set directly in the database; see RECOVERY.md).
+create or replace function public.grant_role(p_user_id uuid, p_role text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_def public.role_definitions;
+  v_n integer;
+  v_body text;
+begin
+  if v_uid is null or not private.has_role(v_uid, 'creator') then
+    raise exception 'Only the Creator can give roles.';
+  end if;
+  select * into v_def from public.role_definitions where code = p_role;
+  if not found or p_role = 'creator' then raise exception 'That role cannot be given here.'; end if;
+  if not exists (select 1 from public.profiles where id = p_user_id) then raise exception 'That person does not exist.'; end if;
+
+  insert into public.user_roles (user_id, role, granted_by) values (p_user_id, p_role, v_uid)
+  on conflict do nothing;
+  get diagnostics v_n = row_count;
+  if v_n = 0 then return; end if;
+
+  perform private.log_activity(v_uid, 'role-granted', 'user', p_user_id, p_user_id, null, jsonb_build_object('role', p_role));
+
+  v_body := case p_role
+    when 'watcher'  then 'You have been chosen by the Creator to become a Watcher. You can now see every post, comment and file, review reports, add notices, warn and delete.'
+    when 'deacon'   then 'You have been chosen by the Creator to become a Deacon. You can now see every post and comment, review their reports, add notices, warn and delete.'
+    when 'answerer' then 'The Creator has made you an Answerer. Your posts, files and comments are pinned to the top and an A badge appears next to your name.'
+    when 'verified' then 'The Creator has verified you. A V badge appears next to your name and your comments are highlighted.'
+    else format('The Creator has given you the %s role.', v_def.label)
+  end;
+  insert into public.notifications (user_id, body, kind, data)
+  values (p_user_id, v_body, 'role-granted', jsonb_build_object('role', p_role));
+end;
+$$;
+
+create or replace function public.revoke_role(p_user_id uuid, p_role text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_def public.role_definitions;
+  v_n integer;
+begin
+  if v_uid is null or not private.has_role(v_uid, 'creator') then
+    raise exception 'Only the Creator can take roles away.';
+  end if;
+  select * into v_def from public.role_definitions where code = p_role;
+  if not found or p_role = 'creator' then raise exception 'That role cannot be removed here.'; end if;
+
+  delete from public.user_roles where user_id = p_user_id and role = p_role;
+  get diagnostics v_n = row_count;
+  if v_n = 0 then return; end if;
+
+  perform private.log_activity(v_uid, 'role-revoked', 'user', p_user_id, p_user_id, null, jsonb_build_object('role', p_role));
+  insert into public.notifications (user_id, body, kind, data)
+  values (p_user_id, format('The Creator has removed your %s role. Your account stays as it is.', v_def.label),
+          'role-revoked', jsonb_build_object('role', p_role));
+end;
+$$;
+
+-- Called by the server (service role) just before the Creator deletes an
+-- account, so the deletion is in the activity log with a snapshot of the
+-- profile. The log keeps no link to the account, so it survives the deletion.
+create or replace function public.record_account_deletion(p_actor uuid, p_subject uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  perform private.log_activity(
+    p_actor, 'delete-account', 'user', p_subject, p_subject, null,
+    jsonb_build_object('profile', (select to_jsonb(p) from public.profiles p where p.id = p_subject))
+  );
+end;
+$$;
+revoke execute on function public.record_account_deletion(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.record_account_deletion(uuid, uuid) to service_role;
+
+-- Records that the signed-in person accepted a version of a document.
+create or replace function public.accept_terms(p_kind text, p_version text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then raise exception 'Sign in required.'; end if;
+  if not exists (select 1 from public.terms_versions where kind = p_kind and version = p_version) then
+    raise exception 'Unknown document version.';
+  end if;
+  insert into public.terms_acceptances (user_id, kind, version) values (auth.uid(), p_kind, p_version)
+  on conflict do nothing;
+end;
+$$;
+
+-- Which current documents the signed-in person has not accepted yet, for one
+-- scope ('hub' or 'marketplace'). Powers a "review and accept updated terms"
+-- screen that can gate a single feature instead of the whole site.
+create or replace function public.pending_terms(p_scope text default 'hub')
+returns table (kind text, version text)
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select tv.kind, tv.version
+    from public.terms_versions tv
+   where tv.scope = p_scope
+     and tv.published_at = (select max(t2.published_at) from public.terms_versions t2 where t2.kind = tv.kind and t2.scope = tv.scope)
+     and not exists (
+       select 1 from public.terms_acceptances a
+        where a.user_id = auth.uid() and a.kind = tv.kind and a.version = tv.version
+     );
+$$;
+
+revoke execute on function public.soft_delete_item(text, uuid, text) from public, anon;
+revoke execute on function public.dismiss_report(uuid, text) from public, anon;
+revoke execute on function public.undo_activity(bigint) from public, anon;
+revoke execute on function public.restore_item(text, uuid) from public, anon;
+revoke execute on function public.list_trash() from public, anon;
+revoke execute on function public.grant_role(uuid, text) from public, anon;
+revoke execute on function public.revoke_role(uuid, text) from public, anon;
+revoke execute on function public.accept_terms(text, text) from public, anon;
+revoke execute on function public.pending_terms(text) from public, anon;
+grant execute on function public.soft_delete_item(text, uuid, text) to authenticated;
+grant execute on function public.dismiss_report(uuid, text) to authenticated;
+grant execute on function public.undo_activity(bigint) to authenticated;
+grant execute on function public.restore_item(text, uuid) to authenticated;
+grant execute on function public.list_trash() to authenticated;
+grant execute on function public.grant_role(uuid, text) to authenticated;
+grant execute on function public.revoke_role(uuid, text) to authenticated;
+grant execute on function public.accept_terms(text, text) to authenticated;
+grant execute on function public.pending_terms(text) to authenticated;
+
+-- ---- Retire the old is_admin flag ------------------------------------------
+-- Everything above now decides by role. Anyone who held the old flag becomes
+-- Creator (the closest match: they could do everything), the flag and the
+-- public is_admin() function go, and from now on the Creator role is set
+-- only in the database (see RECOVERY.md). Must stay last: it drops things the
+-- older definitions above depended on.
+do $$
+begin
+  if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'profiles' and column_name = 'is_admin') then
+    execute 'insert into public.user_roles (user_id, role) select id, ''creator'' from public.profiles where is_admin on conflict do nothing';
+    execute 'alter table public.profiles drop column is_admin';
+  end if;
+end $$;
+drop function if exists public.is_admin(uuid);

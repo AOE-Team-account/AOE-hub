@@ -46,7 +46,7 @@ The hub is fully wired to real backends everywhere — no mock data anywhere in 
    - **service_role key** (secret — server-only, never in browser code) → `SUPABASE_SERVICE_ROLE_KEY`
 4. Copy `.env.example` to `.env.local` and fill in those three values. `.env.local` is gitignored — never commit real keys.
 5. (Optional, for easier local testing) In **Authentication → Sign In / Providers → Email**, turn off "Confirm email" so signing up logs you straight in without needing to click an email link.
-6. To make yourself an admin for testing the Admin Dashboard: sign up normally, then in **Table Editor → profiles**, set your row's `is_admin` to `true`.
+6. To make an account the Creator (full power; the old "admin" for testing the Admin Dashboard): sign up normally, then in the **SQL Editor** run `insert into public.user_roles (user_id, role) select id, 'creator' from public.profiles where name = 'YOUR NAME';` (see `RECOVERY.md`). Roles live in the `user_roles` table now; there is no `is_admin` column any more. The Creator role is only ever set this way, never from inside the app.
 
 Without a `.env.local`, the app still builds and runs — auth and real-data pages just won't function (guest browsing works regardless).
 

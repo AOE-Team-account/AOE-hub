@@ -153,8 +153,7 @@ export function ExperienceBoardClient({
           <ClickableCard key={post.id} href={`/experience/${post.id}`}>
             <div className="row wrap" style={{ gap: 6, marginBottom: 6 }}>
               {author && <AuthorLink userId={author.id} name={author.name} />}
-              {author?.isAdmin && <Badge>admin</Badge>}
-              {!author?.isAdmin && post.category && <Badge>{CATEGORY_LABELS[post.category]}</Badge>}
+              {post.isAnnouncement ? <Badge>from AOEhub</Badge> : post.category && <Badge>{CATEGORY_LABELS[post.category]}</Badge>}
               <span className="tiny">{timeAgo(post.createdAt)}</span>
               <ReportButton targetType="experience-post" targetId={post.id} />
             </div>

@@ -11,6 +11,7 @@ export default function SignupPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [needsEmailConfirmation, setNeedsEmailConfirmation] = useState(false);
@@ -23,7 +24,9 @@ export default function SignupPage() {
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { name } },
+      // Recorded by the database when the account is created: the 13+ age
+      // attestation and acceptance of the current terms and policies.
+      options: { data: { name, age_attested_min: 13, accepted_terms: true } },
     });
     setLoading(false);
     if (signUpError) {
@@ -72,12 +75,25 @@ export default function SignupPage() {
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="new-password"
         />
+        <label className="row" style={{ gap: 8, marginTop: 14, alignItems: "flex-start", cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            required
+            checked={agreed}
+            onChange={(e) => setAgreed(e.target.checked)}
+            style={{ width: "auto", marginTop: 3 }}
+          />
+          <span className="tiny">
+            I am 13 or older (if you are younger, a parent or guardian should create the account), and I agree to the
+            Terms of Service and the content and safety policies.
+          </span>
+        </label>
         {error && (
           <p className="muted" style={{ color: "#b5471f", marginTop: 10 }}>
             {error}
           </p>
         )}
-        <Button variant="primary" type="submit" style={{ width: "100%", marginTop: 18 }} disabled={loading}>
+        <Button variant="primary" type="submit" style={{ width: "100%", marginTop: 18 }} disabled={loading || !agreed}>
           {loading ? "Signing up…" : "Sign up free"}
         </Button>
       </form>

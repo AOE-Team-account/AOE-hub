@@ -12,7 +12,6 @@ export interface ProfileRow {
   id: string;
   name: string;
   display_name: string | null;
-  is_admin: boolean;
   member_since: string;
   points: number;
   followers_count: number;
@@ -20,13 +19,17 @@ export interface ProfileRow {
   files_count: number;
 }
 
-export function userFromProfileRow(row: ProfileRow): User {
+// `roles` is only ever passed for the signed-in person themselves: who holds a
+// staff role is secret, so other people's profiles are built with no roles.
+export function userFromProfileRow(row: ProfileRow, roles: string[] = []): User {
   return {
     id: row.id,
     name: row.name,
     displayName: row.display_name ?? undefined,
     initials: initialsFromName(row.display_name || row.name),
-    isAdmin: row.is_admin,
+    roles,
+    isAdmin: roles.includes("creator") || roles.includes("watcher"),
+    isCreator: roles.includes("creator"),
     memberSince: row.member_since,
     points: row.points,
     followers: row.followers_count,

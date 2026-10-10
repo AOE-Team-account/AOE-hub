@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/ai/server/admin-guard";
+import { requireCreator } from "@/lib/ai/server/admin-guard";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 
 export const runtime = "nodejs";
@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 // memberships, notifications, reports, AI settings — the same cascade this
 // project's own disposable test accounts have relied on since Phase 3.
 export async function DELETE(request: Request) {
-  const guard = await requireAdmin();
+  const guard = await requireCreator();
   if (!guard.ok) return guard.response;
 
   const { searchParams } = new URL(request.url);
@@ -19,6 +19,8 @@ export async function DELETE(request: Request) {
   if (userId === guard.userId) return NextResponse.json({ error: "You can't delete your own account from here." }, { status: 400 });
 
   const admin = createServiceRoleClient();
+  // Written to the activity log first, while the profile still exists to snapshot.
+  await admin.rpc("record_account_deletion", { p_actor: guard.userId, p_subject: userId });
   const { error } = await admin.auth.admin.deleteUser(userId);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });

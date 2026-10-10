@@ -53,7 +53,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       return;
     }
-    setUser(userFromProfileRow(data as ProfileRow));
+    const { data: roleRows } = await supabase.from("user_roles").select("role").eq("user_id", userId);
+    setUser(userFromProfileRow(data as ProfileRow, (roleRows ?? []).map((r) => r.role as string)));
   }
 
   useEffect(() => {

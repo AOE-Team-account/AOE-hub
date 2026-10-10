@@ -1,11 +1,12 @@
 "use client";
 
-// Admin moderation actions, called from the browser client with the admin's
-// own session. Content removal and warnings rely on the existing RLS
-// policies ("... or is_admin(auth.uid())" on file_posts/experience_posts/
-// comments, and reports/notifications) — no service role needed here.
-// Account deletion is the one exception (see /api/admin/users) because
-// deleting an auth.users row isn't something RLS can grant to a browser.
+// Reviewer moderation actions, called from the browser client with the
+// reviewer's own session. Each one goes through a database function that
+// checks the caller's role on the server, records the action in the activity
+// log and tells the author privately (see soft_delete_item / dismiss_report in
+// supabase/schema.sql) — no service role needed here. Account deletion is the
+// one exception (see /api/admin/users): deleting an auth.users row isn't
+// something a browser can be granted, and it is Creator-only.
 
 import { createClient } from "@/lib/supabase/client";
 import type { AdminReport } from "@/lib/types";
@@ -39,14 +40,26 @@ async function resolveAuthorId(supabase: Supabase, report: AdminReport): Promise
   return (data as Record<string, string> | null)?.[mapping.authorColumn] ?? null;
 }
 
+// Reviewer deletions go to the trash through soft_delete_item() (reason
+// required, activity log, the author is told privately). The report's own
+// reason is used as the deletion reason until the new panels let the
+// reviewer pick one.
+const DELETE_KIND: Partial<Record<AdminReport["targetType"], string>> = {
+  file: "file",
+  "experience-post": "post",
+  comment: "comment",
+};
+
 export async function removeReportedContent(report: AdminReport): Promise<{ error?: string }> {
-  const mapping = CONTENT_TABLE[report.targetType];
-  if (!mapping) return { error: "This report type has no content to remove — use Delete account instead." };
+  const kind = DELETE_KIND[report.targetType];
+  if (!kind) return { error: "This report type has no content to remove — use Delete account instead." };
   const supabase = createClient();
-  const { error } = await supabase.from(mapping.table).delete().eq("id", report.targetId);
-  if (error) return { error: error.message };
-  await supabase.from("reports").update({ status: "resolved" }).eq("id", report.id);
-  return {};
+  const { error } = await supabase.rpc("soft_delete_item", {
+    p_kind: kind,
+    p_id: report.targetId,
+    p_reason: report.reason,
+  });
+  return error ? { error: error.message } : {};
 }
 
 export async function warnReportedUser(report: AdminReport): Promise<{ error?: string }> {
@@ -59,14 +72,14 @@ export async function warnReportedUser(report: AdminReport): Promise<{ error?: s
     p_user_id: userId,
     p_body: `An admin reviewed a report about your content (reason: ${report.reason}) and is warning you to review the community guidelines.`,
   });
-  if (error) return { error: error.message };
-  await supabase.from("reports").update({ status: "resolved" }).eq("id", report.id);
-  return {};
+  // The report stays open: settling it (delete or dismiss) is a separate,
+  // logged action. Proper warnings arrive with the new Watcher/Deacon panels.
+  return error ? { error: error.message } : {};
 }
 
 export async function dismissReport(reportId: string): Promise<{ error?: string }> {
   const supabase = createClient();
-  const { error } = await supabase.from("reports").update({ status: "dismissed" }).eq("id", reportId);
+  const { error } = await supabase.rpc("dismiss_report", { p_report_id: reportId, p_reason: "no-violation" });
   return error ? { error: error.message } : {};
 }
 

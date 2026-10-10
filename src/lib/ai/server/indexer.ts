@@ -43,7 +43,8 @@ async function pageAll<T>(fetchPage: (from: number, to: number) => PromiseLike<{
 
 // Only PUBLIC, CLEAN content is ever indexed. A file post is included only
 // once at least one of its files has passed the malware scan; if every file
-// is later flagged, the post drops out of the index on the next sync.
+// is later flagged, the post drops out of the index on the next sync. Items a
+// reviewer moved to the trash (deleted_at set) are left out the same way.
 async function collectDesiredDocs(db: Db): Promise<DesiredDoc[]> {
   const docs: DesiredDoc[] = [
     { source_type: "hub-guide", source_id: HUB_GUIDE_SOURCE_ID, title: HUB_GUIDE_TITLE, content: HUB_GUIDE_TEXT },
@@ -53,7 +54,7 @@ async function collectDesiredDocs(db: Db): Promise<DesiredDoc[]> {
     id: string; title: string; description: string; section: string; media_type: string;
     file_assets: { label: string; scan_status: string }[];
   }>((from, to) =>
-    db.from("file_posts").select("id, title, description, section, media_type, file_assets(label, scan_status)").order("id").range(from, to)
+    db.from("file_posts").select("id, title, description, section, media_type, file_assets(label, scan_status)").is("deleted_at", null).order("id").range(from, to)
   );
   for (const p of filePosts) {
     const clean = (p.file_assets ?? []).filter((a) => a.scan_status === "clean");
@@ -69,7 +70,7 @@ async function collectDesiredDocs(db: Db): Promise<DesiredDoc[]> {
   }
 
   const posts = await pageAll<{ id: string; title: string | null; body: string; category: string | null }>((from, to) =>
-    db.from("experience_posts").select("id, title, body, category").order("id").range(from, to)
+    db.from("experience_posts").select("id, title, body, category").is("deleted_at", null).order("id").range(from, to)
   );
   for (const p of posts) {
     const title = p.title?.trim() || "Experience post";

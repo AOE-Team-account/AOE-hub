@@ -8,7 +8,7 @@ import { BackLink } from "@/components/ui/BackLink";
 import { Button } from "@/components/ui/Button";
 
 export default function NewAnnouncementPage() {
-  const ready = useRequireAuthPage("/experience", (user) => user.isAdmin);
+  const ready = useRequireAuthPage("/experience", (user) => user.isCreator);
   const { user } = useAuth();
   const router = useRouter();
   const [title, setTitle] = useState("");
