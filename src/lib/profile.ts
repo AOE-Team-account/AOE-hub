@@ -17,11 +17,12 @@ export interface ProfileRow {
   followers_count: number;
   following_count: number;
   files_count: number;
+  account_status?: "active" | "suspended" | "deleted";
 }
 
 // `roles` is only ever passed for the signed-in person themselves: who holds a
 // staff role is secret, so other people's profiles are built with no roles.
-export function userFromProfileRow(row: ProfileRow, roles: string[] = []): User {
+export function userFromProfileRow(row: ProfileRow, roles: string[] = [], restrictedUntil?: string): User {
   return {
     id: row.id,
     name: row.name,
@@ -30,6 +31,8 @@ export function userFromProfileRow(row: ProfileRow, roles: string[] = []): User 
     roles,
     isAdmin: roles.includes("creator") || roles.includes("watcher"),
     isCreator: roles.includes("creator"),
+    accountStatus: row.account_status ?? "active",
+    restrictedUntil,
     memberSince: row.member_since,
     points: row.points,
     followers: row.followers_count,

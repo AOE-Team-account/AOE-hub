@@ -29,16 +29,29 @@ The nightly backup leaves out the AI's search data (the vectors) because it can 
 update public.kb_documents set indexed_model = null;
 ```
 
-## The activity log is append-only (and so are test rows in it)
+## Before launch: clear the test records
 
-`public.activity_log` refuses updates, deletes and truncates, on purpose. Rows created while testing before launch stay there. If you want a clean log on launch day, the database owner can clear it once, in the SQL Editor:
+Several tables are append-only on purpose (nobody, not even the app, can edit or delete rows): `activity_log` and `warnings`. Test actions made before launch stay in them. On launch day the database owner can clear them once, in the **SQL Editor**. First restore or empty the trash (items still in the trash lose their restore link when the log is cleared). After launch these are evidence — never clear them again.
 
 ```sql
+-- 1. Test content still in the trash and test accounts: erase them first.
+--    (Purging also needs the stored files removed; simplest is to restore or
+--    hard-delete any test items by hand in the Table Editor before this.)
+
+-- 2. Clear the evidence tables.
 alter table public.activity_log disable trigger activity_log_no_change;
 alter table public.activity_log disable trigger activity_log_no_truncate;
 truncate public.activity_log restart identity cascade;
 alter table public.activity_log enable trigger activity_log_no_change;
 alter table public.activity_log enable trigger activity_log_no_truncate;
-```
 
-Do this only before launch. After launch the log is evidence.
+alter table public.warnings disable trigger warnings_protect;
+alter table public.warnings disable trigger warnings_no_truncate;
+truncate public.warnings;
+alter table public.warnings enable trigger warnings_protect;
+alter table public.warnings enable trigger warnings_no_truncate;
+
+truncate public.restrictions, public.account_referrals;
+delete from public.item_notices;
+delete from public.notifications where kind in ('warning','warning-withdrawn','content-removed','role-granted','role-revoked','account-suspended','suspension-review','restriction','account-referral');
+```

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { friendlyWriteError } from "@/lib/errors";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { scanFileWithShortPoll, type ScanResult } from "@/lib/malware-scan/virustotal";
 import { chooseStorageBackend, uploadFile, deleteFile } from "@/lib/storage/router";
@@ -69,7 +70,7 @@ export async function POST(request: Request) {
     .single();
 
   if (postError || !post) {
-    return NextResponse.json({ error: postError?.message ?? "Could not create the post." }, { status: 500 });
+    return NextResponse.json({ error: postError ? friendlyWriteError(postError) : "Could not create the post." }, { status: 500 });
   }
 
   const results: UploadResult[] = [];

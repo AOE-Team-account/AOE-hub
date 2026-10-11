@@ -54,7 +54,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     const { data: roleRows } = await supabase.from("user_roles").select("role").eq("user_id", userId);
-    setUser(userFromProfileRow(data as ProfileRow, (roleRows ?? []).map((r) => r.role as string)));
+    // A one-week restriction in force (own rows only — see the restrictions policy).
+    const { data: restriction } = await supabase
+      .from("restrictions")
+      .select("ends_at")
+      .eq("user_id", userId)
+      .is("lifted_at", null)
+      .gt("ends_at", new Date().toISOString())
+      .order("ends_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    setUser(
+      userFromProfileRow(
+        data as ProfileRow,
+        (roleRows ?? []).map((r) => r.role as string),
+        (restriction?.ends_at as string | undefined) ?? undefined
+      )
+    );
   }
 
   useEffect(() => {

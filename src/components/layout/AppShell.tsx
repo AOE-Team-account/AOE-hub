@@ -6,6 +6,7 @@ import { TopBar } from "./TopBar";
 import { PrimaryTabs } from "./PrimaryTabs";
 import { SignInModal } from "./SignInModal";
 import { ReportModal } from "./ReportModal";
+import { StandingBanner } from "./StandingBanner";
 import { AiFab } from "@/components/ai/AiFab";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -18,6 +19,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div style={{ zoom: textZoom }}>
         <TopBar />
         <PrimaryTabs />
+        <StandingBanner />
         <div className="shell page-body">{children}</div>
       </div>
 

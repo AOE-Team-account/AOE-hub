@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { THEME_SWATCH_ORDER, TEXT_ZOOM_OPTIONS, type TextZoom } from "@/lib/theme-presets";
@@ -10,6 +11,9 @@ import { Toggle } from "@/components/ui/Toggle";
 import type { LanguageCode } from "@/lib/types";
 import { useAuth } from "@/contexts/AuthContext";
 import { AiKeyForm } from "@/components/ai/AiKeyForm";
+import { Modal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
+import { createClient } from "@/lib/supabase/client";
 
 const ZOOM_FONT_SIZE: Record<TextZoom, number> = { 0.9: 12, 1: 15, 1.15: 18, 1.3: 21 };
 
@@ -17,7 +21,25 @@ export default function SettingsPage() {
   const { themeKey, setThemeKey, dark, setDark, textZoom, setTextZoom } = useTheme();
   const { lang, setLang } = useLanguage();
   const [notifyOn, setNotifyOn] = useState(true);
-  const { status } = useAuth();
+  const { status, signOut } = useAuth();
+  const router = useRouter();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function deleteMyAccount() {
+    setDeleting(true);
+    setDeleteError(null);
+    const { error } = await createClient().rpc("delete_my_account");
+    setDeleting(false);
+    if (error) {
+      setDeleteError(error.message);
+      return;
+    }
+    await signOut();
+    router.push("/");
+  }
 
   return (
     <>
@@ -94,6 +116,32 @@ export default function SettingsPage() {
           <Toggle on={notifyOn} onChange={setNotifyOn} label="Notify me about replies and comments" />
         </div>
       </section>
+
+      {status === "authed" && (
+        <section className="settings-block">
+          <p className="label">Delete my account</p>
+          <p className="tiny" style={{ marginBottom: 10 }}>
+            Your account is switched off and your posts, files and comments are hidden right away. After 30 days
+            everything is erased for good. Until then, only the hub&apos;s Creator can restore it.
+          </p>
+          <Button variant="danger" onClick={() => setDeleteOpen(true)}>Delete my account</Button>
+        </section>
+      )}
+
+      <Modal open={deleteOpen} onClose={() => setDeleteOpen(false)}>
+        <p className="title">Delete your account?</p>
+        <p className="muted">
+          You will be signed out and your content disappears from the hub. Type <strong>DELETE</strong> to confirm.
+        </p>
+        <input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="DELETE" autoComplete="off" />
+        {deleteError && <p className="muted" style={{ color: "#b5471f", marginTop: 8 }}>{deleteError}</p>}
+        <div className="row" style={{ gap: 8 }}>
+          <Button variant="danger" disabled={deleting || confirmText.trim() !== "DELETE"} onClick={deleteMyAccount}>
+            {deleting ? "Deleting…" : "Delete my account"}
+          </Button>
+          <Button onClick={() => setDeleteOpen(false)}>Cancel</Button>
+        </div>
+      </Modal>
     </>
   );
 }

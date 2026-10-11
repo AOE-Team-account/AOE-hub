@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth, useRequireAuthPage } from "@/contexts/AuthContext";
+import { friendlyWriteError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/client";
 import { BackLink } from "@/components/ui/BackLink";
 import { Button } from "@/components/ui/Button";
@@ -40,7 +41,7 @@ export default function NewExperiencePostPage() {
       .insert({ author_id: user.id, category, body: body.trim() });
     setSubmitting(false);
     if (insertError) {
-      setError(insertError.message);
+      setError(friendlyWriteError(insertError));
       return;
     }
     router.push("/experience");

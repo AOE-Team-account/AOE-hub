@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { friendlyWriteError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/client";
 import type { Comment, CommentType, User } from "@/lib/types";
 import { AuthorLink } from "@/components/ui/AuthorLink";
@@ -60,7 +61,7 @@ export function Discussion({
       .insert({ parent_type: parentType, parent_id: parentId, author_id: user.id, type, body: body.trim() });
     setSubmitting(false);
     if (insertError) {
-      setError(insertError.message);
+      setError(friendlyWriteError(insertError));
       return;
     }
     setBody("");

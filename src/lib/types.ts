@@ -53,6 +53,10 @@ export interface User {
   /** Creator or Watcher: may use the current admin dashboard. */
   isAdmin: boolean;
   isCreator: boolean;
+  /** Own standing only: 'suspended' means a reviewer paused the account pending the Creator's review. */
+  accountStatus: "active" | "suspended" | "deleted";
+  /** Set while a one-week restriction is in force (ISO time it ends). */
+  restrictedUntil?: string;
   memberSince: string; // ISO date
   points: number;
   followers: number;

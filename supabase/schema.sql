@@ -216,9 +216,10 @@ create table if not exists public.moderation_reasons (
 );
 
 insert into public.moderation_reasons (code, label, level, applies_to, sort_order, note) values
-  ('scam',             'Scam or asking for money',                          'red',    '{delete,warn}', 10, null),
-  ('harmful',          'Harmful ideology or harmful content',               'red',    '{delete,warn}', 20, null),
-  ('inappropriate',    'Inappropriate content',                             'red',    '{delete,warn}', 30, 'Level assumed (memory doc chat6).'),
+  ('scam',             'Scam or asking for money',                          'red',    '{delete,warn,suspend}', 10, null),
+  ('harmful',          'Harmful ideology or harmful content',               'red',    '{delete,warn,suspend}', 20, null),
+  ('inappropriate',    'Inappropriate content',                             'red',    '{delete,warn,suspend}', 30, 'Level assumed (memory doc chat6).'),
+  ('child-safety',     'Child-safety concern',                              'red',    '{delete,warn,suspend}', 35, 'Added at Clara''s request 2026-10-11 (emergency suspension).'),
   ('wrong-ideas',      'Wrong ideas (as defined in the content policy)',    'yellow', '{delete,warn}', 40, 'Wording to be defined in the content policy before launch.'),
   ('ads',              'Ads or self-promotion',                             'yellow', '{delete,warn}', 50, null),
   ('paywalled',        'Paywalled or costs money',                          'yellow', '{delete,warn}', 60, 'Level assumed (memory doc chat6).'),
@@ -237,7 +238,7 @@ on conflict (code) do update
 create table if not exists public.reviewer_permissions (
   role text not null references public.role_definitions (code),
   kind text not null,
-  action text not null check (action in ('view', 'notice', 'warn', 'delete', 'dismiss')),
+  action text not null check (action in ('view', 'notice', 'warn', 'delete', 'dismiss', 'suspend')),
   primary key (role, kind, action)
 );
 
@@ -464,6 +465,229 @@ create policy "moderation reasons are readable" on public.moderation_reasons for
 drop policy if exists "reviewers read the permission table" on public.reviewer_permissions;
 create policy "reviewers read the permission table" on public.reviewer_permissions
   for select using (private.is_reviewer(auth.uid()));
+
+-- ---- Account standing, warnings, restrictions, notices (chat6 "Warnings") ---
+
+-- active: normal. suspended: emergency suspension pending the Creator's review.
+-- deleted: disabled and hidden; erased for good after 30 days (purge_expired).
+alter table public.profiles add column if not exists account_status text not null default 'active'
+  check (account_status in ('active', 'suspended', 'deleted'));
+alter table public.profiles add column if not exists account_status_reason text;
+alter table public.profiles add column if not exists account_status_by uuid;
+alter table public.profiles add column if not exists account_status_changed_at timestamptz;
+
+-- "Suspend" is a reviewer action too (Watchers and the Creator; not Deacons).
+alter table public.reviewer_permissions drop constraint if exists reviewer_permissions_action_check;
+alter table public.reviewer_permissions add constraint reviewer_permissions_action_check
+  check (action in ('view', 'notice', 'warn', 'delete', 'dismiss', 'suspend'));
+insert into public.reviewer_permissions (role, kind, action) values
+  ('creator', 'user', 'suspend'), ('watcher', 'user', 'suspend')
+on conflict do nothing;
+
+-- One row per warning. No foreign key to profiles: the record, like the
+-- activity log, must outlive the account. Only "undone" may ever change.
+create table if not exists public.warnings (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  item_kind text not null check (item_kind in ('file', 'post', 'comment')),
+  item_id uuid,
+  reason_code text not null references public.moderation_reasons (code),
+  level text not null check (level in ('green', 'yellow', 'red')),
+  issued_by uuid,
+  issued_role text,
+  snapshot jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  undone_at timestamptz,
+  undone_by uuid
+);
+
+create index if not exists warnings_user_idx on public.warnings (user_id) where undone_at is null;
+create index if not exists warnings_user_all_idx on public.warnings (user_id, created_at);
+
+create or replace function private.warnings_are_evidence()
+returns trigger
+language plpgsql
+as $$
+begin
+  if tg_op in ('DELETE', 'TRUNCATE') then
+    raise exception 'Warnings are evidence and cannot be deleted.';
+  end if;
+  if old.undone_at is not null
+     or new.undone_at is null
+     or (to_jsonb(new) - 'undone_at' - 'undone_by') <> (to_jsonb(old) - 'undone_at' - 'undone_by') then
+    raise exception 'A warning can only be marked as undone.';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists warnings_protect on public.warnings;
+create trigger warnings_protect before update or delete on public.warnings
+  for each row execute function private.warnings_are_evidence();
+drop trigger if exists warnings_no_truncate on public.warnings;
+create trigger warnings_no_truncate before truncate on public.warnings
+  for each statement execute function private.warnings_are_evidence();
+
+-- A one-week restriction: cannot post, upload or comment; can still read and
+-- download. Applies once when the red count crosses 3.
+create table if not exists public.restrictions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  caused_by_warning uuid,
+  set_by uuid,
+  started_at timestamptz not null default now(),
+  ends_at timestamptz not null,
+  lifted_at timestamptz,
+  lifted_reason text
+);
+
+create index if not exists restrictions_user_idx on public.restrictions (user_id, ends_at);
+
+-- Watchers and Deacons may report an account to the Creator at 5 red.
+create table if not exists public.account_referrals (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  reported_by uuid not null,
+  created_at timestamptz not null default now(),
+  status text not null default 'open' check (status in ('open', 'deleted', 'dismissed')),
+  decided_by uuid,
+  decided_at timestamptz
+);
+
+create unique index if not exists account_referrals_one_open on public.account_referrals (user_id) where status = 'open';
+
+-- The current notice on a post, file or comment. Names the tier, never the
+-- person (anonymity rule); who set it and what it replaced live in the
+-- activity log, which only the Creator reads.
+create table if not exists public.item_notices (
+  item_kind text not null check (item_kind in ('file', 'post', 'comment')),
+  item_id uuid not null,
+  body text not null check (char_length(body) between 1 and 500),
+  tier text not null check (tier in ('watcher', 'deacon', 'creator')),
+  set_at timestamptz not null default now(),
+  primary key (item_kind, item_id)
+);
+
+alter table public.warnings enable row level security;
+alter table public.restrictions enable row level security;
+alter table public.account_referrals enable row level security;
+alter table public.item_notices enable row level security;
+
+drop policy if exists "people see their own restrictions" on public.restrictions;
+create policy "people see their own restrictions" on public.restrictions
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "notices are public" on public.item_notices;
+create policy "notices are public" on public.item_notices for select using (true);
+
+-- Standing helpers. plpgsql where they touch tables created further down.
+create or replace function private.warning_counts(p_user uuid)
+returns table (green_raw integer, yellow_raw integer, red_raw integer, green integer, yellow integer, red integer)
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+declare
+  g integer;
+  y integer;
+  r integer;
+  ey integer;
+begin
+  select count(*) filter (where level = 'green'),
+         count(*) filter (where level = 'yellow'),
+         count(*) filter (where level = 'red')
+    into g, y, r
+    from public.warnings
+   where user_id = p_user and undone_at is null;
+  -- 10 green = 1 yellow; 5 yellow (including those) = 1 red. History is never
+  -- rewritten: only the displayed count converts.
+  ey := y + g / 10;
+  return query select g, y, r, g % 10, ey % 5, r + ey / 5;
+end;
+$$;
+
+create or replace function private.record_text(p_user uuid)
+returns text
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select format('%s red · %s yellow · %s green', c.red, c.yellow, c.green) from private.warning_counts(p_user) c;
+$$;
+
+create or replace function private.is_restricted(p_user uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.restrictions
+     where user_id = p_user and lifted_at is null and ends_at > now()
+  );
+$$;
+
+create or replace function private.author_is_active(p_user uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select coalesce((select account_status = 'active' from public.profiles where id = p_user), false);
+$$;
+
+-- May this account post, upload or comment right now? Decided by account
+-- standing, never by role lists. The Creator never posts: the Creator uses an
+-- ordinary account for that (memory doc: Creator role).
+create or replace function private.can_participate(p_user uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select p_user is not null
+     and private.author_is_active(p_user)
+     and not private.is_restricted(p_user)
+     and not private.has_role(p_user, 'creator');
+$$;
+
+create or replace function private.notify_creators(p_body text, p_kind text, p_data jsonb)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.notifications (user_id, body, kind, data)
+  select user_id, p_body, p_kind, coalesce(p_data, '{}'::jsonb) from public.user_roles where role = 'creator';
+end;
+$$;
+
+-- The AI must never quote content from a suspended or deleted account.
+create or replace function private.drop_kb_for_author(p_user uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.kb_documents
+   where (source_type = 'file-post' and source_id in (select id from public.file_posts where author_id = p_user))
+      or (source_type = 'experience-post' and source_id in (select id from public.experience_posts where author_id = p_user));
+end;
+$$;
+
+grant execute on function private.warning_counts(uuid) to authenticated, service_role;
+grant execute on function private.record_text(uuid) to authenticated, service_role;
+grant execute on function private.is_restricted(uuid) to anon, authenticated, service_role;
+grant execute on function private.author_is_active(uuid) to anon, authenticated, service_role;
+grant execute on function private.can_participate(uuid) to anon, authenticated, service_role;
+
 
 
 -- ============================================================================
@@ -971,7 +1195,7 @@ alter table public.kb_chunks enable row level security;
 -- managed, not client-writable — see the column grants below).
 drop policy if exists "profiles are publicly readable" on public.profiles;
 create policy "profiles are publicly readable" on public.profiles
-  for select using (true);
+  for select using (account_status = 'active' or auth.uid() = id or private.is_reviewer(auth.uid()));
 
 drop policy if exists "users can update their own profile" on public.profiles;
 create policy "users can update their own profile" on public.profiles
@@ -993,11 +1217,18 @@ create policy "users manage their own follows" on public.follows
 -- access model. Writes require auth; only the author (or an admin) may
 -- update/delete their own posts.
 drop policy if exists "file posts are publicly readable" on public.file_posts;
-create policy "file posts are publicly readable" on public.file_posts for select using (deleted_at is null);
+create policy "file posts are publicly readable" on public.file_posts
+  for select using (deleted_at is null and private.author_is_active(author_id));
+
+-- Reviewers also see content of suspended accounts (hidden from everyone
+-- else); the trash stays Creator-only through list_trash().
+drop policy if exists "reviewers see hidden members' files" on public.file_posts;
+create policy "reviewers see hidden members' files" on public.file_posts
+  for select using (deleted_at is null and private.reviewer_can(auth.uid(), 'file', 'view'));
 
 drop policy if exists "signed-in users can post files" on public.file_posts;
 create policy "signed-in users can post files" on public.file_posts
-  for insert with check (auth.uid() = author_id);
+  for insert with check (auth.uid() = author_id and private.can_participate(auth.uid()));
 
 -- Reviewers never edit or hard-delete members' posts directly: they act
 -- through soft_delete_item() (trash, reason, log), so only authors appear here.
@@ -1028,17 +1259,25 @@ drop policy if exists "post authors manage their file assets" on public.file_ass
 create policy "post authors manage their file assets" on public.file_assets
   for all using (
     exists (select 1 from public.file_posts where id = file_post_id and author_id = auth.uid())
+  ) with check (
+    exists (select 1 from public.file_posts where id = file_post_id and author_id = auth.uid())
+    and private.can_participate(auth.uid())
   );
 
 -- Experience Board: same public-read / authed-write shape. The
 -- announcement_author_must_be_admin trigger (above) is the real guard on
 -- is_announcement; this policy just gates writes to signed-in users.
 drop policy if exists "experience posts are publicly readable" on public.experience_posts;
-create policy "experience posts are publicly readable" on public.experience_posts for select using (deleted_at is null);
+create policy "experience posts are publicly readable" on public.experience_posts
+  for select using (deleted_at is null and private.author_is_active(author_id));
+
+drop policy if exists "reviewers see hidden members' posts" on public.experience_posts;
+create policy "reviewers see hidden members' posts" on public.experience_posts
+  for select using (deleted_at is null and private.reviewer_can(auth.uid(), 'post', 'view'));
 
 drop policy if exists "signed-in users can post experiences" on public.experience_posts;
 create policy "signed-in users can post experiences" on public.experience_posts
-  for insert with check (auth.uid() = author_id);
+  for insert with check (auth.uid() = author_id and private.can_participate(auth.uid()));
 
 drop policy if exists "authors and admins can update experience posts" on public.experience_posts;
 drop policy if exists "authors can update experience posts" on public.experience_posts;
@@ -1055,13 +1294,18 @@ create policy "authors can delete experience posts" on public.experience_posts
 drop policy if exists "comments are readable per parent visibility" on public.comments;
 drop policy if exists "comments are publicly readable" on public.comments;
 create policy "comments are publicly readable" on public.comments
-  for select using (deleted_at is null);
+  for select using (deleted_at is null and private.author_is_active(author_id));
+
+drop policy if exists "reviewers see hidden members' comments" on public.comments;
+create policy "reviewers see hidden members' comments" on public.comments
+  for select using (deleted_at is null and private.reviewer_can(auth.uid(), 'comment', 'view'));
 
 drop policy if exists "signed-in users can comment" on public.comments;
 create policy "signed-in users can comment" on public.comments
   for insert with check (
     auth.uid() = author_id
     and parent_type in ('file', 'experience-post')
+    and private.can_participate(auth.uid())
   );
 
 drop policy if exists "authors and admins can delete comments" on public.comments;
@@ -1549,64 +1793,6 @@ begin
 end;
 $$;
 
--- Creator only: take back a deletion or a dismissed report. Nothing is
--- edited in the log: a new "undo" row points at the original. Changes on one
--- item are undone newest first.
-create or replace function public.undo_activity(p_log_id bigint)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_uid uuid := auth.uid();
-  v_log public.activity_log;
-  v_report_id uuid;
-begin
-  if v_uid is null or not private.has_role(v_uid, 'creator') then
-    raise exception 'Only the Creator can undo.';
-  end if;
-
-  select * into v_log from public.activity_log where id = p_log_id for update;
-  if not found then raise exception 'That entry does not exist.'; end if;
-  if v_log.undoes is not null then raise exception 'An undo cannot be undone.'; end if;
-  if exists (select 1 from public.activity_log where undoes = p_log_id) then raise exception 'That entry was already undone.'; end if;
-  if v_log.action not in ('delete', 'dismiss-report') then raise exception 'That kind of entry cannot be undone yet.'; end if;
-
-  if exists (
-    select 1 from public.activity_log n
-     where n.id > v_log.id and n.target_kind = v_log.target_kind and n.target_id = v_log.target_id
-       and n.undoes is null
-       and not exists (select 1 from public.activity_log u where u.undoes = n.id)
-  ) then
-    raise exception 'Undo the newer change on this item first.';
-  end if;
-
-  if v_log.action = 'delete' then
-    if v_log.target_kind = 'file' then
-      update public.file_posts set deleted_at = null, deleted_by = null, deleted_reason = null where id = v_log.target_id and deleted_at is not null;
-    elsif v_log.target_kind = 'post' then
-      update public.experience_posts set deleted_at = null, deleted_by = null, deleted_reason = null where id = v_log.target_id and deleted_at is not null;
-    else
-      update public.comments set deleted_at = null, deleted_by = null, deleted_reason = null where id = v_log.target_id and deleted_at is not null;
-    end if;
-    if not found then raise exception 'The item no longer exists.'; end if;
-
-    for v_report_id in select (jsonb_array_elements_text(v_log.details -> 'resolved_reports'))::uuid loop
-      update public.reports set status = 'open' where id = v_report_id and status = 'resolved';
-    end loop;
-  else
-    update public.reports set status = 'open' where id = v_log.target_id and status = 'dismissed';
-    if not found then raise exception 'The report no longer exists.'; end if;
-  end if;
-
-  perform private.log_activity(
-    v_uid, 'undo', v_log.target_kind, v_log.target_id, v_log.subject_user_id, v_log.reason_code,
-    jsonb_build_object('undid_action', v_log.action), p_log_id
-  );
-end;
-$$;
-
 -- Creator only: put a deleted item back (the same as undoing its deletion).
 create or replace function public.restore_item(p_kind text, p_id uuid)
 returns void
@@ -1722,24 +1908,7 @@ begin
 end;
 $$;
 
--- Called by the server (service role) just before the Creator deletes an
--- account, so the deletion is in the activity log with a snapshot of the
--- profile. The log keeps no link to the account, so it survives the deletion.
-create or replace function public.record_account_deletion(p_actor uuid, p_subject uuid)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  perform private.log_activity(
-    p_actor, 'delete-account', 'user', p_subject, p_subject, null,
-    jsonb_build_object('profile', (select to_jsonb(p) from public.profiles p where p.id = p_subject))
-  );
-end;
-$$;
-revoke execute on function public.record_account_deletion(uuid, uuid) from public, anon, authenticated;
-grant execute on function public.record_account_deletion(uuid, uuid) to service_role;
+drop function if exists public.record_account_deletion(uuid, uuid);
 
 -- Records that the signed-in person accepted a version of a document.
 create or replace function public.accept_terms(p_kind text, p_version text)
@@ -1780,7 +1949,6 @@ $$;
 
 revoke execute on function public.soft_delete_item(text, uuid, text) from public, anon;
 revoke execute on function public.dismiss_report(uuid, text) from public, anon;
-revoke execute on function public.undo_activity(bigint) from public, anon;
 revoke execute on function public.restore_item(text, uuid) from public, anon;
 revoke execute on function public.list_trash() from public, anon;
 revoke execute on function public.grant_role(uuid, text) from public, anon;
@@ -1789,7 +1957,6 @@ revoke execute on function public.accept_terms(text, text) from public, anon;
 revoke execute on function public.pending_terms(text) from public, anon;
 grant execute on function public.soft_delete_item(text, uuid, text) to authenticated;
 grant execute on function public.dismiss_report(uuid, text) to authenticated;
-grant execute on function public.undo_activity(bigint) to authenticated;
 grant execute on function public.restore_item(text, uuid) to authenticated;
 grant execute on function public.list_trash() to authenticated;
 grant execute on function public.grant_role(uuid, text) to authenticated;
@@ -1811,6 +1978,595 @@ begin
   end if;
 end $$;
 drop function if exists public.is_admin(uuid);
+
+
+-- ============================================================================
+-- Warnings, notices, suspension, account deletion (chat6: Warnings, Roles)
+-- ============================================================================
+
+-- Looks up an item's author and a snapshot of it (for evidence). Raises if it
+-- is missing or already in the trash.
+create or replace function private.item_snapshot(p_kind text, p_id uuid, out o_author uuid, out o_row jsonb)
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+begin
+  if p_kind = 'file' then
+    select author_id, to_jsonb(t) into o_author, o_row from public.file_posts t where id = p_id and deleted_at is null;
+  elsif p_kind = 'post' then
+    select author_id, to_jsonb(t) into o_author, o_row from public.experience_posts t where id = p_id and deleted_at is null;
+  elsif p_kind = 'comment' then
+    select author_id, to_jsonb(t) into o_author, o_row from public.comments t where id = p_id and deleted_at is null;
+  end if;
+  if o_row is null then raise exception 'That item does not exist or is already deleted.'; end if;
+end;
+$$;
+
+-- Settles every open report on an item and returns the ids (so an undo can
+-- reopen exactly those).
+create or replace function private.settle_reports(p_kind text, p_id uuid)
+returns uuid[]
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_type text := case p_kind when 'file' then 'file' when 'post' then 'experience-post' else 'comment' end;
+  v_ids uuid[];
+begin
+  select coalesce(array_agg(id), '{}') into v_ids
+    from public.reports where target_type = v_type and target_id = p_id and status = 'open';
+  update public.reports set status = 'resolved' where id = any (v_ids);
+  return v_ids;
+end;
+$$;
+
+-- Warn the person who posted something. The reason sets the level.
+create or replace function public.warn_user(p_kind text, p_id uuid, p_reason text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_author uuid;
+  v_row jsonb;
+  v_reason public.moderation_reasons;
+  v_before integer;
+  v_after integer;
+  v_warning uuid;
+  v_reports uuid[];
+  v_restricted boolean := false;
+  v_body text;
+begin
+  if v_uid is null then raise exception 'Sign in required.'; end if;
+  if p_kind not in ('file', 'post', 'comment') then raise exception 'Unknown kind of item.'; end if;
+  if not private.reviewer_can(v_uid, p_kind, 'warn') then raise exception 'You are not allowed to warn about this kind of item.'; end if;
+
+  select * into v_reason from public.moderation_reasons
+   where code = p_reason and active and 'warn' = any (applies_to) and level is not null;
+  if not found then raise exception 'Pick a reason from the list.'; end if;
+
+  select o_author, o_row into v_author, v_row from private.item_snapshot(p_kind, p_id);
+  if v_author = v_uid then raise exception 'This one is yours. Another reviewer will handle it.'; end if;
+
+  select red into v_before from private.warning_counts(v_author);
+
+  insert into public.warnings (user_id, item_kind, item_id, reason_code, level, issued_by, issued_role, snapshot)
+  values (v_author, p_kind, p_id, p_reason, v_reason.level, v_uid, private.top_reviewer_role(v_uid), v_row)
+  returning id into v_warning;
+
+  select red into v_after from private.warning_counts(v_author);
+  v_reports := private.settle_reports(p_kind, p_id);
+
+  -- Crossing 3 red starts the one-week restriction, once.
+  if coalesce(v_before, 0) < 3 and v_after >= 3 then
+    insert into public.restrictions (user_id, caused_by_warning, set_by, ends_at)
+    values (v_author, v_warning, v_uid, now() + interval '7 days');
+    v_restricted := true;
+  end if;
+
+  perform private.log_activity(
+    v_uid, 'warn', p_kind, p_id, v_author, p_reason,
+    jsonb_build_object('warning_id', v_warning, 'level', v_reason.level, 'reason_label', v_reason.label,
+                       'resolved_reports', to_jsonb(v_reports), 'snapshot', v_row,
+                       'record_after', private.record_text(v_author), 'restriction_started', v_restricted)
+  );
+
+  v_body := format('You received a %s warning: %s. Your record: %s. Repeated warnings lead to restrictions.',
+                   v_reason.level, v_reason.label, private.record_text(v_author));
+  if v_restricted then
+    v_body := v_body || ' Your account is restricted for one week: you can read and download, but not post, upload or comment.';
+  end if;
+  insert into public.notifications (user_id, body, kind, data)
+  values (v_author, v_body, 'warning', jsonb_build_object('level', v_reason.level, 'reason', p_reason, 'restricted', v_restricted));
+end;
+$$;
+
+-- Add or edit the notice shown above a post, file or comment.
+create or replace function public.set_notice(p_kind text, p_id uuid, p_body text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_tier text;
+  v_author uuid;
+  v_row jsonb;
+  v_prev public.item_notices;
+  v_body text;
+  v_reports uuid[];
+begin
+  if v_uid is null then raise exception 'Sign in required.'; end if;
+  if p_kind not in ('file', 'post', 'comment') then raise exception 'Unknown kind of item.'; end if;
+  if not private.reviewer_can(v_uid, p_kind, 'notice') then raise exception 'You are not allowed to add a notice here.'; end if;
+
+  select o_author, o_row into v_author, v_row from private.item_snapshot(p_kind, p_id);
+  if v_author = v_uid then raise exception 'This one is yours. Another reviewer will handle it.'; end if;
+
+  v_tier := private.top_reviewer_role(v_uid);
+  v_body := nullif(btrim(coalesce(p_body, '')), '');
+  if v_body is null then v_body := 'Content below is not fully correct.'; end if;
+  if char_length(v_body) > 500 then raise exception 'A notice can be at most 500 characters.'; end if;
+
+  select * into v_prev from public.item_notices where item_kind = p_kind and item_id = p_id;
+  -- Only the Creator can change or remove a notice the Creator added.
+  if found and v_prev.tier = 'creator' and v_tier <> 'creator' then
+    raise exception 'Only the Creator can change this notice.';
+  end if;
+
+  insert into public.item_notices (item_kind, item_id, body, tier)
+  values (p_kind, p_id, v_body, v_tier)
+  on conflict (item_kind, item_id) do update set body = excluded.body, tier = excluded.tier, set_at = now();
+
+  v_reports := private.settle_reports(p_kind, p_id);
+
+  perform private.log_activity(
+    v_uid, 'notice-set', p_kind, p_id, v_author, null,
+    jsonb_build_object('body', v_body, 'tier', v_tier, 'resolved_reports', to_jsonb(v_reports),
+                       'previous', case when v_prev.item_id is null then null
+                                        else jsonb_build_object('body', v_prev.body, 'tier', v_prev.tier, 'set_at', v_prev.set_at) end,
+                       'snapshot', v_row)
+  );
+end;
+$$;
+
+create or replace function public.remove_notice(p_kind text, p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_tier text;
+  v_prev public.item_notices;
+  v_author uuid;
+begin
+  if v_uid is null then raise exception 'Sign in required.'; end if;
+  if p_kind not in ('file', 'post', 'comment') then raise exception 'Unknown kind of item.'; end if;
+  if not private.reviewer_can(v_uid, p_kind, 'notice') then raise exception 'You are not allowed to change notices here.'; end if;
+
+  select * into v_prev from public.item_notices where item_kind = p_kind and item_id = p_id;
+  if not found then raise exception 'There is no notice to remove.'; end if;
+
+  v_tier := private.top_reviewer_role(v_uid);
+  if v_prev.tier = 'creator' and v_tier <> 'creator' then raise exception 'Only the Creator can remove this notice.'; end if;
+
+  v_author := private.item_author(p_kind, p_id);
+  if v_author = v_uid then raise exception 'This one is yours. Another reviewer will handle it.'; end if;
+
+  delete from public.item_notices where item_kind = p_kind and item_id = p_id;
+
+  perform private.log_activity(
+    v_uid, 'notice-removed', p_kind, p_id, v_author, null,
+    jsonb_build_object('previous', jsonb_build_object('body', v_prev.body, 'tier', v_prev.tier, 'set_at', v_prev.set_at))
+  );
+end;
+$$;
+
+-- Take back a deletion, a dismissed report, a warning or a notice change
+-- (Creator only). Nothing in the log is edited: an "undo" row points at the
+-- original. Deletions, notices and dismissals undo newest first per item;
+-- warnings can be undone in any order because counts are recalculated.
+create or replace function public.undo_activity(p_log_id bigint)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_log public.activity_log;
+  v_report_id uuid;
+  v_warning public.warnings;
+  v_prev jsonb;
+  v_red integer;
+begin
+  if v_uid is null or not private.has_role(v_uid, 'creator') then
+    raise exception 'Only the Creator can undo.';
+  end if;
+
+  select * into v_log from public.activity_log where id = p_log_id for update;
+  if not found then raise exception 'That entry does not exist.'; end if;
+  if v_log.undoes is not null then raise exception 'An undo cannot be undone.'; end if;
+  if exists (select 1 from public.activity_log where undoes = p_log_id) then raise exception 'That entry was already undone.'; end if;
+  if v_log.action not in ('delete', 'dismiss-report', 'warn', 'notice-set', 'notice-removed') then
+    raise exception 'That kind of entry cannot be undone yet.';
+  end if;
+
+  if v_log.action <> 'warn' and exists (
+    select 1 from public.activity_log n
+     where n.id > v_log.id and n.target_kind = v_log.target_kind and n.target_id = v_log.target_id
+       and n.action <> 'warn'
+       and n.undoes is null
+       and not exists (select 1 from public.activity_log u where u.undoes = n.id)
+  ) then
+    raise exception 'Undo the newer change on this item first.';
+  end if;
+
+  if v_log.action = 'delete' then
+    if v_log.target_kind = 'file' then
+      update public.file_posts set deleted_at = null, deleted_by = null, deleted_reason = null where id = v_log.target_id and deleted_at is not null;
+    elsif v_log.target_kind = 'post' then
+      update public.experience_posts set deleted_at = null, deleted_by = null, deleted_reason = null where id = v_log.target_id and deleted_at is not null;
+    else
+      update public.comments set deleted_at = null, deleted_by = null, deleted_reason = null where id = v_log.target_id and deleted_at is not null;
+    end if;
+    if not found then raise exception 'The item no longer exists.'; end if;
+
+  elsif v_log.action = 'dismiss-report' then
+    update public.reports set status = 'open' where id = v_log.target_id and status = 'dismissed';
+    if not found then raise exception 'The report no longer exists.'; end if;
+
+  elsif v_log.action = 'warn' then
+    select * into v_warning from public.warnings where id = (v_log.details ->> 'warning_id')::uuid for update;
+    if not found or v_warning.undone_at is not null then raise exception 'That warning was already undone.'; end if;
+    update public.warnings set undone_at = now(), undone_by = v_uid where id = v_warning.id;
+
+    select red into v_red from private.warning_counts(v_warning.user_id);
+    if v_red < 3 then
+      update public.restrictions set lifted_at = now(), lifted_reason = 'A warning was withdrawn'
+       where user_id = v_warning.user_id and lifted_at is null and ends_at > now();
+    end if;
+    insert into public.notifications (user_id, body, kind, data)
+    values (v_warning.user_id,
+            format('A warning was withdrawn. Your record is now: %s.', private.record_text(v_warning.user_id)),
+            'warning-withdrawn', jsonb_build_object('warning_id', v_warning.id));
+
+  elsif v_log.action in ('notice-set', 'notice-removed') then
+    v_prev := v_log.details -> 'previous';
+    if v_prev is null or jsonb_typeof(v_prev) = 'null' then
+      delete from public.item_notices where item_kind = v_log.target_kind and item_id = v_log.target_id;
+    else
+      insert into public.item_notices (item_kind, item_id, body, tier, set_at)
+      values (v_log.target_kind, v_log.target_id, v_prev ->> 'body', v_prev ->> 'tier', (v_prev ->> 'set_at')::timestamptz)
+      on conflict (item_kind, item_id) do update set body = excluded.body, tier = excluded.tier, set_at = excluded.set_at;
+    end if;
+  end if;
+
+  -- Reports that this action had settled come back, exactly as they were.
+  if v_log.action in ('delete', 'warn', 'notice-set') then
+    for v_report_id in select (jsonb_array_elements_text(coalesce(v_log.details -> 'resolved_reports', '[]'::jsonb)))::uuid loop
+      update public.reports set status = 'open' where id = v_report_id and status = 'resolved';
+    end loop;
+  end if;
+
+  perform private.log_activity(
+    v_uid, 'undo', v_log.target_kind, v_log.target_id, v_log.subject_user_id, v_log.reason_code,
+    jsonb_build_object('undid_action', v_log.action), p_log_id
+  );
+end;
+$$;
+
+-- Emergency suspension (a Watcher or the Creator; never a Deacon). Takes effect
+-- at once: the account cannot sign in, post, upload or comment and its
+-- content is hidden until the Creator decides.
+create or replace function public.suspend_account(p_user_id uuid, p_reason text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_reason public.moderation_reasons;
+  v_status text;
+begin
+  if v_uid is null then raise exception 'Sign in required.'; end if;
+  if not private.reviewer_can(v_uid, 'user', 'suspend') then raise exception 'You are not allowed to suspend accounts.'; end if;
+  if p_user_id = v_uid then raise exception 'You cannot suspend yourself.'; end if;
+  if private.is_reviewer(p_user_id) then
+    raise exception 'Staff accounts cannot be suspended here. Ask the Creator to remove the role first.';
+  end if;
+
+  select * into v_reason from public.moderation_reasons
+   where code = p_reason and active and 'suspend' = any (applies_to);
+  if not found then raise exception 'Pick a reason from the list.'; end if;
+
+  if (select count(*) from public.activity_log
+       where actor_id = v_uid and action = 'suspend' and created_at > now() - interval '1 hour') >= 5 then
+    raise exception 'Too many suspensions in the last hour. Ask the Creator.';
+  end if;
+
+  select account_status into v_status from public.profiles where id = p_user_id;
+  if v_status is null then raise exception 'That person does not exist.'; end if;
+  if v_status <> 'active' then raise exception 'That account is already suspended or deleted.'; end if;
+
+  update public.profiles
+     set account_status = 'suspended', account_status_reason = p_reason, account_status_by = v_uid, account_status_changed_at = now()
+   where id = p_user_id;
+  update auth.users set banned_until = 'infinity' where id = p_user_id;
+  perform private.drop_kb_for_author(p_user_id);
+
+  perform private.log_activity(v_uid, 'suspend', 'user', p_user_id, p_user_id, p_reason,
+                               jsonb_build_object('reason_label', v_reason.label));
+
+  insert into public.notifications (user_id, body, kind, data)
+  values (p_user_id,
+          format('Your account was suspended while the hub''s Creator reviews it. Reason: %s.', v_reason.label),
+          'account-suspended', jsonb_build_object('reason', p_reason));
+  perform private.notify_creators(
+    format('An account was suspended for: %s. Open the Creator panel to review it.', v_reason.label),
+    'suspension-review', jsonb_build_object('user_id', p_user_id, 'reason', p_reason));
+end;
+$$;
+
+-- Creator only: set an account's standing. 'active' lifts a suspension or
+-- restores a deleted account (within the 30 days); 'deleted' disables it.
+create or replace function public.set_account_status(p_user_id uuid, p_status text, p_reason text default null)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_old text;
+  v_profile jsonb;
+begin
+  if v_uid is null or not private.has_role(v_uid, 'creator') then raise exception 'Only the Creator can do this.'; end if;
+  if p_status not in ('active', 'deleted') then raise exception 'Unknown status.'; end if;
+  if p_user_id = v_uid then raise exception 'You cannot change your own account here.'; end if;
+
+  select account_status, to_jsonb(p) into v_old, v_profile from public.profiles p where id = p_user_id;
+  if v_old is null then raise exception 'That person does not exist.'; end if;
+  if v_old = p_status then return; end if;
+  if p_status = 'deleted' and private.has_role(p_user_id, 'creator') then raise exception 'The Creator account cannot be deleted here.'; end if;
+
+  update public.profiles
+     set account_status = p_status, account_status_reason = p_reason, account_status_by = v_uid, account_status_changed_at = now()
+   where id = p_user_id;
+  update auth.users set banned_until = case when p_status = 'active' then null else 'infinity'::timestamptz end where id = p_user_id;
+
+  if p_status = 'deleted' then
+    perform private.drop_kb_for_author(p_user_id);
+    update public.account_referrals set status = 'deleted', decided_by = v_uid, decided_at = now()
+     where user_id = p_user_id and status = 'open';
+  end if;
+
+  perform private.log_activity(
+    v_uid, case when p_status = 'deleted' then 'delete-account' else 'restore-account' end, 'user', p_user_id, p_user_id, null,
+    jsonb_build_object('from', v_old, 'by', 'creator', 'profile', v_profile)
+  );
+end;
+$$;
+
+-- Any member may delete their own account. It is disabled and hidden at once
+-- and erased for good after 30 days; until then the Creator can restore it.
+create or replace function public.delete_my_account()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_profile jsonb;
+begin
+  if v_uid is null then raise exception 'Sign in required.'; end if;
+  if private.has_role(v_uid, 'creator') then
+    raise exception 'The Creator account cannot be deleted from here. See RECOVERY.md.';
+  end if;
+  select to_jsonb(p) into v_profile from public.profiles p where id = v_uid and account_status <> 'deleted';
+  if v_profile is null then raise exception 'That account is already deleted.'; end if;
+
+  update public.profiles
+     set account_status = 'deleted', account_status_reason = 'deleted by the member', account_status_by = v_uid,
+         account_status_changed_at = now()
+   where id = v_uid;
+  update auth.users set banned_until = 'infinity' where id = v_uid;
+  perform private.drop_kb_for_author(v_uid);
+
+  perform private.log_activity(v_uid, 'delete-account', 'user', v_uid, v_uid, null,
+                               jsonb_build_object('by', 'self', 'profile', v_profile));
+end;
+$$;
+
+-- Creator only: apply the normal one-week restriction by hand (for example
+-- after reviewing a suspension).
+create or replace function public.restrict_account(p_user_id uuid, p_reason text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_reason public.moderation_reasons;
+begin
+  if v_uid is null or not private.has_role(v_uid, 'creator') then raise exception 'Only the Creator can do this.'; end if;
+  select * into v_reason from public.moderation_reasons where code = p_reason and active and 'warn' = any (applies_to);
+  if not found then raise exception 'Pick a reason from the list.'; end if;
+  if not exists (select 1 from public.profiles where id = p_user_id) then raise exception 'That person does not exist.'; end if;
+
+  insert into public.restrictions (user_id, set_by, ends_at) values (p_user_id, v_uid, now() + interval '7 days');
+  perform private.log_activity(v_uid, 'restrict', 'user', p_user_id, p_user_id, p_reason,
+                               jsonb_build_object('reason_label', v_reason.label, 'days', 7));
+  insert into public.notifications (user_id, body, kind, data)
+  values (p_user_id, 'Your account is restricted for one week: you can read and download, but not post, upload or comment.',
+          'restriction', jsonb_build_object('reason', p_reason));
+end;
+$$;
+
+-- A Watcher or Deacon reports an account to the Creator once it reaches 5 red.
+create or replace function public.report_to_creator(p_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_red integer;
+begin
+  if v_uid is null or not (private.has_role(v_uid, 'watcher') or private.has_role(v_uid, 'deacon')) then
+    raise exception 'Only a Watcher or Deacon can report an account to the Creator.';
+  end if;
+  if p_user_id = v_uid then raise exception 'You cannot report yourself.'; end if;
+  select red into v_red from private.warning_counts(p_user_id);
+  if v_red < 5 then raise exception 'An account can be reported to the Creator once it has 5 red warnings.'; end if;
+  if exists (select 1 from public.account_referrals where user_id = p_user_id and status = 'open') then
+    raise exception 'This account has already been reported.';
+  end if;
+
+  insert into public.account_referrals (user_id, reported_by) values (p_user_id, v_uid);
+  perform private.log_activity(v_uid, 'report-to-creator', 'user', p_user_id, p_user_id, null,
+                               jsonb_build_object('record', private.record_text(p_user_id)));
+  perform private.notify_creators('An account was reported to you at 5 red warnings. Open the Creator panel → Accounts.',
+                                  'account-referral', jsonb_build_object('user_id', p_user_id));
+end;
+$$;
+
+-- Creator only: decide a referral.
+create or replace function public.decide_referral(p_referral_id uuid, p_decision text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_ref public.account_referrals;
+begin
+  if v_uid is null or not private.has_role(v_uid, 'creator') then raise exception 'Only the Creator can do this.'; end if;
+  if p_decision not in ('delete', 'dismiss') then raise exception 'Unknown decision.'; end if;
+  select * into v_ref from public.account_referrals where id = p_referral_id and status = 'open' for update;
+  if not found then raise exception 'That report does not exist or was already decided.'; end if;
+
+  if p_decision = 'delete' then
+    perform public.set_account_status(v_ref.user_id, 'deleted', 'repeated violations');
+  else
+    update public.account_referrals set status = 'dismissed', decided_by = v_uid, decided_at = now() where id = p_referral_id;
+    perform private.log_activity(v_uid, 'dismiss-referral', 'user', v_ref.user_id, v_ref.user_id, null, '{}'::jsonb);
+  end if;
+end;
+$$;
+
+-- What reviewers see next to a person's name: a count in words, never the
+-- warnings themselves.
+create or replace function public.warning_summaries(p_user_ids uuid[])
+returns table (user_id uuid, green integer, yellow integer, red integer, restricted boolean, account_status text)
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+begin
+  if auth.uid() is null or not private.is_reviewer(auth.uid()) then raise exception 'Reviewers only.'; end if;
+  return query
+    select p.id, c.green, c.yellow, c.red, private.is_restricted(p.id), p.account_status
+      from public.profiles p, lateral private.warning_counts(p.id) c
+     where p.id = any (p_user_ids);
+end;
+$$;
+
+-- Creator only: everything on record about one person, for review or to hand
+-- to a lawyer.
+create or replace function public.person_evidence(p_user_id uuid)
+returns jsonb
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+begin
+  if auth.uid() is null or not private.has_role(auth.uid(), 'creator') then raise exception 'Only the Creator can do this.'; end if;
+  return jsonb_build_object(
+    'profile', (select to_jsonb(p) from public.profiles p where p.id = p_user_id),
+    'record', private.record_text(p_user_id),
+    'warnings', coalesce((select jsonb_agg(to_jsonb(w) order by w.created_at) from public.warnings w where w.user_id = p_user_id), '[]'::jsonb),
+    'restrictions', coalesce((select jsonb_agg(to_jsonb(r) order by r.started_at) from public.restrictions r where r.user_id = p_user_id), '[]'::jsonb),
+    'referrals', coalesce((select jsonb_agg(to_jsonb(a) order by a.created_at) from public.account_referrals a where a.user_id = p_user_id), '[]'::jsonb),
+    'activity', coalesce((select jsonb_agg(to_jsonb(l) order by l.id) from public.activity_log l where l.subject_user_id = p_user_id), '[]'::jsonb)
+  );
+end;
+$$;
+
+-- ---- Erasing for good (30 days after deletion) ------------------------------
+-- Run by the server (service role) from /api/cron/purge-trash, which first
+-- deletes the stored files listed by list_expired_storage().
+create or replace function public.list_expired_storage(p_days integer default 30)
+returns table (asset_id uuid, storage_backend text, storage_path text)
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select a.id, a.storage_backend, a.storage_path
+    from public.file_assets a
+    join public.file_posts p on p.id = a.file_post_id
+   where a.storage_path is not null
+     and (
+       (p.deleted_at is not null and p.deleted_at < now() - make_interval(days => p_days))
+       or exists (select 1 from public.profiles pr
+                   where pr.id = p.author_id and pr.account_status = 'deleted'
+                     and pr.account_status_changed_at < now() - make_interval(days => p_days))
+     );
+$$;
+
+create or replace function public.purge_expired(p_days integer default 30)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_cutoff timestamptz := now() - make_interval(days => p_days);
+  v_files integer;
+  v_posts integer;
+  v_comments integer;
+  v_accounts integer;
+begin
+  delete from public.file_posts where deleted_at is not null and deleted_at < v_cutoff;
+  get diagnostics v_files = row_count;
+  delete from public.experience_posts where deleted_at is not null and deleted_at < v_cutoff;
+  get diagnostics v_posts = row_count;
+  delete from public.comments where deleted_at is not null and deleted_at < v_cutoff;
+  get diagnostics v_comments = row_count;
+  -- Removing the auth user cascades to the profile and everything it owns.
+  delete from auth.users where id in (
+    select id from public.profiles where account_status = 'deleted' and account_status_changed_at < v_cutoff
+  );
+  get diagnostics v_accounts = row_count;
+
+  if v_files + v_posts + v_comments + v_accounts > 0 then
+    perform private.log_activity(null, 'purge', null, null, null, null,
+      jsonb_build_object('file_posts', v_files, 'posts', v_posts, 'comments', v_comments, 'accounts', v_accounts, 'days', p_days));
+  end if;
+  return jsonb_build_object('file_posts', v_files, 'posts', v_posts, 'comments', v_comments, 'accounts', v_accounts);
+end;
+$$;
+
+grant execute on function private.item_snapshot(text, uuid) to service_role;
+grant execute on function private.settle_reports(text, uuid) to service_role;
+grant execute on function private.notify_creators(text, text, jsonb) to service_role;
+grant execute on function private.drop_kb_for_author(uuid) to service_role;
 
 -- Hub announcements: Creator only, shown as coming from AOEhub (never from a
 -- person). The columns that make a post an announcement are not client-writable.
@@ -1864,6 +2620,8 @@ alter default privileges in schema public revoke insert, update, delete, truncat
 
 -- Internal tables: the API roles have no business even reading them.
 revoke all on public.kb_documents, public.kb_chunks, public.post_views from anon, authenticated;
+revoke all on public.warnings, public.account_referrals from anon, authenticated;
+revoke all on public.restrictions from anon;
 
 -- profiles: only the person's own presentation fields. Points, counters,
 -- account status and age attestation are changed by functions/triggers only.
@@ -1928,5 +2686,17 @@ grant execute on function public.revoke_role(uuid, text) to authenticated;
 grant execute on function public.accept_terms(text, text) to authenticated;
 grant execute on function public.pending_terms(text) to authenticated;
 grant execute on function public.post_announcement(text, text) to authenticated;
+grant execute on function public.warn_user(text, uuid, text) to authenticated;
+grant execute on function public.set_notice(text, uuid, text) to authenticated;
+grant execute on function public.remove_notice(text, uuid) to authenticated;
+grant execute on function public.suspend_account(uuid, text) to authenticated;
+grant execute on function public.set_account_status(uuid, text, text) to authenticated;
+grant execute on function public.delete_my_account() to authenticated;
+grant execute on function public.restrict_account(uuid, text) to authenticated;
+grant execute on function public.report_to_creator(uuid) to authenticated;
+grant execute on function public.decide_referral(uuid, text) to authenticated;
+grant execute on function public.warning_summaries(uuid[]) to authenticated;
+grant execute on function public.person_evidence(uuid) to authenticated;
+-- list_expired_storage, purge_expired: server (service role) only.
 -- award_points, record_view, record_download, record_account_deletion,
 -- get_user_ai_key, match_kb_chunks: server (service role) only.

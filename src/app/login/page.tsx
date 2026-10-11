@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { contactSentence } from "@/lib/site";
 import { Button } from "@/components/ui/Button";
 
 export default function LoginPage() {
@@ -23,7 +24,12 @@ export default function LoginPage() {
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (signInError) {
-      setError(signInError.message);
+      // A suspended or deleted account is blocked at sign-in by the auth service.
+      setError(
+        /banned/i.test(signInError.message)
+          ? `This account is suspended or has been deleted. ${contactSentence()}`
+          : signInError.message
+      );
       return;
     }
     // Existing user path — skips onboarding, returns to wherever they were.

@@ -83,9 +83,10 @@ export async function dismissReport(reportId: string): Promise<{ error?: string 
   return error ? { error: error.message } : {};
 }
 
+// Creator only. "Delete" disables the account and hides its content; it is
+// erased for good after 30 days and can be restored until then.
 export async function deleteUserAccount(userId: string): Promise<{ error?: string }> {
-  const res = await fetch(`/api/admin/users?userId=${encodeURIComponent(userId)}`, { method: "DELETE" });
-  if (res.ok) return {};
-  const data = await res.json().catch(() => ({}));
-  return { error: data?.error || "Could not delete the account." };
+  const supabase = createClient();
+  const { error } = await supabase.rpc("set_account_status", { p_user_id: userId, p_status: "deleted" });
+  return error ? { error: error.message } : {};
 }
