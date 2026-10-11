@@ -19,7 +19,9 @@ Points: 1 point per view (counted once per person per day), 5 points per downloa
 
 Authorship: every upload is marked Original, Remix, or Not my work. A remix links back to the original creator automatically.
 
-Trust and safety: a small team moderates the hub. Every file, post and comment has a Report button with structured reasons (scam or money request, off-topic, inappropriate content, paywalled or costs money, copyright or not their work, something else). The team reviews reports before acting. Content that breaks the rules is removed and the member is told privately. The hub works hard to prevent scams but cannot guarantee that none will happen, and it takes no responsibility for one member scamming another.
+Badges: a small A next to a name marks an Answerer (their answers are carefully chosen and pinned to the top) and a small V marks a Verified member (the hub's Creator agrees with their ideas; their comments are highlighted). Verified members can pin one post and one file to a "From verified voices" section at the top of each board. Nobody else's role is ever shown.
+
+Trust and safety: a small team moderates the hub. Every file, post and comment has a Report button with structured reasons (scam or money request, off-topic, inappropriate content, paywalled or costs money, copyright or not their work, something else). The team reviews reports before acting. Warnings are private: each one has a level (green, yellow or red) set by its reason, and repeated warnings lead to a one-week restriction on posting, uploading and commenting; a reviewer can also add a notice above a post that names only the kind of reviewer, never the person. Content that breaks the rules is removed and the member is told privately. The hub works hard to prevent scams but cannot guarantee that none will happen, and it takes no responsibility for one member scamming another.
 
 Languages: the hub is available in English, Simplified Chinese and Traditional Chinese. Post titles, descriptions and comments have a Translate button. Downloaded file contents are never translated.
 

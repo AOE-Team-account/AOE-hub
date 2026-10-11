@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useAuth, useRequireAuthPage } from "@/contexts/AuthContext";
 import { createClient } from "@/lib/supabase/client";
 import { PointsInfoButton } from "@/components/profile/PointsInfoButton";
+import { VerifiedPinsCard } from "@/components/profile/VerifiedPinsCard";
 import { Button } from "@/components/ui/Button";
 import type { ExperiencePost, FilePost } from "@/lib/types";
 
@@ -164,6 +165,8 @@ export default function ProfilePage() {
           )}
         </div>
       )}
+
+      {user.badges.includes("verified") && <VerifiedPinsCard />}
 
       <div className="card row wrap" style={{ gap: 18 }}>
         <Stat label="points" value={user.points.toLocaleString()} />

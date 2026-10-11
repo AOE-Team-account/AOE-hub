@@ -50,6 +50,11 @@ export function Discussion({
     setComments(initialComments);
   }, [initialComments]);
 
+  // Answerers' comments are pinned to the top of the thread (oldest first
+  // within each group, as before).
+  const isAnswerer = (id: string) => authors[id]?.badges.includes("answerer") ?? false;
+  const sortedComments = [...comments.filter((c) => isAnswerer(c.authorId)), ...comments.filter((c) => !isAnswerer(c.authorId))];
+
   function openCompose() {
     if (requireAuth()) setComposeOpen((v) => !v);
   }
@@ -76,7 +81,7 @@ export function Discussion({
     <div className="card">
       <p className="title" style={{ marginBottom: 12 }}>Discussion</p>
       {comments.length === 0 && <p className="muted">No comments yet.</p>}
-      {comments.map((comment) => (
+      {sortedComments.map((comment) => (
         <CommentRow key={comment.id} comment={comment} authors={authors} postAuthorId={postAuthorId} notices={notices} />
       ))}
 
@@ -115,11 +120,21 @@ function CommentRow({
   notices: Record<string, { tier: string; body: string }>;
 }) {
   const author = authors[comment.authorId];
+  const pinned = author?.badges.includes("answerer");
+  const verified = author?.badges.includes("verified");
   return (
-    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10, marginBottom: 10 }}>
+    <div
+      style={{
+        borderTop: "1px solid var(--border)",
+        paddingTop: 10,
+        marginBottom: 10,
+        ...(verified ? { background: "var(--pin-bg)", borderRadius: 8, padding: "10px 10px 2px" } : {}),
+      }}
+    >
       <div className="row wrap" style={{ gap: 6, marginBottom: 4 }}>
+        {pinned && <Badge variant="neutral">Pinned</Badge>}
         <Badge variant="neutral">{TYPE_LABEL[comment.type]}</Badge>
-        {author && <AuthorLink userId={author.id} name={author.name} />}
+        {author && <AuthorLink userId={author.id} name={author.name} badges={author.badges} />}
         <span className="tiny">{new Date(comment.createdAt).toLocaleDateString()}</span>
       </div>
       <NoticeBox notice={notices[comment.id]} />

@@ -50,6 +50,8 @@ export interface User {
   initials: string;
   /** The signed-in person's own roles (never loaded for anyone else — staff roles are secret). */
   roles: string[];
+  /** Public A / V badges (the only roles anyone else can see). */
+  badges: ("answerer" | "verified")[];
   /** Creator or Watcher: may use the current admin dashboard. */
   isAdmin: boolean;
   isCreator: boolean;

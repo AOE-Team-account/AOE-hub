@@ -114,7 +114,11 @@ export function ExperienceBoardClient({
   }, []);
 
   const pinned = posts.find((p) => p.isAnnouncement);
-  const feed = posts.filter((p) => !p.isAnnouncement && (filter === "all" || p.category === filter));
+  const isAnswerer = (authorId: string) => authors[authorId]?.badges.includes("answerer") ?? false;
+  // Answerers' posts are pinned to the top of the board (newest first within
+  // each group). Posts arrive newest first, so a stable split keeps that order.
+  const matching = posts.filter((p) => !p.isAnnouncement && (filter === "all" || p.category === filter));
+  const feed = [...matching.filter((p) => isAnswerer(p.authorId)), ...matching.filter((p) => !isAnswerer(p.authorId))];
 
   return (
     <>
@@ -125,7 +129,7 @@ export function ExperienceBoardClient({
               <path d="M12 17v5M8 3h8l-1 6 3 3H6l3-3z" />
             </svg>
             <span style={{ fontSize: 12, fontWeight: 500 }}>pinned announcement</span>
-            <Badge>admin</Badge>
+            <Badge>AOEhub</Badge>
           </div>
           <p className="title" style={{ margin: "0 0 4px" }}>{pinned.title}</p>
           <p className="muted">{pinned.body}</p>
@@ -152,8 +156,9 @@ export function ExperienceBoardClient({
         return (
           <ClickableCard key={post.id} href={`/experience/${post.id}`}>
             <div className="row wrap" style={{ gap: 6, marginBottom: 6 }}>
-              {post.isAnnouncement ? <span style={{ fontWeight: 500, fontSize: 13 }}>AOEhub</span> : author && <AuthorLink userId={author.id} name={author.name} />}
+              {post.isAnnouncement ? <span style={{ fontWeight: 500, fontSize: 13 }}>AOEhub</span> : author && <AuthorLink userId={author.id} name={author.name} badges={author.badges} />}
               {post.isAnnouncement ? <Badge>from AOEhub</Badge> : post.category && <Badge>{CATEGORY_LABELS[post.category]}</Badge>}
+              {isAnswerer(post.authorId) && <Badge variant="neutral">pinned</Badge>}
               <span className="tiny">{timeAgo(post.createdAt)}</span>
               <ReportButton targetType="experience-post" targetId={post.id} />
             </div>

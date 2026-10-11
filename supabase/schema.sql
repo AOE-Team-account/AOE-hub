@@ -580,6 +580,35 @@ create policy "people see their own restrictions" on public.restrictions
 drop policy if exists "notices are public" on public.item_notices;
 create policy "notices are public" on public.item_notices for select using (true);
 
+-- "From verified voices": a Verified member may pin ONE post and, separately,
+-- ONE file of their own. Self-chosen, never algorithmic, never touches search.
+-- A notice or a warning on the pinned item clears the pin for good; clearing
+-- the notice or restoring the role does not bring it back.
+create table if not exists public.verified_pins (
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  board text not null check (board in ('file', 'post')),
+  item_id uuid not null,
+  pinned_at timestamptz not null default now(),
+  primary key (user_id, board)
+);
+
+alter table public.verified_pins enable row level security;
+drop policy if exists "verified pins are public" on public.verified_pins;
+create policy "verified pins are public" on public.verified_pins for select using (true);
+
+create or replace function private.clear_pins_for_item(p_kind text, p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_kind in ('file', 'post') then
+    delete from public.verified_pins where board = p_kind and item_id = p_id;
+  end if;
+end;
+$$;
+
 -- Standing helpers. plpgsql where they touch tables created further down.
 create or replace function private.warning_counts(p_user uuid)
 returns table (green_raw integer, yellow_raw integer, red_raw integer, green integer, yellow integer, red integer)
@@ -1729,6 +1758,7 @@ begin
 
   -- Reports about it are settled by this deletion; remember which, so undoing
   -- the deletion can reopen exactly those.
+  perform private.clear_pins_for_item(p_kind, p_id);
   v_report_type := case p_kind when 'file' then 'file' when 'post' then 'experience-post' else 'comment' end;
   select coalesce(array_agg(id), '{}') into v_reports
     from public.reports where target_type = v_report_type and target_id = p_id and status = 'open';
@@ -1901,6 +1931,9 @@ begin
   get diagnostics v_n = row_count;
   if v_n = 0 then return; end if;
 
+  if p_role = 'verified' then
+    delete from public.verified_pins where user_id = p_user_id;
+  end if;
   perform private.log_activity(v_uid, 'role-revoked', 'user', p_user_id, p_user_id, null, jsonb_build_object('role', p_role));
   insert into public.notifications (user_id, body, kind, data)
   values (p_user_id, format('The Creator has removed your %s role. Your account stays as it is.', v_def.label),
@@ -2061,6 +2094,7 @@ begin
 
   select red into v_after from private.warning_counts(v_author);
   v_reports := private.settle_reports(p_kind, p_id);
+  perform private.clear_pins_for_item(p_kind, p_id);
 
   -- Crossing 3 red starts the one-week restriction, once.
   if coalesce(v_before, 0) < 3 and v_after >= 3 then
@@ -2125,6 +2159,7 @@ begin
   on conflict (item_kind, item_id) do update set body = excluded.body, tier = excluded.tier, set_at = now();
 
   v_reports := private.settle_reports(p_kind, p_id);
+  perform private.clear_pins_for_item(p_kind, p_id);
 
   perform private.log_activity(
     v_uid, 'notice-set', p_kind, p_id, v_author, null,
@@ -2196,14 +2231,14 @@ begin
   if not found then raise exception 'That entry does not exist.'; end if;
   if v_log.undoes is not null then raise exception 'An undo cannot be undone.'; end if;
   if exists (select 1 from public.activity_log where undoes = p_log_id) then raise exception 'That entry was already undone.'; end if;
-  if v_log.action not in ('delete', 'dismiss-report', 'warn', 'notice-set', 'notice-removed') then
+  if v_log.action not in ('delete', 'dismiss-report', 'warn', 'notice-set', 'notice-removed', 'suspend', 'restrict', 'delete-account') then
     raise exception 'That kind of entry cannot be undone yet.';
   end if;
 
   if v_log.action <> 'warn' and exists (
     select 1 from public.activity_log n
      where n.id > v_log.id and n.target_kind = v_log.target_kind and n.target_id = v_log.target_id
-       and n.action <> 'warn'
+       and n.action not in ('warn', 'restore-account')
        and n.undoes is null
        and not exists (select 1 from public.activity_log u where u.undoes = n.id)
   ) then
@@ -2238,6 +2273,23 @@ begin
     values (v_warning.user_id,
             format('A warning was withdrawn. Your record is now: %s.', private.record_text(v_warning.user_id)),
             'warning-withdrawn', jsonb_build_object('warning_id', v_warning.id));
+
+  elsif v_log.action in ('suspend', 'delete-account') then
+    if (select account_status from public.profiles where id = v_log.target_id)
+       is distinct from (case v_log.action when 'suspend' then 'suspended' else 'deleted' end) then
+      raise exception 'That account is no longer %.', case v_log.action when 'suspend' then 'suspended' else 'deleted' end;
+    end if;
+    perform private.apply_account_status(v_uid, v_log.target_id, 'active', null);
+    insert into public.notifications (user_id, body, kind, data)
+    values (v_log.target_id,
+            case v_log.action when 'suspend' then 'Your suspension was lifted. You can use your account again.' else 'Your account was restored.' end,
+            'account-restored', jsonb_build_object('undid', v_log.action));
+
+  elsif v_log.action = 'restrict' then
+    update public.restrictions set lifted_at = now(), lifted_reason = 'Undone by the Creator'
+     where id = (v_log.details ->> 'restriction_id')::uuid and lifted_at is null;
+    insert into public.notifications (user_id, body, kind, data)
+    values (v_log.target_id, 'Your restriction was lifted.', 'restriction-lifted', '{}'::jsonb);
 
   elsif v_log.action in ('notice-set', 'notice-removed') then
     v_prev := v_log.details -> 'previous';
@@ -2321,6 +2373,45 @@ $$;
 
 -- Creator only: set an account's standing. 'active' lifts a suspension or
 -- restores a deleted account (within the 30 days); 'deleted' disables it.
+-- Moves an account between active / suspended / deleted: the status, the
+-- sign-in ban, the AI's copy of their content and any open referral. Used by
+-- set_account_status() and by undo_activity(). Returns the previous status.
+create or replace function private.apply_account_status(p_actor uuid, p_user uuid, p_status text, p_reason text)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_old text;
+begin
+  select account_status into v_old from public.profiles where id = p_user for update;
+  if v_old is null then raise exception 'That person does not exist.'; end if;
+
+  update public.profiles
+     set account_status = p_status, account_status_reason = p_reason, account_status_by = p_actor,
+         account_status_changed_at = now()
+   where id = p_user;
+  -- A far-future date, not 'infinity': the auth service cannot read infinity
+  -- and would answer "Database error querying schema" instead of "banned".
+  update auth.users
+     set banned_until = case when p_status = 'active' then null else now() + interval '100 years' end
+   where id = p_user;
+
+  if p_status <> 'active' then
+    perform private.drop_kb_for_author(p_user);
+  end if;
+  if p_status = 'deleted' then
+    update public.account_referrals set status = 'deleted', decided_by = p_actor, decided_at = now()
+     where user_id = p_user and status = 'open';
+  end if;
+  return v_old;
+end;
+$$;
+
+-- Creator only: set an account's standing. 'active' lifts a suspension or
+-- restores a deleted account (within the 30 days) and is recorded as an undo
+-- of the suspension/deletion; 'deleted' disables it.
 create or replace function public.set_account_status(p_user_id uuid, p_status text, p_reason text default null)
 returns void
 language plpgsql
@@ -2331,31 +2422,37 @@ declare
   v_uid uuid := auth.uid();
   v_old text;
   v_profile jsonb;
+  v_prior bigint;
 begin
   if v_uid is null or not private.has_role(v_uid, 'creator') then raise exception 'Only the Creator can do this.'; end if;
   if p_status not in ('active', 'deleted') then raise exception 'Unknown status.'; end if;
   if p_user_id = v_uid then raise exception 'You cannot change your own account here.'; end if;
-
-  select account_status, to_jsonb(p) into v_old, v_profile from public.profiles p where id = p_user_id;
-  if v_old is null then raise exception 'That person does not exist.'; end if;
-  if v_old = p_status then return; end if;
   if p_status = 'deleted' and private.has_role(p_user_id, 'creator') then raise exception 'The Creator account cannot be deleted here.'; end if;
 
-  update public.profiles
-     set account_status = p_status, account_status_reason = p_reason, account_status_by = v_uid, account_status_changed_at = now()
-   where id = p_user_id;
-  update auth.users set banned_until = case when p_status = 'active' then null else now() + interval '100 years' end where id = p_user_id;
+  select to_jsonb(p) into v_profile from public.profiles p where id = p_user_id;
+  v_old := private.apply_account_status(v_uid, p_user_id, p_status, p_reason);
+  if v_old = p_status then return; end if;
 
   if p_status = 'deleted' then
-    perform private.drop_kb_for_author(p_user_id);
-    update public.account_referrals set status = 'deleted', decided_by = v_uid, decided_at = now()
-     where user_id = p_user_id and status = 'open';
+    perform private.log_activity(v_uid, 'delete-account', 'user', p_user_id, p_user_id, null,
+                                 jsonb_build_object('from', v_old, 'by', 'creator', 'profile', v_profile));
+  else
+    -- Lifting a suspension or restoring a deleted account IS the undo of it.
+    select l.id into v_prior from public.activity_log l
+     where l.target_kind = 'user' and l.target_id = p_user_id and l.action in ('suspend', 'delete-account')
+       and not exists (select 1 from public.activity_log u where u.undoes = l.id)
+     order by l.id desc limit 1;
+    if v_prior is not null then
+      perform private.log_activity(v_uid, 'undo', 'user', p_user_id, p_user_id, null,
+                                   jsonb_build_object('undid_action', (select action from public.activity_log where id = v_prior)), v_prior);
+    else
+      perform private.log_activity(v_uid, 'restore-account', 'user', p_user_id, p_user_id, null, jsonb_build_object('from', v_old));
+    end if;
+    insert into public.notifications (user_id, body, kind, data)
+    values (p_user_id, case when v_old = 'suspended' then 'Your suspension was lifted. You can use your account again.'
+                            else 'Your account was restored.' end,
+            'account-restored', jsonb_build_object('from', v_old));
   end if;
-
-  perform private.log_activity(
-    v_uid, case when p_status = 'deleted' then 'delete-account' else 'restore-account' end, 'user', p_user_id, p_user_id, null,
-    jsonb_build_object('from', v_old, 'by', 'creator', 'profile', v_profile)
-  );
 end;
 $$;
 
@@ -2401,15 +2498,17 @@ as $$
 declare
   v_uid uuid := auth.uid();
   v_reason public.moderation_reasons;
+  v_restriction uuid;
 begin
   if v_uid is null or not private.has_role(v_uid, 'creator') then raise exception 'Only the Creator can do this.'; end if;
   select * into v_reason from public.moderation_reasons where code = p_reason and active and 'warn' = any (applies_to);
   if not found then raise exception 'Pick a reason from the list.'; end if;
   if not exists (select 1 from public.profiles where id = p_user_id) then raise exception 'That person does not exist.'; end if;
 
-  insert into public.restrictions (user_id, set_by, ends_at) values (p_user_id, v_uid, now() + interval '7 days');
+  insert into public.restrictions (user_id, set_by, ends_at) values (p_user_id, v_uid, now() + interval '7 days')
+  returning id into v_restriction;
   perform private.log_activity(v_uid, 'restrict', 'user', p_user_id, p_user_id, p_reason,
-                               jsonb_build_object('reason_label', v_reason.label, 'days', 7));
+                               jsonb_build_object('reason_label', v_reason.label, 'days', 7, 'restriction_id', v_restriction));
   insert into public.notifications (user_id, body, kind, data)
   values (p_user_id, 'Your account is restricted for one week: you can read and download, but not post, upload or comment.',
           'restriction', jsonb_build_object('reason', p_reason));
@@ -2569,6 +2668,45 @@ grant execute on function private.item_snapshot(text, uuid) to service_role;
 grant execute on function private.settle_reports(text, uuid) to service_role;
 grant execute on function private.notify_creators(text, text, jsonb) to service_role;
 grant execute on function private.drop_kb_for_author(uuid) to service_role;
+
+-- A Verified member pins one of their own posts or files to "From verified
+-- voices". Refused if the item carries a notice or a warning.
+create or replace function public.pin_my_item(p_board text, p_item_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+begin
+  if v_uid is null or not private.has_role(v_uid, 'verified') then raise exception 'Only Verified members can pin here.'; end if;
+  if p_board not in ('file', 'post') then raise exception 'Unknown board.'; end if;
+  if private.item_author(p_board, p_item_id) is distinct from v_uid then raise exception 'You can only pin your own items.'; end if;
+  if (p_board = 'file' and not exists (select 1 from public.file_posts where id = p_item_id and deleted_at is null))
+     or (p_board = 'post' and not exists (select 1 from public.experience_posts where id = p_item_id and deleted_at is null)) then
+    raise exception 'That item is not available.';
+  end if;
+  if exists (select 1 from public.item_notices where item_kind = p_board and item_id = p_item_id) then
+    raise exception 'An item with a notice cannot be pinned.';
+  end if;
+  if exists (select 1 from public.warnings where item_kind = p_board and item_id = p_item_id and undone_at is null) then
+    raise exception 'An item that received a warning cannot be pinned.';
+  end if;
+
+  insert into public.verified_pins (user_id, board, item_id) values (v_uid, p_board, p_item_id)
+  on conflict (user_id, board) do update set item_id = excluded.item_id, pinned_at = now();
+end;
+$$;
+
+create or replace function public.unpin_my_item(p_board text)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  delete from public.verified_pins where user_id = auth.uid() and board = p_board;
+$$;
 
 -- Creator only: look a person up by name or email (nobody is ever listed
 -- without a search).
@@ -2749,6 +2887,8 @@ grant execute on function public.decide_referral(uuid, text) to authenticated;
 grant execute on function public.warning_summaries(uuid[]) to authenticated;
 grant execute on function public.person_evidence(uuid) to authenticated;
 grant execute on function public.find_people(text) to authenticated;
+grant execute on function public.pin_my_item(text, uuid) to authenticated;
+grant execute on function public.unpin_my_item(text) to authenticated;
 grant execute on function public.creator_account_queue() to authenticated;
 -- list_expired_storage, purge_expired: server (service role) only.
 -- award_points, record_view, record_download, record_account_deletion,

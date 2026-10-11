@@ -4,6 +4,7 @@ import { getUserById } from "@/lib/data/users";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { userFromProfileRow, type ProfileRow } from "@/lib/profile";
+import { getBadgeMap } from "@/lib/data/badges";
 import type { User } from "@/lib/types";
 import { BackLink } from "@/components/ui/BackLink";
 import { AuthorLink } from "@/components/ui/AuthorLink";
@@ -44,8 +45,9 @@ export default async function ExperiencePostPage({ params }: PageProps<"/experie
   const { data: authorRows } = commentAuthorIds.length
     ? await supabase.from("profiles").select("*").in("id", commentAuthorIds)
     : { data: [] as ProfileRow[] };
+  const badgeMap = await getBadgeMap(supabase, commentAuthorIds);
   const authors: Record<string, User | undefined> = Object.fromEntries(
-    (authorRows ?? []).map((row) => [row.id, userFromProfileRow(row as ProfileRow)])
+    (authorRows ?? []).map((row) => [row.id, userFromProfileRow(row as ProfileRow, [], undefined, badgeMap[row.id] ?? [])])
   );
 
   const [postNotices, commentNotices] = await Promise.all([
@@ -60,7 +62,7 @@ export default async function ExperiencePostPage({ params }: PageProps<"/experie
       <div className="card">
         <div className="row wrap" style={{ gap: 8, marginBottom: 8 }}>
           {/* Hub announcements read as coming from AOEhub, never from a person. */}
-          {post.isAnnouncement ? <span style={{ fontWeight: 500 }}>AOEhub</span> : author && <AuthorLink userId={author.id} name={author.name} />}
+          {post.isAnnouncement ? <span style={{ fontWeight: 500 }}>AOEhub</span> : author && <AuthorLink userId={author.id} name={author.name} badges={author.badges} />}
           <span className="tiny">
             {new Date(post.createdAt).toLocaleDateString()} · {post.views} views
           </span>

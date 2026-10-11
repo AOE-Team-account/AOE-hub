@@ -22,13 +22,19 @@ export interface ProfileRow {
 
 // `roles` is only ever passed for the signed-in person themselves: who holds a
 // staff role is secret, so other people's profiles are built with no roles.
-export function userFromProfileRow(row: ProfileRow, roles: string[] = [], restrictedUntil?: string): User {
+export function userFromProfileRow(
+  row: ProfileRow,
+  roles: string[] = [],
+  restrictedUntil?: string,
+  badges?: ("answerer" | "verified")[]
+): User {
   return {
     id: row.id,
     name: row.name,
     displayName: row.display_name ?? undefined,
     initials: initialsFromName(row.display_name || row.name),
     roles,
+    badges: badges ?? (roles.filter((r) => r === "answerer" || r === "verified") as ("answerer" | "verified")[]),
     isAdmin: roles.includes("creator") || roles.includes("watcher"),
     isCreator: roles.includes("creator"),
     accountStatus: row.account_status ?? "active",

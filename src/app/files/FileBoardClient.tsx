@@ -45,13 +45,18 @@ function FileBoardContent({ files, authors }: { files: FilePost[]; authors: Reco
   const [mediaType, setMediaType] = useState<MediaType | "all">("all");
 
   const filtered = useMemo(() => {
-    return files.filter((f) => {
+    const matching = files.filter((f) => {
       if (section !== "all" && f.section !== section) return false;
       if (mediaType !== "all" && f.mediaType !== mediaType && !(mediaType === "game" && f.mediaType === "app")) return false;
       if (query && !`${f.title} ${f.description}`.toLowerCase().includes(query.toLowerCase())) return false;
       return true;
     });
-  }, [files, section, mediaType, query]);
+    // Answerers' files are pinned to the top of the board, but never inside a
+    // search: results stay in relevance order.
+    if (query) return matching;
+    const answerer = (f: FilePost) => authors[f.authorId]?.badges.includes("answerer") ?? false;
+    return [...matching.filter(answerer), ...matching.filter((f) => !answerer(f))];
+  }, [files, section, mediaType, query, authors]);
 
   return (
     <>
@@ -98,7 +103,7 @@ function FileBoardContent({ files, authors }: { files: FilePost[]; authors: Reco
               </div>
               <p className="muted">{file.description}</p>
               <div className="row tiny wrap" style={{ gap: 12 }}>
-                {author && <AuthorLink userId={author.id} name={author.name} />}
+                {author && <AuthorLink userId={author.id} name={author.name} badges={author.badges} />}
                 <span>{file.views.toLocaleString()} views</span>
                 <ReportButton targetType="file" targetId={file.id} />
               </div>

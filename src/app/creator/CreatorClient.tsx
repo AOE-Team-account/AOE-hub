@@ -58,7 +58,7 @@ const ACTION_TEXT: Record<string, string> = {
   purge: "Erased expired items for good",
 };
 const KIND_WORD: Record<string, string> = { file: "file", post: "post", comment: "comment", user: "account", report: "report" };
-const UNDOABLE = new Set(["delete", "warn", "notice-set", "notice-removed", "dismiss-report"]);
+const UNDOABLE = new Set(["delete", "warn", "notice-set", "notice-removed", "dismiss-report", "suspend", "restrict", "delete-account"]);
 
 interface Person {
   id: string; name: string; display_name: string | null; email: string; account_status: string; roles: string[]; record: string;
