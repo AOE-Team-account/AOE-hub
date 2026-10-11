@@ -2301,7 +2301,9 @@ begin
   update public.profiles
      set account_status = 'suspended', account_status_reason = p_reason, account_status_by = v_uid, account_status_changed_at = now()
    where id = p_user_id;
-  update auth.users set banned_until = 'infinity' where id = p_user_id;
+  -- A far-future date, not 'infinity': the auth service cannot read infinity
+  -- and would answer "Database error querying schema" instead of "banned".
+  update auth.users set banned_until = now() + interval '100 years' where id = p_user_id;
   perform private.drop_kb_for_author(p_user_id);
 
   perform private.log_activity(v_uid, 'suspend', 'user', p_user_id, p_user_id, p_reason,
@@ -2342,7 +2344,7 @@ begin
   update public.profiles
      set account_status = p_status, account_status_reason = p_reason, account_status_by = v_uid, account_status_changed_at = now()
    where id = p_user_id;
-  update auth.users set banned_until = case when p_status = 'active' then null else 'infinity'::timestamptz end where id = p_user_id;
+  update auth.users set banned_until = case when p_status = 'active' then null else now() + interval '100 years' end where id = p_user_id;
 
   if p_status = 'deleted' then
     perform private.drop_kb_for_author(p_user_id);
@@ -2380,7 +2382,7 @@ begin
      set account_status = 'deleted', account_status_reason = 'deleted by the member', account_status_by = v_uid,
          account_status_changed_at = now()
    where id = v_uid;
-  update auth.users set banned_until = 'infinity' where id = v_uid;
+  update auth.users set banned_until = now() + interval '100 years' where id = v_uid;
   perform private.drop_kb_for_author(v_uid);
 
   perform private.log_activity(v_uid, 'delete-account', 'user', v_uid, v_uid, null,
