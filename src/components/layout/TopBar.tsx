@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -15,6 +15,9 @@ export function TopBar() {
   const { status, user, signOut } = useAuth();
   const { lang, setLang, dict } = useLanguage();
   const router = useRouter();
+  // The reviewer panels are review-only: no create menu inside them.
+  const pathname = usePathname();
+  const inPanel = pathname.startsWith("/mod") || pathname.startsWith("/creator");
   const [openDropdown, setOpenDropdown] = useState<DropdownId>(null);
   const [search, setSearch] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -88,6 +91,7 @@ export function TopBar() {
         <div className="header-actions">
           {status === "authed" ? (
             <>
+              {!inPanel && (
               <div className="plus-wrap">
                 <button
                   className="plus-btn"
@@ -108,13 +112,9 @@ export function TopBar() {
                   <Link href="/experience/new" onClick={() => setOpenDropdown(null)}>
                     Share an experience
                   </Link>
-                  {user?.isAdmin && (
-                    <Link href="/experience/announce" onClick={() => setOpenDropdown(null)}>
-                      Post an announcement <span className="admin-tag">admin only</span>
-                    </Link>
-                  )}
                 </div>
               </div>
+              )}
 
               <div className="avatar-wrap">
                 <button
@@ -161,7 +161,7 @@ export function TopBar() {
                   </Link>
                   {user?.isAdmin && (
                     <Link href="/admin" onClick={() => setOpenDropdown(null)}>
-                      Admin dashboard <span className="admin-tag">admin only</span>
+                      Admin tools <span className="admin-tag">questions &amp; books</span>
                     </Link>
                   )}
                   <hr />

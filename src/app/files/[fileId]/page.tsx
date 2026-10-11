@@ -10,6 +10,8 @@ import { AuthorLink } from "@/components/ui/AuthorLink";
 import { TranslatableText } from "@/components/ui/TranslateButton";
 import { Badge } from "@/components/ui/Badge";
 import { Discussion } from "@/components/discussion/Discussion";
+import { NoticeBox } from "@/components/review/NoticeBox";
+import { getNotices, flattenCommentIds } from "@/lib/data/notices";
 import { DownloadButton, RemixButton } from "@/components/files/FileDetailActions";
 
 function collectAuthorIds(comments: Awaited<ReturnType<typeof listFileComments>>): string[] {
@@ -48,9 +50,15 @@ export default async function FileDetailPage({ params }: PageProps<"/files/[file
     (authorRows ?? []).map((row) => [row.id, userFromProfileRow(row as ProfileRow)])
   );
 
+  const [fileNotices, commentNotices] = await Promise.all([
+    getNotices(supabase, "file", [file.id]),
+    getNotices(supabase, "comment", flattenCommentIds(comments)),
+  ]);
+
   return (
     <>
       <BackLink href="/files" label="Back to File Board" />
+      <NoticeBox notice={fileNotices[file.id]} />
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
         <div className="preview-img large">
           <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -103,6 +111,7 @@ export default async function FileDetailPage({ params }: PageProps<"/files/[file
         authors={authors}
         composeLabel="Ask a question"
         postAuthorId={file.authorId}
+        notices={commentNotices}
       />
     </>
   );

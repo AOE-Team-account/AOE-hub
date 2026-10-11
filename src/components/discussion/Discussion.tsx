@@ -10,6 +10,7 @@ import { AuthorLink } from "@/components/ui/AuthorLink";
 import { TranslatableText } from "@/components/ui/TranslateButton";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { NoticeBox } from "@/components/review/NoticeBox";
 
 const TYPE_LABEL: Record<CommentType, string> = {
   question: "question",
@@ -24,6 +25,7 @@ export function Discussion({
   authors,
   composeLabel,
   postAuthorId,
+  notices = {},
 }: {
   parentType: "file" | "experience-post";
   parentId: string;
@@ -31,6 +33,7 @@ export function Discussion({
   authors: Record<string, User | undefined>;
   composeLabel: string;
   postAuthorId?: string;
+  notices?: Record<string, { tier: string; body: string }>;
 }) {
   const { requireAuth, user } = useAuth();
   const router = useRouter();
@@ -74,7 +77,7 @@ export function Discussion({
       <p className="title" style={{ marginBottom: 12 }}>Discussion</p>
       {comments.length === 0 && <p className="muted">No comments yet.</p>}
       {comments.map((comment) => (
-        <CommentRow key={comment.id} comment={comment} authors={authors} postAuthorId={postAuthorId} />
+        <CommentRow key={comment.id} comment={comment} authors={authors} postAuthorId={postAuthorId} notices={notices} />
       ))}
 
       <Button style={{ width: "100%", marginTop: 12 }} onClick={openCompose}>
@@ -104,10 +107,12 @@ function CommentRow({
   comment,
   authors,
   postAuthorId,
+  notices,
 }: {
   comment: Comment;
   authors: Record<string, User | undefined>;
   postAuthorId?: string;
+  notices: Record<string, { tier: string; body: string }>;
 }) {
   const author = authors[comment.authorId];
   return (
@@ -117,6 +122,7 @@ function CommentRow({
         {author && <AuthorLink userId={author.id} name={author.name} />}
         <span className="tiny">{new Date(comment.createdAt).toLocaleDateString()}</span>
       </div>
+      <NoticeBox notice={notices[comment.id]} />
       <TranslatableText text={comment.body} as="p" className="muted" />
       {comment.replies?.map((reply) => {
         const replyAuthor = authors[reply.authorId];
@@ -126,6 +132,7 @@ function CommentRow({
               <span style={{ fontSize: 12, fontWeight: 500 }}>{replyAuthor?.name}</span>
               {reply.authorId === postAuthorId && <Badge style={{ fontSize: 10 }}>author</Badge>}
             </div>
+            <NoticeBox notice={notices[reply.id]} />
             <p className="muted" style={{ margin: 0, fontSize: 13 }}>
               {reply.body}
             </p>

@@ -6,6 +6,7 @@ import { TopBar } from "./TopBar";
 import { PrimaryTabs } from "./PrimaryTabs";
 import { SignInModal } from "./SignInModal";
 import { ReportModal } from "./ReportModal";
+import { RoleMessageModal } from "./RoleMessageModal";
 import { StandingBanner } from "./StandingBanner";
 import { AiFab } from "@/components/ai/AiFab";
 
@@ -26,6 +27,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <AiFab />
       <SignInModal />
       <ReportModal />
+      <RoleMessageModal />
     </div>
   );
 }

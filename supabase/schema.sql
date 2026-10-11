@@ -2570,6 +2570,55 @@ grant execute on function private.settle_reports(text, uuid) to service_role;
 grant execute on function private.notify_creators(text, text, jsonb) to service_role;
 grant execute on function private.drop_kb_for_author(uuid) to service_role;
 
+-- Creator only: look a person up by name or email (nobody is ever listed
+-- without a search).
+create or replace function public.find_people(p_query text)
+returns table (id uuid, name text, display_name text, email text, account_status text, roles text[], record text)
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+declare
+  v_q text := btrim(coalesce(p_query, ''));
+begin
+  if auth.uid() is null or not private.has_role(auth.uid(), 'creator') then raise exception 'Only the Creator can do this.'; end if;
+  if char_length(v_q) < 2 then return; end if;
+  return query
+    select p.id, p.name, p.display_name, u.email::text, p.account_status,
+           coalesce((select array_agg(r.role order by r.role) from public.user_roles r where r.user_id = p.id), '{}'::text[]),
+           private.record_text(p.id)
+      from public.profiles p
+      join auth.users u on u.id = p.id
+     where p.name ilike '%' || v_q || '%' or p.display_name ilike '%' || v_q || '%' or u.email ilike '%' || v_q || '%'
+     order by p.name
+     limit 20;
+end;
+$$;
+
+-- Creator only: accounts that need a decision (suspended, reported at 5 red)
+-- and accounts that were deleted and can still be restored.
+create or replace function public.creator_account_queue()
+returns table (user_id uuid, name text, email text, account_status text, status_reason text,
+               status_changed_at timestamptz, record text, referral_id uuid, referral_at timestamptz)
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+begin
+  if auth.uid() is null or not private.has_role(auth.uid(), 'creator') then raise exception 'Only the Creator can do this.'; end if;
+  return query
+    select p.id, p.name, u.email::text, p.account_status, p.account_status_reason, p.account_status_changed_at,
+           private.record_text(p.id), a.id, a.created_at
+      from public.profiles p
+      join auth.users u on u.id = p.id
+      left join public.account_referrals a on a.user_id = p.id and a.status = 'open'
+     where p.account_status <> 'active' or a.id is not null
+     order by coalesce(a.created_at, p.account_status_changed_at) desc;
+end;
+$$;
+
 -- Hub announcements: Creator only, shown as coming from AOEhub (never from a
 -- person). The columns that make a post an announcement are not client-writable.
 create or replace function public.post_announcement(p_title text, p_body text)
@@ -2699,6 +2748,8 @@ grant execute on function public.report_to_creator(uuid) to authenticated;
 grant execute on function public.decide_referral(uuid, text) to authenticated;
 grant execute on function public.warning_summaries(uuid[]) to authenticated;
 grant execute on function public.person_evidence(uuid) to authenticated;
+grant execute on function public.find_people(text) to authenticated;
+grant execute on function public.creator_account_queue() to authenticated;
 -- list_expired_storage, purge_expired: server (service role) only.
 -- award_points, record_view, record_download, record_account_deletion,
 -- get_user_ai_key, match_kb_chunks: server (service role) only.

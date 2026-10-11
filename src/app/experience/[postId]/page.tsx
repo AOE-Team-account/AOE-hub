@@ -9,6 +9,8 @@ import { BackLink } from "@/components/ui/BackLink";
 import { AuthorLink } from "@/components/ui/AuthorLink";
 import { TranslatableText } from "@/components/ui/TranslateButton";
 import { Discussion } from "@/components/discussion/Discussion";
+import { NoticeBox } from "@/components/review/NoticeBox";
+import { getNotices, flattenCommentIds } from "@/lib/data/notices";
 
 function collectAuthorIds(comments: Awaited<ReturnType<typeof listExperienceComments>>): string[] {
   const ids: string[] = [];
@@ -46,12 +48,19 @@ export default async function ExperiencePostPage({ params }: PageProps<"/experie
     (authorRows ?? []).map((row) => [row.id, userFromProfileRow(row as ProfileRow)])
   );
 
+  const [postNotices, commentNotices] = await Promise.all([
+    getNotices(supabase, "post", [post.id]),
+    getNotices(supabase, "comment", flattenCommentIds(comments)),
+  ]);
+
   return (
     <>
       <BackLink href="/experience" label="Back to Experience Board" />
+      <NoticeBox notice={postNotices[post.id]} />
       <div className="card">
         <div className="row wrap" style={{ gap: 8, marginBottom: 8 }}>
-          {author && <AuthorLink userId={author.id} name={author.name} />}
+          {/* Hub announcements read as coming from AOEhub, never from a person. */}
+          {post.isAnnouncement ? <span style={{ fontWeight: 500 }}>AOEhub</span> : author && <AuthorLink userId={author.id} name={author.name} />}
           <span className="tiny">
             {new Date(post.createdAt).toLocaleDateString()} · {post.views} views
           </span>
@@ -66,6 +75,7 @@ export default async function ExperiencePostPage({ params }: PageProps<"/experie
         authors={authors}
         composeLabel="Add a comment"
         postAuthorId={post.authorId}
+        notices={commentNotices}
       />
     </>
   );

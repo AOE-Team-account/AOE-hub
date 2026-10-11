@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth, useRequireAuthPage } from "@/contexts/AuthContext";
 import { createClient } from "@/lib/supabase/client";
@@ -151,6 +152,18 @@ export default function ProfilePage() {
           {saving ? "Saving…" : "Save"}
         </Button>
       </div>
+
+      {(user.roles.includes("creator") || user.roles.includes("watcher") || user.roles.includes("deacon")) && (
+        <div className="card row wrap" style={{ gap: 8 }}>
+          {/* Only the person themselves ever sees these; the panel pages
+              re-check the role on the server for every request. */}
+          {user.roles.includes("creator") && <Link href="/creator" className="btn small">Open Creator panel</Link>}
+          {user.roles.includes("watcher") && <Link href="/mod" className="btn small">Open Watcher panel</Link>}
+          {!user.roles.includes("watcher") && user.roles.includes("deacon") && (
+            <Link href="/mod" className="btn small">Open Deacon panel</Link>
+          )}
+        </div>
+      )}
 
       <div className="card row wrap" style={{ gap: 18 }}>
         <Stat label="points" value={user.points.toLocaleString()} />
