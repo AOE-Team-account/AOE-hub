@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getFilePostById, listFileComments } from "@/lib/data/files";
 import { getUserById } from "@/lib/data/users";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/service";
 import { userFromProfileRow, type ProfileRow } from "@/lib/profile";
 import type { User } from "@/lib/types";
 import { BackLink } from "@/components/ui/BackLink";
@@ -35,7 +36,8 @@ export default async function FileDetailPage({ params }: PageProps<"/files/[file
     data: { user: viewer },
   } = await supabase.auth.getUser();
   if (viewer) {
-    await supabase.rpc("record_view", { p_target_type: "file", p_target_id: file.id, p_viewer_id: viewer.id });
+    // Server-only function: the viewer id comes from the verified session above.
+    await createServiceRoleClient().rpc("record_view", { p_target_type: "file", p_target_id: file.id, p_viewer_id: viewer.id });
   }
 
   const commentAuthorIds = [...new Set(collectAuthorIds(comments))];

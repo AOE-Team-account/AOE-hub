@@ -785,7 +785,18 @@ as $$
 declare
   v_file_post_id uuid;
   author uuid;
+  is_new_today boolean;
 begin
+  -- One counted download per person per file per day, so scripted repeat
+  -- downloads cannot farm points for an uploader. (Server-only function.)
+  insert into public.post_views (target_type, target_id, viewer_id)
+  values ('download', p_asset_id, p_downloader_id)
+  on conflict do nothing
+  returning true into is_new_today;
+  if not coalesce(is_new_today, false) then
+    return;
+  end if;
+
   update public.file_assets set downloads = downloads + 1
     where id = p_asset_id
     returning file_post_id into v_file_post_id;
@@ -1800,3 +1811,122 @@ begin
   end if;
 end $$;
 drop function if exists public.is_admin(uuid);
+
+-- Hub announcements: Creator only, shown as coming from AOEhub (never from a
+-- person). The columns that make a post an announcement are not client-writable.
+create or replace function public.post_announcement(p_title text, p_body text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id uuid;
+begin
+  if auth.uid() is null or not private.has_role(auth.uid(), 'creator') then
+    raise exception 'Only the Creator can post announcements.';
+  end if;
+  if p_title is null or char_length(btrim(p_title)) not between 1 and 200 then raise exception 'Title must be 1 to 200 characters.'; end if;
+  if p_body is null or char_length(btrim(p_body)) not between 1 and 5000 then raise exception 'Message must be 1 to 5000 characters.'; end if;
+  insert into public.experience_posts (author_id, title, body, pinned, is_announcement)
+  values (auth.uid(), btrim(p_title), btrim(p_body), true, true)
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+
+-- ============================================================================
+-- Write protection (security hardening, 2026-10-11)
+-- Found by testing against the live project: Supabase grants every API role
+-- full write access to every public table and execute on every public
+-- function by default, so (a) the earlier "revoke update (points, ...)" did
+-- nothing — a member could set their own points; and (b) award_points() was
+-- callable by anyone holding the public key. Row-level security still decided
+-- WHICH rows, but not WHICH COLUMNS or which functions.
+--
+-- From here on: browsers (anon / authenticated) can write only the exact
+-- columns listed below, and call only the functions listed below. Everything
+-- else goes through SECURITY DEFINER functions or the server's service role.
+-- ============================================================================
+
+-- ---- Tables: strip all direct writes, then grant back exactly what's used --
+do $$
+declare
+  t record;
+begin
+  for t in select tablename from pg_tables where schemaname = 'public' loop
+    execute format('revoke insert, update, delete, truncate, references, trigger on public.%I from anon, authenticated', t.tablename);
+  end loop;
+end $$;
+
+-- Tables created later must not get open write access by default either.
+alter default privileges in schema public revoke insert, update, delete, truncate on tables from anon, authenticated;
+
+-- Internal tables: the API roles have no business even reading them.
+revoke all on public.kb_documents, public.kb_chunks, public.post_views from anon, authenticated;
+
+-- profiles: only the person's own presentation fields. Points, counters,
+-- account status and age attestation are changed by functions/triggers only.
+grant update (name, display_name, onboarding_experience, onboarding_reason, referral_source)
+  on public.profiles to authenticated;
+
+grant insert, delete on public.follows to authenticated;
+
+-- file_posts / experience_posts: members create and delete their own; views,
+-- pinned, announcement flags, deletion fields are never client-written.
+grant insert (author_id, title, description, section, media_type, authorship, remix_of_post_id)
+  on public.file_posts to authenticated;
+grant delete on public.file_posts to authenticated;
+
+grant insert (author_id, category, title, body) on public.experience_posts to authenticated;
+grant delete on public.experience_posts to authenticated;
+
+-- file_assets: written only by the upload route (service role) and the scan
+-- cron — a member must never be able to mark their own file "clean".
+-- (No grants at all: reads go through the select policy.)
+
+grant insert (parent_type, parent_id, parent_comment_id, author_id, type, body) on public.comments to authenticated;
+grant delete on public.comments to authenticated;
+
+grant insert (target_type, target_id, reason, details, reported_by) on public.reports to authenticated;
+
+grant update (read) on public.notifications to authenticated;
+
+grant insert (asker_id, question, lang) on public.admin_questions to authenticated;
+
+-- ---- Functions: only the listed ones are callable from a browser ----------
+do $$
+declare
+  f record;
+begin
+  for f in
+    select p.oid::regprocedure as sig
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public'
+       and p.prokind = 'f'
+       and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
+  loop
+    execute format('revoke execute on function %s from public, anon, authenticated', f.sig);
+    execute format('grant execute on function %s to service_role', f.sig);
+  end loop;
+end $$;
+
+-- Functions members may call (always as themselves; each checks auth.uid()).
+grant execute on function public.set_my_ai_key(text, text, text) to authenticated;
+grant execute on function public.remove_my_ai_key() to authenticated;
+grant execute on function public.admin_notify_user(uuid, text) to authenticated;
+grant execute on function public.answer_admin_question(uuid, text) to authenticated;
+grant execute on function public.retract_admin_answer(uuid) to authenticated;
+grant execute on function public.soft_delete_item(text, uuid, text) to authenticated;
+grant execute on function public.dismiss_report(uuid, text) to authenticated;
+grant execute on function public.undo_activity(bigint) to authenticated;
+grant execute on function public.restore_item(text, uuid) to authenticated;
+grant execute on function public.list_trash() to authenticated;
+grant execute on function public.grant_role(uuid, text) to authenticated;
+grant execute on function public.revoke_role(uuid, text) to authenticated;
+grant execute on function public.accept_terms(text, text) to authenticated;
+grant execute on function public.pending_terms(text) to authenticated;
+grant execute on function public.post_announcement(text, text) to authenticated;
+-- award_points, record_view, record_download, record_account_deletion,
+-- get_user_ai_key, match_kb_chunks: server (service role) only.

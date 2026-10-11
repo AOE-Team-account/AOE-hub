@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getExperiencePostById, listExperienceComments } from "@/lib/data/experience";
 import { getUserById } from "@/lib/data/users";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/service";
 import { userFromProfileRow, type ProfileRow } from "@/lib/profile";
 import type { User } from "@/lib/types";
 import { BackLink } from "@/components/ui/BackLink";
@@ -33,7 +34,8 @@ export default async function ExperiencePostPage({ params }: PageProps<"/experie
     data: { user: viewer },
   } = await supabase.auth.getUser();
   if (viewer) {
-    await supabase.rpc("record_view", { p_target_type: "experience-post", p_target_id: post.id, p_viewer_id: viewer.id });
+    // Server-only function: the viewer id comes from the verified session above.
+    await createServiceRoleClient().rpc("record_view", { p_target_type: "experience-post", p_target_id: post.id, p_viewer_id: viewer.id });
   }
 
   const commentAuthorIds = [...new Set(collectAuthorIds(comments))];

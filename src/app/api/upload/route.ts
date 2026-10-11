@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/service";
 import { scanFileWithShortPoll, type ScanResult } from "@/lib/malware-scan/virustotal";
 import { chooseStorageBackend, uploadFile, deleteFile } from "@/lib/storage/router";
 import type { MediaType } from "@/lib/types";
@@ -117,7 +118,11 @@ export async function POST(request: Request) {
       }
     }
 
-    const { error: assetError } = await supabase.from("file_assets").insert({
+    // Written with the service role on purpose: scan_status is decided by this
+    // server code, and members have no write access to file_assets at all (a
+    // member must never be able to mark their own file "clean"). The post
+    // above was just created under the member's own session, so it is theirs.
+    const { error: assetError } = await createServiceRoleClient().from("file_assets").insert({
       file_post_id: post.id,
       label,
       storage_path: scanStatus === "flagged" ? null : key,

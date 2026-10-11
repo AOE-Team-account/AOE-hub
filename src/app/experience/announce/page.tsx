@@ -23,12 +23,9 @@ export default function NewAnnouncementPage() {
     setSubmitting(true);
     setError(null);
     const supabase = createClient();
-    const { error: insertError } = await supabase.from("experience_posts").insert({
-      author_id: user.id,
-      title: title.trim(),
-      body: message.trim(),
-      pinned: true,
-      is_announcement: true,
+    const { error: insertError } = await supabase.rpc("post_announcement", {
+      p_title: title.trim(),
+      p_body: message.trim(),
     });
     setSubmitting(false);
     if (insertError) {
