@@ -173,15 +173,7 @@ $$;
 -- Legacy meaning of "admin" (the old is_admin flag): Creator or Watcher.
 -- Only still used by the admin inbox and the admin dashboard, which the new
 -- panels replace. New code uses reviewer_can() / has_role() instead.
-create or replace function private.is_admin(p_user_id uuid)
-returns boolean
-language sql
-security definer
-stable
-set search_path = public
-as $$
-  select exists (select 1 from public.user_roles where user_id = p_user_id and role in ('creator', 'watcher'));
-$$;
+-- (private.is_admin is defined below, with the Creator-unlock and two-step checks.)
 
 -- The highest reviewer tier a person holds, for the activity log.
 create or replace function private.top_reviewer_role(p_user_id uuid)
@@ -261,20 +253,7 @@ insert into public.reviewer_permissions (role, kind, action) values
   ('creator', 'user', 'view'), ('creator', 'user', 'dismiss')
 on conflict do nothing;
 
-create or replace function private.reviewer_can(p_user_id uuid, p_kind text, p_action text)
-returns boolean
-language sql
-security definer
-stable
-set search_path = public
-as $$
-  select exists (
-    select 1
-      from public.user_roles r
-      join public.reviewer_permissions p on p.role = r.role
-     where r.user_id = p_user_id and p.kind = p_kind and p.action = p_action
-  );
-$$;
+-- (private.reviewer_can is defined below, with the Creator-unlock and two-step checks.)
 
 -- Report target types and content kinds are spelled differently.
 create or replace function private.report_kind(p_target_type text)
@@ -306,8 +285,6 @@ $$;
 
 grant execute on function private.has_role(uuid, text) to anon, authenticated, service_role;
 grant execute on function private.is_reviewer(uuid) to anon, authenticated, service_role;
-grant execute on function private.is_admin(uuid) to anon, authenticated, service_role;
-grant execute on function private.reviewer_can(uuid, text, text) to anon, authenticated, service_role;
 grant execute on function private.report_kind(text) to anon, authenticated, service_role;
 grant execute on function private.item_author(text, uuid) to anon, authenticated, service_role;
 grant execute on function private.top_reviewer_role(uuid) to service_role;
@@ -716,6 +693,210 @@ grant execute on function private.record_text(uuid) to authenticated, service_ro
 grant execute on function private.is_restricted(uuid) to anon, authenticated, service_role;
 grant execute on function private.author_is_active(uuid) to anon, authenticated, service_role;
 grant execute on function private.can_participate(uuid) to anon, authenticated, service_role;
+
+-- ============================================================================
+-- Creator access (chat6: "Access to the Creator panel", "If the Creator is
+-- locked out", "Staff-account protection"). The Creator role alone is not
+-- enough to use Creator powers: the session must also have passed two-step
+-- sign-in (authenticator app) AND the access code, and must not have been idle
+-- for more than 30 minutes. Everything is checked here, in the database, on
+-- every Creator action — hiding a button is never the protection.
+-- ============================================================================
+
+create table if not exists public.hub_settings (
+  key text primary key,
+  value jsonb not null,
+  updated_at timestamptz not null default now(),
+  updated_by uuid
+);
+
+-- Watchers and Deacons need two-step sign-in (recommended in the memory doc).
+-- The Creator can switch this off from the Hub tab.
+insert into public.hub_settings (key, value) values ('require_2fa_staff', 'true'::jsonb)
+on conflict (key) do nothing;
+
+-- The access code, hashed like a password. One row, only for the Creator.
+create table if not exists public.creator_access (
+  user_id uuid primary key references public.profiles (id) on delete cascade,
+  code_hash text not null,
+  updated_at timestamptz not null default now()
+);
+
+-- A Creator session that has passed the second step. Keyed by the sign-in
+-- session id inside the login token, so a new login must pass it again.
+create table if not exists public.creator_sessions (
+  session_id uuid primary key,
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  via text not null check (via in ('code', 'recovery')),
+  verified_at timestamptz not null default now(),
+  last_used_at timestamptz not null default now()
+);
+
+create table if not exists public.creator_recovery_keys (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  key_hash text not null,
+  created_at timestamptz not null default now(),
+  used_at timestamptz
+);
+
+create index if not exists creator_recovery_keys_user_idx on public.creator_recovery_keys (user_id) where used_at is null;
+
+create table if not exists public.creator_security_events (
+  id bigint generated always as identity primary key,
+  at timestamptz not null default now(),
+  user_id uuid not null,
+  kind text not null,
+  details jsonb not null default '{}'::jsonb
+);
+
+create index if not exists creator_security_events_idx on public.creator_security_events (user_id, kind, at desc);
+
+alter table public.hub_settings enable row level security;
+alter table public.creator_access enable row level security;
+alter table public.creator_sessions enable row level security;
+alter table public.creator_recovery_keys enable row level security;
+alter table public.creator_security_events enable row level security;
+-- No client policies on any of these: they are reached only through the
+-- functions below.
+
+create or replace function private.session_id()
+returns uuid
+language sql
+stable
+as $$
+  select nullif(auth.jwt() ->> 'session_id', '')::uuid;
+$$;
+
+create or replace function private.is_aal2()
+returns boolean
+language sql
+stable
+as $$
+  select coalesce(auth.jwt() ->> 'aal', '') = 'aal2';
+$$;
+
+create or replace function private.setting_true(p_key text)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select coalesce((select (value)::text = 'true' from public.hub_settings where key = p_key), false);
+$$;
+
+-- Is this request a fully unlocked Creator session? Role + (two-step or a
+-- recovery-key session) + a live, non-idle session row. With p_touch the
+-- idle clock is restarted; policies pass false.
+create or replace function private.creator_unlocked(p_touch boolean default false)
+returns boolean
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_sid uuid := private.session_id();
+  v_via text;
+begin
+  if v_uid is null or v_sid is null then return false; end if;
+  if not private.has_role(v_uid, 'creator') then return false; end if;
+  select via into v_via from public.creator_sessions
+   where session_id = v_sid and user_id = v_uid and last_used_at > now() - interval '30 minutes';
+  if not found then return false; end if;
+  -- A code session also needs the second authentication step on this login.
+  if v_via = 'code' and not private.is_aal2() then return false; end if;
+  if p_touch then
+    update public.creator_sessions set last_used_at = now() where session_id = v_sid;
+  end if;
+  return true;
+end;
+$$;
+
+-- Reviewer permission check, now with the extra protections: the Creator
+-- must be unlocked, and Watchers/Deacons must have passed two-step sign-in
+-- (when the hub setting is on).
+create or replace function private.reviewer_can(p_user_id uuid, p_kind text, p_action text)
+returns boolean
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+declare
+  v_role text;
+begin
+  for v_role in
+    select r.role
+      from public.user_roles r
+      join public.reviewer_permissions p on p.role = r.role
+     where r.user_id = p_user_id and p.kind = p_kind and p.action = p_action
+  loop
+    if v_role = 'creator' then
+      if p_user_id = auth.uid() and private.creator_unlocked(false) then return true; end if;
+    elsif private.setting_true('require_2fa_staff') then
+      if p_user_id = auth.uid() and private.is_aal2() then return true; end if;
+    else
+      return true;
+    end if;
+  end loop;
+  return false;
+end;
+$$;
+
+grant execute on function private.session_id() to anon, authenticated, service_role;
+grant execute on function private.is_aal2() to anon, authenticated, service_role;
+grant execute on function private.setting_true(text) to anon, authenticated, service_role;
+grant execute on function private.creator_unlocked(boolean) to anon, authenticated, service_role;
+grant execute on function private.reviewer_can(uuid, text, text) to anon, authenticated, service_role;
+
+-- Legacy meaning of "admin" (the old is_admin flag): Creator or Watcher. Used
+-- by the question inbox and the knowledge-base tools until the new question
+-- flow replaces them. It now carries the same protections as everything else.
+create or replace function private.is_admin(p_user_id uuid)
+returns boolean
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+begin
+  if p_user_id is null or p_user_id is distinct from auth.uid() then return false; end if;
+  if private.has_role(p_user_id, 'creator') and private.creator_unlocked(false) then return true; end if;
+  if private.has_role(p_user_id, 'watcher')
+     and (not private.setting_true('require_2fa_staff') or private.is_aal2()) then
+    return true;
+  end if;
+  return false;
+end;
+$$;
+grant execute on function private.is_admin(uuid) to anon, authenticated, service_role;
+
+create or replace function public.am_i_admin()
+returns boolean
+language sql
+security definer
+volatile
+set search_path = public
+as $$
+  select private.is_admin(auth.uid());
+$$;
+
+-- The Creator sees everyone's roles only from an unlocked session.
+drop policy if exists "roles are visible only as badges, to oneself, or to the Creator" on public.user_roles;
+create policy "roles are visible only as badges, to oneself, or to the Creator" on public.user_roles
+  for select using (
+    auth.uid() = user_id
+    or private.creator_unlocked(false)
+    or exists (select 1 from public.role_definitions d where d.code = role and d.is_public_badge)
+  );
+
+drop policy if exists "only the Creator reads the activity log" on public.activity_log;
+create policy "only the Creator reads the activity log" on public.activity_log
+  for select using (private.creator_unlocked(false));
+
 
 
 
@@ -1833,7 +2014,7 @@ as $$
 declare
   v_log_id bigint;
 begin
-  if auth.uid() is null or not private.has_role(auth.uid(), 'creator') then
+  if auth.uid() is null or not private.creator_unlocked(true) then
     raise exception 'Only the Creator can restore.';
   end if;
   select l.id into v_log_id from public.activity_log l
@@ -1854,7 +2035,7 @@ stable
 set search_path = public
 as $$
 begin
-  if auth.uid() is null or not private.has_role(auth.uid(), 'creator') then
+  if auth.uid() is null or not private.creator_unlocked(true) then
     raise exception 'Only the Creator can see deleted items.';
   end if;
   return query
@@ -1884,12 +2065,16 @@ declare
   v_n integer;
   v_body text;
 begin
-  if v_uid is null or not private.has_role(v_uid, 'creator') then
+  if v_uid is null or not private.creator_unlocked(true) then
     raise exception 'Only the Creator can give roles.';
   end if;
   select * into v_def from public.role_definitions where code = p_role;
   if not found or p_role = 'creator' then raise exception 'That role cannot be given here.'; end if;
   if not exists (select 1 from public.profiles where id = p_user_id) then raise exception 'That person does not exist.'; end if;
+  if p_role in ('watcher', 'deacon') and private.setting_true('require_2fa_staff')
+     and not exists (select 1 from auth.mfa_factors where user_id = p_user_id and status = 'verified') then
+    raise exception 'They need to turn on two-step sign-in (Settings) before they can be made a %.', v_def.label;
+  end if;
 
   insert into public.user_roles (user_id, role, granted_by) values (p_user_id, p_role, v_uid)
   on conflict do nothing;
@@ -1921,7 +2106,7 @@ declare
   v_def public.role_definitions;
   v_n integer;
 begin
-  if v_uid is null or not private.has_role(v_uid, 'creator') then
+  if v_uid is null or not private.creator_unlocked(true) then
     raise exception 'Only the Creator can take roles away.';
   end if;
   select * into v_def from public.role_definitions where code = p_role;
@@ -2223,7 +2408,7 @@ declare
   v_prev jsonb;
   v_red integer;
 begin
-  if v_uid is null or not private.has_role(v_uid, 'creator') then
+  if v_uid is null or not private.creator_unlocked(true) then
     raise exception 'Only the Creator can undo.';
   end if;
 
@@ -2424,7 +2609,7 @@ declare
   v_profile jsonb;
   v_prior bigint;
 begin
-  if v_uid is null or not private.has_role(v_uid, 'creator') then raise exception 'Only the Creator can do this.'; end if;
+  if v_uid is null or not private.creator_unlocked(true) then raise exception 'Only the Creator can do this.'; end if;
   if p_status not in ('active', 'deleted') then raise exception 'Unknown status.'; end if;
   if p_user_id = v_uid then raise exception 'You cannot change your own account here.'; end if;
   if p_status = 'deleted' and private.has_role(p_user_id, 'creator') then raise exception 'The Creator account cannot be deleted here.'; end if;
@@ -2500,7 +2685,7 @@ declare
   v_reason public.moderation_reasons;
   v_restriction uuid;
 begin
-  if v_uid is null or not private.has_role(v_uid, 'creator') then raise exception 'Only the Creator can do this.'; end if;
+  if v_uid is null or not private.creator_unlocked(true) then raise exception 'Only the Creator can do this.'; end if;
   select * into v_reason from public.moderation_reasons where code = p_reason and active and 'warn' = any (applies_to);
   if not found then raise exception 'Pick a reason from the list.'; end if;
   if not exists (select 1 from public.profiles where id = p_user_id) then raise exception 'That person does not exist.'; end if;
@@ -2555,7 +2740,7 @@ declare
   v_uid uuid := auth.uid();
   v_ref public.account_referrals;
 begin
-  if v_uid is null or not private.has_role(v_uid, 'creator') then raise exception 'Only the Creator can do this.'; end if;
+  if v_uid is null or not private.creator_unlocked(true) then raise exception 'Only the Creator can do this.'; end if;
   if p_decision not in ('delete', 'dismiss') then raise exception 'Unknown decision.'; end if;
   select * into v_ref from public.account_referrals where id = p_referral_id and status = 'open' for update;
   if not found then raise exception 'That report does not exist or was already decided.'; end if;
@@ -2597,7 +2782,7 @@ stable
 set search_path = public
 as $$
 begin
-  if auth.uid() is null or not private.has_role(auth.uid(), 'creator') then raise exception 'Only the Creator can do this.'; end if;
+  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Only the Creator can do this.'; end if;
   return jsonb_build_object(
     'profile', (select to_jsonb(p) from public.profiles p where p.id = p_user_id),
     'record', private.record_text(p_user_id),
@@ -2708,10 +2893,282 @@ as $$
   delete from public.verified_pins where user_id = auth.uid() and board = p_board;
 $$;
 
+
+-- ============================================================================
+-- Creator access: the functions the panel uses (chat6: recovery keys, wrong
+-- code lockout, security events). Wrong attempts are RETURNED, not raised,
+-- so that the attempt is still recorded (a raised error would roll it back).
+-- ============================================================================
+
+create or replace function private.recent_events(p_user uuid, p_kind text, p_minutes integer)
+returns integer
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select count(*)::integer from public.creator_security_events
+   where user_id = p_user and kind = p_kind and at > now() - make_interval(mins => p_minutes);
+$$;
+
+create or replace function private.add_event(p_user uuid, p_kind text, p_details jsonb default '{}'::jsonb)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  insert into public.creator_security_events (user_id, kind, details) values (p_user, p_kind, coalesce(p_details, '{}'::jsonb));
+$$;
+
+-- What the unlock screen needs to decide the next step.
+create or replace function public.creator_status()
+returns jsonb
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_wrong integer;
+  v_last timestamptz;
+begin
+  if v_uid is null or not private.has_role(v_uid, 'creator') then
+    return jsonb_build_object('is_creator', false);
+  end if;
+  v_wrong := private.recent_events(v_uid, 'code-wrong', 15) + private.recent_events(v_uid, 'key-wrong', 15);
+  select max(at) into v_last from public.creator_security_events
+   where user_id = v_uid and kind in ('code-wrong', 'key-wrong') and at > now() - interval '15 minutes';
+  return jsonb_build_object(
+    'is_creator', true,
+    'has_code', exists (select 1 from public.creator_access where user_id = v_uid),
+    'has_factor', exists (select 1 from auth.mfa_factors where user_id = v_uid and status = 'verified'),
+    'aal2', private.is_aal2(),
+    'unlocked', private.creator_unlocked(true),
+    'locked', v_wrong >= 5,
+    'locked_until', case when v_wrong >= 5 then v_last + interval '15 minutes' end,
+    'keys_left', (select count(*) from public.creator_recovery_keys where user_id = v_uid and used_at is null)
+  );
+end;
+$$;
+
+-- Sets or changes the access code. First time: needs two-step sign-in. After
+-- that: needs an unlocked session, or the current code.
+create or replace function public.set_creator_code(p_new text, p_current text default null)
+returns jsonb
+language plpgsql
+security definer
+volatile
+set search_path = public, extensions
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_sid uuid := private.session_id();
+  v_hash text;
+begin
+  if v_uid is null or v_sid is null or not private.has_role(v_uid, 'creator') then raise exception 'Only the Creator can do this.'; end if;
+  if not private.is_aal2() then raise exception 'Finish two-step sign-in first.'; end if;
+  if p_new is null or char_length(p_new) < 10 then raise exception 'Use at least 10 characters for the access code.'; end if;
+
+  select code_hash into v_hash from public.creator_access where user_id = v_uid;
+  if v_hash is not null then
+    if not private.creator_unlocked(false) and (p_current is null or crypt(p_current, v_hash) <> v_hash) then
+      return jsonb_build_object('ok', false, 'error', 'The current code is not right.');
+    end if;
+  end if;
+
+  insert into public.creator_access (user_id, code_hash) values (v_uid, crypt(p_new, gen_salt('bf')))
+  on conflict (user_id) do update set code_hash = excluded.code_hash, updated_at = now();
+
+  insert into public.creator_sessions (session_id, user_id, via) values (v_sid, v_uid, 'code')
+  on conflict (session_id) do update set last_used_at = now(), via = 'code';
+  perform private.add_event(v_uid, case when v_hash is null then 'code-created' else 'code-changed' end);
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+create or replace function public.verify_creator_code(p_code text)
+returns jsonb
+language plpgsql
+security definer
+volatile
+set search_path = public, extensions
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_sid uuid := private.session_id();
+  v_hash text;
+  v_wrong integer;
+begin
+  if v_uid is null or v_sid is null or not private.has_role(v_uid, 'creator') then raise exception 'Only the Creator can do this.'; end if;
+  if not private.is_aal2() then raise exception 'Finish two-step sign-in first.'; end if;
+
+  v_wrong := private.recent_events(v_uid, 'code-wrong', 15) + private.recent_events(v_uid, 'key-wrong', 15);
+  if v_wrong >= 5 then
+    return jsonb_build_object('ok', false, 'locked', true, 'error', 'Too many wrong tries. Try again in 15 minutes, or use a recovery key.');
+  end if;
+
+  select code_hash into v_hash from public.creator_access where user_id = v_uid;
+  if v_hash is null then return jsonb_build_object('ok', false, 'error', 'No access code has been set yet.'); end if;
+
+  if crypt(coalesce(p_code, ''), v_hash) = v_hash then
+    insert into public.creator_sessions (session_id, user_id, via) values (v_sid, v_uid, 'code')
+    on conflict (session_id) do update set last_used_at = now(), via = 'code', verified_at = now();
+    perform private.add_event(v_uid, 'code-ok');
+    return jsonb_build_object('ok', true);
+  end if;
+
+  perform private.add_event(v_uid, 'code-wrong');
+  return jsonb_build_object('ok', false, 'attempts_left', greatest(0, 4 - v_wrong),
+                            'error', 'That code is not right.');
+end;
+$$;
+
+-- A recovery key works once. It lets the Creator back in when the code or the
+-- authenticator device is lost; the session it opens is a "recovery" session.
+create or replace function public.use_recovery_key(p_key text)
+returns jsonb
+language plpgsql
+security definer
+volatile
+set search_path = public, extensions
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_sid uuid := private.session_id();
+  v_wrong integer;
+  v_key public.creator_recovery_keys;
+begin
+  if v_uid is null or v_sid is null or not private.has_role(v_uid, 'creator') then raise exception 'Only the Creator can do this.'; end if;
+
+  v_wrong := private.recent_events(v_uid, 'code-wrong', 15) + private.recent_events(v_uid, 'key-wrong', 15);
+  if v_wrong >= 5 then
+    return jsonb_build_object('ok', false, 'locked', true, 'error', 'Too many wrong tries. Try again in 15 minutes.');
+  end if;
+
+  for v_key in select * from public.creator_recovery_keys where user_id = v_uid and used_at is null loop
+    if crypt(upper(btrim(coalesce(p_key, ''))), v_key.key_hash) = v_key.key_hash then
+      update public.creator_recovery_keys set used_at = now() where id = v_key.id;
+      insert into public.creator_sessions (session_id, user_id, via) values (v_sid, v_uid, 'recovery')
+      on conflict (session_id) do update set last_used_at = now(), via = 'recovery', verified_at = now();
+      perform private.add_event(v_uid, 'recovery-used');
+      perform private.log_activity(v_uid, 'recovery-key-used', 'user', v_uid, v_uid, null, '{}'::jsonb);
+      insert into public.notifications (user_id, body, kind, data)
+      values (v_uid, 'A recovery key was just used to open the Creator panel. If that was not you, create new keys and change the access code now.',
+              'security-alert', '{}'::jsonb);
+      return jsonb_build_object('ok', true,
+        'keys_left', (select count(*) from public.creator_recovery_keys where user_id = v_uid and used_at is null));
+    end if;
+  end loop;
+
+  perform private.add_event(v_uid, 'key-wrong');
+  return jsonb_build_object('ok', false, 'error', 'That key is not right, or was already used.');
+end;
+$$;
+
+-- Makes a fresh set of 6 one-time keys and replaces any unused ones. The
+-- plain keys are returned ONCE; only hashes are stored.
+create or replace function public.create_recovery_keys()
+returns text[]
+language plpgsql
+security definer
+volatile
+set search_path = public, extensions
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_keys text[] := '{}';
+  v_key text;
+  i integer;
+begin
+  if v_uid is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
+  delete from public.creator_recovery_keys where user_id = v_uid and used_at is null;
+  for i in 1..6 loop
+    v_key := 'AOE-RK-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 4)) || '-'
+                      || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 4)) || '-'
+                      || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 4));
+    insert into public.creator_recovery_keys (user_id, key_hash) values (v_uid, crypt(v_key, gen_salt('bf')));
+    v_keys := v_keys || v_key;
+  end loop;
+  perform private.add_event(v_uid, 'keys-created');
+  return v_keys;
+end;
+$$;
+
+-- Puts the panel back behind the code now.
+create or replace function public.lock_creator_panel()
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  delete from public.creator_sessions where session_id = private.session_id() and user_id = auth.uid();
+$$;
+
+create or replace function public.creator_security_events_list()
+returns table (at timestamptz, kind text)
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+begin
+  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
+  return query select e.at, e.kind from public.creator_security_events e where e.user_id = auth.uid() order by e.id desc limit 25;
+end;
+$$;
+
+create or replace function public.get_hub_settings()
+returns jsonb
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+begin
+  if auth.uid() is null or not private.creator_unlocked(false) then raise exception 'Unlock the Creator panel first.'; end if;
+  return coalesce((select jsonb_object_agg(key, value) from public.hub_settings), '{}'::jsonb);
+end;
+$$;
+
+create or replace function public.set_hub_setting(p_key text, p_value jsonb)
+returns void
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+begin
+  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
+  if p_key not in ('require_2fa_staff') then raise exception 'Unknown setting.'; end if;
+  insert into public.hub_settings (key, value, updated_by) values (p_key, p_value, auth.uid())
+  on conflict (key) do update set value = excluded.value, updated_at = now(), updated_by = excluded.updated_by;
+  perform private.log_activity(auth.uid(), 'setting-changed', null, null, null, null,
+                               jsonb_build_object('key', p_key, 'value', p_value));
+end;
+$$;
+
+-- Whether the signed-in member has turned on two-step sign-in.
+create or replace function public.my_two_step_status()
+returns jsonb
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'enrolled', exists (select 1 from auth.mfa_factors where user_id = auth.uid() and status = 'verified'),
+    'aal2', private.is_aal2(),
+    'required_for_staff', private.setting_true('require_2fa_staff'),
+    'is_staff', private.is_reviewer(auth.uid())
+  );
+$$;
+
 -- Creator only: look a person up by name or email (nobody is ever listed
 -- without a search).
+drop function if exists public.find_people(text);
 create or replace function public.find_people(p_query text)
-returns table (id uuid, name text, display_name text, email text, account_status text, roles text[], record text)
+returns table (id uuid, name text, display_name text, email text, account_status text, roles text[], record text, has_two_step boolean)
 language plpgsql
 security definer
 stable
@@ -2720,12 +3177,13 @@ as $$
 declare
   v_q text := btrim(coalesce(p_query, ''));
 begin
-  if auth.uid() is null or not private.has_role(auth.uid(), 'creator') then raise exception 'Only the Creator can do this.'; end if;
+  if auth.uid() is null or not private.creator_unlocked(false) then raise exception 'Only the Creator can do this.'; end if;
   if char_length(v_q) < 2 then return; end if;
   return query
     select p.id, p.name, p.display_name, u.email::text, p.account_status,
            coalesce((select array_agg(r.role order by r.role) from public.user_roles r where r.user_id = p.id), '{}'::text[]),
-           private.record_text(p.id)
+           private.record_text(p.id),
+           exists (select 1 from auth.mfa_factors f where f.user_id = p.id and f.status = 'verified')
       from public.profiles p
       join auth.users u on u.id = p.id
      where p.name ilike '%' || v_q || '%' or p.display_name ilike '%' || v_q || '%' or u.email ilike '%' || v_q || '%'
@@ -2745,7 +3203,7 @@ stable
 set search_path = public
 as $$
 begin
-  if auth.uid() is null or not private.has_role(auth.uid(), 'creator') then raise exception 'Only the Creator can do this.'; end if;
+  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Only the Creator can do this.'; end if;
   return query
     select p.id, p.name, u.email::text, p.account_status, p.account_status_reason, p.account_status_changed_at,
            private.record_text(p.id), a.id, a.created_at
@@ -2768,7 +3226,7 @@ as $$
 declare
   v_id uuid;
 begin
-  if auth.uid() is null or not private.has_role(auth.uid(), 'creator') then
+  if auth.uid() is null or not private.creator_unlocked(true) then
     raise exception 'Only the Creator can post announcements.';
   end if;
   if p_title is null or char_length(btrim(p_title)) not between 1 and 200 then raise exception 'Title must be 1 to 200 characters.'; end if;
@@ -2810,6 +3268,7 @@ alter default privileges in schema public revoke insert, update, delete, truncat
 -- Internal tables: the API roles have no business even reading them.
 revoke all on public.kb_documents, public.kb_chunks, public.post_views from anon, authenticated;
 revoke all on public.warnings, public.account_referrals from anon, authenticated;
+revoke all on public.hub_settings, public.creator_access, public.creator_sessions, public.creator_recovery_keys, public.creator_security_events from anon, authenticated;
 revoke all on public.restrictions from anon;
 
 -- profiles: only the person's own presentation fields. Points, counters,
@@ -2887,6 +3346,17 @@ grant execute on function public.decide_referral(uuid, text) to authenticated;
 grant execute on function public.warning_summaries(uuid[]) to authenticated;
 grant execute on function public.person_evidence(uuid) to authenticated;
 grant execute on function public.find_people(text) to authenticated;
+grant execute on function public.creator_status() to authenticated;
+grant execute on function public.set_creator_code(text, text) to authenticated;
+grant execute on function public.verify_creator_code(text) to authenticated;
+grant execute on function public.use_recovery_key(text) to authenticated;
+grant execute on function public.create_recovery_keys() to authenticated;
+grant execute on function public.lock_creator_panel() to authenticated;
+grant execute on function public.creator_security_events_list() to authenticated;
+grant execute on function public.get_hub_settings() to authenticated;
+grant execute on function public.set_hub_setting(text, jsonb) to authenticated;
+grant execute on function public.my_two_step_status() to authenticated;
+grant execute on function public.am_i_admin() to authenticated;
 grant execute on function public.pin_my_item(text, uuid) to authenticated;
 grant execute on function public.unpin_my_item(text) to authenticated;
 grant execute on function public.creator_account_queue() to authenticated;

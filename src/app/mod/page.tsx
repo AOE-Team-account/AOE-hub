@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { BackLink } from "@/components/ui/BackLink";
 import { requireStaff } from "@/lib/auth/staff";
 import { loadReviewData, type ItemKind } from "@/lib/data/review";
@@ -11,6 +12,11 @@ export const dynamic = "force-dynamic";
 
 export default async function ModPanelPage() {
   const { supabase, userId, roles } = await requireStaff(["watcher", "deacon"]);
+  // Watchers and Deacons must have passed two-step sign-in (a hub setting the
+  // Creator can switch off). The database enforces the same rule per action.
+  const { data: twoStep } = await supabase.rpc("my_two_step_status");
+  if (twoStep?.required_for_staff && !twoStep?.aal2) redirect("/security?next=/mod");
+
   const isWatcher = roles.includes("watcher");
   // A Watcher sees posts, comments and files; a Deacon posts and comments only.
   const kinds: ItemKind[] = isWatcher ? ["file", "post", "comment"] : ["post", "comment"];

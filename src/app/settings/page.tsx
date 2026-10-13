@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -97,6 +98,16 @@ export default function SettingsPage() {
           translated.
         </p>
       </section>
+
+      {status === "authed" && (
+        <section className="settings-block">
+          <p className="label">Two-step sign-in</p>
+          <p className="tiny" style={{ marginBottom: 10 }}>
+            Add a 6-digit code from an authenticator app to your sign-in, so a stolen password alone is not enough.
+          </p>
+          <Link href="/security" className="btn small">Manage two-step sign-in</Link>
+        </section>
+      )}
 
       {status === "authed" && (
         <section className="settings-block">

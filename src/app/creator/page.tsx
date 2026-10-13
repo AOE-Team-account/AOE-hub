@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/staff";
 import { loadReviewData } from "@/lib/data/review";
 import { CreatorClient, type CreatorData } from "./CreatorClient";
@@ -9,9 +10,18 @@ export const dynamic = "force-dynamic";
 
 export default async function CreatorPage() {
   const { supabase, userId } = await requireStaff(["creator"]);
+
+  // The second and third steps: two-step sign-in and the access code. The
+  // database applies the same check to every Creator action; this only sends
+  // a locked session to the unlock screen instead of showing errors.
+  const { data: status } = await supabase.rpc("creator_status");
+  if (!status?.unlocked) redirect("/creator/unlock");
+
   const review = await loadReviewData(supabase, userId, ["file", "post", "comment"]);
 
-  const [holdersRes, queueRes, trashRes, logRes] = await Promise.all([
+  const [settingsRes, eventsRes, holdersRes, queueRes, trashRes, logRes] = await Promise.all([
+    supabase.rpc("get_hub_settings"),
+    supabase.rpc("creator_security_events_list"),
     supabase.from("user_roles").select("user_id, role, granted_at").in("role", ["watcher", "deacon", "answerer", "verified"]),
     supabase.rpc("creator_account_queue"),
     supabase.rpc("list_trash"),
@@ -43,6 +53,11 @@ export default async function CreatorPage() {
     trash,
     log,
     names,
+    security: {
+      requireTwoStepForStaff: (settingsRes.data as Record<string, unknown> | null)?.require_2fa_staff !== false,
+      events: (eventsRes.data ?? []) as { at: string; kind: string }[],
+      keysLeft: (status?.keys_left as number) ?? 0,
+    },
   };
 
   return <CreatorClient data={data} />;

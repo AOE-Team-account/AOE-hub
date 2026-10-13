@@ -29,6 +29,7 @@ export interface CreatorData {
     details: Record<string, unknown>; undoes: number | null;
   }[];
   names: Record<string, string>;
+  security: { requireTwoStepForStaff: boolean; events: { at: string; kind: string }[]; keysLeft: number };
 }
 
 type Tab = "review" | "people" | "accounts" | "trash" | "log" | "hub";
@@ -62,7 +63,18 @@ const UNDOABLE = new Set(["delete", "warn", "notice-set", "notice-removed", "dis
 
 interface Person {
   id: string; name: string; display_name: string | null; email: string; account_status: string; roles: string[]; record: string;
+  has_two_step: boolean;
 }
+
+const EVENT_TEXT: Record<string, string> = {
+  "code-created": "Access code created",
+  "code-changed": "Access code changed",
+  "code-ok": "Panel opened with the access code",
+  "code-wrong": "Wrong access code",
+  "key-wrong": "Wrong recovery key",
+  "recovery-used": "A recovery key was used",
+  "keys-created": "New recovery keys created",
+};
 
 export function CreatorClient({ data }: { data: CreatorData }) {
   const router = useRouter();
@@ -76,6 +88,9 @@ export function CreatorClient({ data }: { data: CreatorData }) {
   const [selected, setSelected] = useState<Person | null>(null);
   const [confirm, setConfirm] = useState<null | { title: string; body: string; danger?: boolean; reasonFor?: string; go: (reason: string) => PromiseLike<{ error: { message: string } | null }>; done: string }>(null);
   const [reason, setReason] = useState("");
+  const [newKeys, setNewKeys] = useState<string[] | null>(null);
+  const [curCode, setCurCode] = useState("");
+  const [newCode, setNewCode] = useState("");
   const [annTitle, setAnnTitle] = useState("");
   const [annBody, setAnnBody] = useState("");
 
@@ -88,7 +103,12 @@ export function CreatorClient({ data }: { data: CreatorData }) {
     const { error: err } = await fn();
     setBusy(false);
     if (err) {
-      setError(err.message);
+      setError(
+        /Unlock the Creator panel|Only the Creator/i.test(err.message)
+          ? "Your Creator session has timed out for safety. Open the panel again to continue."
+          : err.message
+      );
+      if (/Unlock the Creator panel|Only the Creator/i.test(err.message)) router.push("/creator/unlock");
       return false;
     }
     setFlash(done);
@@ -185,10 +205,14 @@ export function CreatorClient({ data }: { data: CreatorData }) {
                   <p className="tiny" style={{ marginBottom: 8 }}>You are changing roles for: <strong>{p.name}, {p.email}</strong></p>
                   {ROLES.map((r) => {
                     const has = p.roles.includes(r.code);
+                    const needsTwoStep = !has && (r.code === "watcher" || r.code === "deacon") && data.security.requireTwoStepForStaff && !p.has_two_step;
                     return (
                       <label key={r.code} className="check-item" style={{ alignItems: "flex-start" }}>
-                        <input type="checkbox" checked={has} style={{ width: "auto", marginTop: 3 }} onChange={() => toggleRole(p, r, !has)} />
-                        <span><strong>{r.label}</strong> — {r.help}</span>
+                        <input type="checkbox" checked={has} disabled={needsTwoStep} style={{ width: "auto", marginTop: 3 }} onChange={() => toggleRole(p, r, !has)} />
+                        <span>
+                          <strong>{r.label}</strong> — {r.help}
+                          {needsTwoStep && <span className="tiny"> (They need to turn on two-step sign-in in Settings first.)</span>}
+                        </span>
                       </label>
                     );
                   })}
@@ -375,7 +399,57 @@ export function CreatorClient({ data }: { data: CreatorData }) {
           </div>
           <div className="card">
             <p className="title" style={{ marginBottom: 4 }}>Signing in safely</p>
-            <p className="muted">The access code, recovery keys and two-factor sign-in are added in the next step.</p>
+            <p className="muted" style={{ marginBottom: 8 }}>
+              Recovery keys get you back in if you lose your authenticator app or forget the access code. Each works once.
+              You have <strong>{data.security.keysLeft}</strong> left.
+            </p>
+            {newKeys && (
+              <>
+                <pre style={{ background: "var(--bg)", padding: 10, borderRadius: 8, overflowX: "auto" }}>{newKeys.join("\n")}</pre>
+                <p className="tiny" style={{ marginBottom: 8 }}>Shown only now. Save them offline, not on the device you sign in from.</p>
+              </>
+            )}
+            <div className="row wrap" style={{ gap: 8 }}>
+              <Button size="small" disabled={busy} onClick={async () => {
+                setBusy(true);
+                const { data: k, error: e } = await supabase.rpc("create_recovery_keys");
+                setBusy(false);
+                if (e) return setError(e.message);
+                setNewKeys(k as string[]);
+                router.refresh();
+              }}>Create new recovery keys</Button>
+              <Button size="small" disabled={busy} onClick={async () => {
+                await supabase.rpc("lock_creator_panel");
+                router.replace("/creator/unlock");
+              }}>Lock the panel now</Button>
+            </div>
+            <p className="label" style={{ fontWeight: 500, margin: "14px 0 6px" }}>Change the access code</p>
+            <input type="password" value={curCode} onChange={(e) => setCurCode(e.target.value)} placeholder="Current code" autoComplete="off" />
+            <input type="password" value={newCode} onChange={(e) => setNewCode(e.target.value)} placeholder="New code (at least 10 characters)" autoComplete="new-password" style={{ marginTop: 8 }} />
+            <Button size="small" style={{ marginTop: 8 }} disabled={busy || newCode.length < 10} onClick={async () => {
+              setBusy(true);
+              const { data: r, error: e } = await supabase.rpc("set_creator_code", { p_new: newCode, p_current: curCode || null });
+              setBusy(false);
+              if (e) return setError(e.message);
+              if (!(r as { ok: boolean }).ok) return setError((r as { error?: string }).error ?? "Could not change the code.");
+              setCurCode(""); setNewCode(""); setFlash("Access code changed.");
+            }}>Change the code</Button>
+            <p className="label" style={{ fontWeight: 500, margin: "14px 0 6px" }}>Recent sign-in events</p>
+            {data.security.events.length === 0 && <p className="tiny">Nothing yet.</p>}
+            {data.security.events.map((e, i) => (
+              <p className="tiny" key={i} style={{ margin: "0 0 2px" }}>{new Date(e.at).toLocaleString()} · {EVENT_TEXT[e.kind] ?? e.kind}</p>
+            ))}
+          </div>
+          <div className="card">
+            <p className="title" style={{ marginBottom: 4 }}>Two-step sign-in for Watchers and Deacons</p>
+            <p className="muted" style={{ marginBottom: 8 }}>
+              When on, a person must turn on two-step sign-in before they can be made a Watcher or Deacon, and their panel only opens for a session that passed it.
+            </p>
+            <label className="check-item">
+              <input type="checkbox" style={{ width: "auto" }} checked={data.security.requireTwoStepForStaff} disabled={busy}
+                onChange={(e) => perform(() => supabase.rpc("set_hub_setting", { p_key: "require_2fa_staff", p_value: e.target.checked }), "Setting saved.")} />
+              <span>Require two-step sign-in for Watchers and Deacons</span>
+            </label>
           </div>
         </>
       )}

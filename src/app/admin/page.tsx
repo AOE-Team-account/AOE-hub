@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/staff";
 import { AdminDashboardClient } from "./AdminDashboardClient";
 
@@ -8,6 +9,8 @@ import { AdminDashboardClient } from "./AdminDashboardClient";
 export const dynamic = "force-dynamic";
 
 export default async function AdminDashboardPage() {
-  await requireStaff(["creator", "watcher"]);
+  const { supabase } = await requireStaff(["creator", "watcher"]);
+  const { data: ok } = await supabase.rpc("am_i_admin");
+  if (!ok) redirect("/profile");
   return <AdminDashboardClient />;
 }

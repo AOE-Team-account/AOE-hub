@@ -15,6 +15,16 @@ async function requireRole(allowed: string[], message: string): Promise<Guard> {
   if (!(rows ?? []).some((r) => allowed.includes(r.role as string))) {
     return { ok: false, response: NextResponse.json({ error: message }, { status: 403 }) };
   }
+  // The database also requires the extra sign-in steps (Creator unlocked,
+  // two-step for Watchers); ask it, so a password-only session is refused here too.
+  const creatorOnly = allowed.length === 1 && allowed[0] === "creator";
+  if (creatorOnly) {
+    const { data: status } = await supabase.rpc("creator_status");
+    if (!status?.unlocked) return { ok: false, response: NextResponse.json({ error: "Unlock the Creator panel first." }, { status: 403 }) };
+  } else {
+    const { data: ok } = await supabase.rpc("am_i_admin");
+    if (!ok) return { ok: false, response: NextResponse.json({ error: "Finish the extra sign-in steps first." }, { status: 403 }) };
+  }
   return { ok: true, userId: user.id };
 }
 
