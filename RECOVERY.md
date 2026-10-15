@@ -54,29 +54,28 @@ The nightly backup leaves out the AI's search data (the vectors) because it can 
 update public.kb_documents set indexed_model = null;
 ```
 
-## Before launch: clear the test records
+## Start of the testing stage: empty the hub
 
-Several tables are append-only on purpose (nobody, not even the app, can edit or delete rows): `activity_log` and `warnings`. Test actions made before launch stay in them. On launch day the database owner can clear them once, in the **SQL Editor**. First restore or empty the trash (items still in the trash lose their restore link when the log is cleared). After launch these are evidence — never clear them again.
+When testing with real accounts begins (and again just before launch if test data crept in), the hub must be completely empty: no accounts, no posts, no files, no comments, no placeholders. Only the 13 books and the hub guide in the AI's knowledge base stay, and the API keys (which live in `.env.local` / the hosting settings, not in the database).
 
+1. If any test files were uploaded, delete them from Cloudflare R2 / the Internet Archive and delete their `file_assets` rows first (the script refuses to run while stored files exist).
+2. In the **Supabase SQL Editor**, paste and run the whole of `supabase/reset-for-testing.sql`. The last lines print a count of what is left: everything 0 except the knowledge base documents (14).
+3. Never run it after launch: warnings and the activity log are evidence.
+
+## Your first Creator account on the hub
+
+1. Open the hub and **sign up** with your real email (tick the 13+ and terms box). Confirm the email if it asks.
+2. In the **Supabase SQL Editor** run (with your email):
 ```sql
--- 1. Test content still in the trash and test accounts: erase them first.
---    (Purging also needs the stored files removed; simplest is to restore or
---    hard-delete any test items by hand in the Table Editor before this.)
-
--- 2. Clear the evidence tables.
-alter table public.activity_log disable trigger activity_log_no_change;
-alter table public.activity_log disable trigger activity_log_no_truncate;
-truncate public.activity_log restart identity cascade;
-alter table public.activity_log enable trigger activity_log_no_change;
-alter table public.activity_log enable trigger activity_log_no_truncate;
-
-alter table public.warnings disable trigger warnings_protect;
-alter table public.warnings disable trigger warnings_no_truncate;
-truncate public.warnings;
-alter table public.warnings enable trigger warnings_protect;
-alter table public.warnings enable trigger warnings_no_truncate;
-
-truncate public.restrictions, public.account_referrals, public.creator_security_events;
-delete from public.item_notices;
-delete from public.notifications where kind in ('warning','warning-withdrawn','content-removed','role-granted','role-revoked','account-suspended','suspension-review','restriction','account-referral');
+insert into public.user_roles (user_id, role)
+select id, 'creator' from auth.users where email = 'YOUR-EMAIL@example.com'
+on conflict do nothing;
 ```
+3. Install an authenticator app on your phone (Google Authenticator, Microsoft Authenticator or Authy).
+4. Sign in on the hub, open your **profile** and press **Open Creator panel**.
+5. **Step 1:** scan the picture with the authenticator app and type the 6-digit code.
+6. **Step 2:** choose your access code (at least 10 characters), typed twice.
+7. **Save the 6 recovery keys** shown once (password manager or paper, never on the device you sign in from) and press "I have saved them".
+8. From then on each new sign-in asks for the 6-digit code, then the access code. The panel locks after 30 idle minutes.
+9. The Creator account cannot post, upload or comment. Use a second, ordinary account for that.
+
