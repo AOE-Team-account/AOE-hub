@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import type { ExperienceCategory } from "@/lib/types";
 
 const CATEGORIES: { value: ExperienceCategory; label: string }[] = [
+  { value: "question", label: "Question — ask the community" },
   { value: "starting-out", label: "Starting out" },
   { value: "milestones", label: "Milestones" },
   { value: "struggles", label: "Struggles & lessons" },

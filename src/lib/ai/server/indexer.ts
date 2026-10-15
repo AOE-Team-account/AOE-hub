@@ -6,7 +6,7 @@ import { currentEmbeddingModel, embedTexts } from "./embeddings";
 import { HUB_GUIDE_SOURCE_ID, HUB_GUIDE_TEXT, HUB_GUIDE_TITLE } from "./hub-guide";
 
 type Db = ReturnType<typeof createServiceRoleClient>;
-type SourceType = "file-post" | "experience-post" | "hub-guide";
+type SourceType = "file-post" | "experience-post" | "hub-guide" | "community-answer";
 
 interface DesiredDoc {
   source_type: SourceType;
@@ -81,13 +81,63 @@ async function collectDesiredDocs(db: Db): Promise<DesiredDoc[]> {
       content: `${title}\nExperience Board${p.category ? ` — ${p.category}` : ""}.\n\n${p.body}`,
     });
   }
+  // Community answers: comments by a CURRENT Answerer or Verified member on a
+  // Question post. Nothing else a member writes feeds the AI. The set is
+  // rebuilt from the present state on every run, so an answer that was
+  // deleted, hidden, noticed, or whose author lost the role or the account
+  // simply stops being wanted and is removed by the sync below.
+  const questions = await pageAll<{ id: string; title: string | null; body: string; author_id: string }>((from, to) =>
+    db.from("experience_posts").select("id, title, body, author_id").eq("category", "question").is("deleted_at", null).order("id").range(from, to)
+  );
+  if (questions.length) {
+    const byQuestion = new Map(questions.map((q) => [q.id, q]));
+    const comments: { id: string; parent_id: string; author_id: string; body: string }[] = [];
+    const questionIds = [...byQuestion.keys()];
+    for (let i = 0; i < questionIds.length; i += 100) {
+      const slice = questionIds.slice(i, i + 100);
+      comments.push(
+        ...(await pageAll<{ id: string; parent_id: string; author_id: string; body: string }>((from, to) =>
+          db.from("comments").select("id, parent_id, author_id, body").eq("parent_type", "experience-post").is("deleted_at", null).in("parent_id", slice).order("id").range(from, to)
+        ))
+      );
+    }
+    const authorIds = [...new Set(comments.map((c) => c.author_id))];
+    const [rolesRes, profilesRes, noticesRes] = await Promise.all([
+      authorIds.length ? db.from("user_roles").select("user_id, role").in("user_id", authorIds).in("role", ["answerer", "verified"]) : { data: [] },
+      authorIds.length ? db.from("profiles").select("id, account_status").in("id", authorIds) : { data: [] },
+      comments.length ? db.from("item_notices").select("item_id").eq("item_kind", "comment").in("item_id", comments.map((c) => c.id)) : { data: [] },
+    ]);
+    const roles = new Map<string, Set<string>>();
+    for (const r of (rolesRes.data ?? []) as { user_id: string; role: string }[]) {
+      if (!roles.has(r.user_id)) roles.set(r.user_id, new Set());
+      roles.get(r.user_id)!.add(r.role);
+    }
+    const active = new Set(((profilesRes.data ?? []) as { id: string; account_status: string }[]).filter((p) => p.account_status === "active").map((p) => p.id));
+    const noticed = new Set(((noticesRes.data ?? []) as { item_id: string }[]).map((n) => n.item_id));
+
+    for (const c of comments) {
+      const q = byQuestion.get(c.parent_id);
+      const r = roles.get(c.author_id);
+      if (!q || !r || !active.has(c.author_id) || noticed.has(c.id)) continue;
+      if (c.author_id === q.author_id) continue; // the asker's own replies never count
+      const questionText = (q.title?.trim() ? `${q.title.trim()}\n` : "") + q.body;
+      docs.push({
+        source_type: "community-answer",
+        source_id: c.id,
+        title: (q.title?.trim() || q.body).slice(0, 120),
+        content:
+          `Community answer on the Experience Board (written by a ${r.has("verified") ? "Verified member" : "Answerer"}).\n\n` +
+          `Question: ${questionText}\n\nAnswer: ${c.body}`,
+      });
+    }
+  }
   return docs;
 }
 
 async function syncDocuments(db: Db) {
   const desired = await collectDesiredDocs(db);
   const existing = await pageAll<{ id: string; source_type: string; source_id: string; content_hash: string | null }>((from, to) =>
-    db.from("kb_documents").select("id, source_type, source_id, content_hash").in("source_type", ["file-post", "experience-post", "hub-guide"]).order("id").range(from, to)
+    db.from("kb_documents").select("id, source_type, source_id, content_hash").in("source_type", ["file-post", "experience-post", "hub-guide", "community-answer"]).order("id").range(from, to)
   );
   const byKey = new Map(existing.map((e) => [`${e.source_type}:${e.source_id}`, e]));
   const wanted = new Set<string>();

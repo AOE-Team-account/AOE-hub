@@ -684,7 +684,8 @@ as $$
 begin
   delete from public.kb_documents
    where (source_type = 'file-post' and source_id in (select id from public.file_posts where author_id = p_user))
-      or (source_type = 'experience-post' and source_id in (select id from public.experience_posts where author_id = p_user));
+      or (source_type = 'experience-post' and source_id in (select id from public.experience_posts where author_id = p_user))
+      or (source_type = 'community-answer' and source_id in (select id from public.comments where author_id = p_user));
 end;
 $$;
 
@@ -1088,29 +1089,8 @@ drop function if exists public.creator_must_be_eligible_for_group();
 drop function if exists public.add_creator_as_group_member();
 alter table public.profiles drop column if exists groups_count;
 
--- Lets an admin notify a member (e.g. a moderation warning) without a client
--- insert policy on notifications — every other write to that table already
--- goes through a SECURITY DEFINER path (award_points, answer_admin_question,
--- handle_new_user), this keeps the same rule for admin-authored ones.
-create or replace function public.admin_notify_user(p_user_id uuid, p_body text)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  if not private.is_admin(auth.uid()) then
-    raise exception 'Only admins can send this notification.';
-  end if;
-  if p_body is null or char_length(btrim(p_body)) not between 1 and 500 then
-    raise exception 'Invalid notification text.';
-  end if;
-  insert into public.notifications (user_id, body, kind) values (p_user_id, btrim(p_body), 'admin-warning');
-end;
-$$;
-
-revoke execute on function public.admin_notify_user(uuid, text) from public, anon;
-grant execute on function public.admin_notify_user(uuid, text) to authenticated;
+-- (The old admin_notify_user() was replaced by warn_user() and notices.)
+drop function if exists public.admin_notify_user(uuid, text);
 
 -- ============================================================================
 -- Points — raw event ledger + the one function allowed to change balances
@@ -1325,7 +1305,7 @@ alter table public.notifications add column if not exists data jsonb not null de
 
 create table if not exists public.kb_documents (
   id uuid primary key default gen_random_uuid(),
-  source_type text not null check (source_type in ('philosophy-text', 'admin-answer', 'file-post', 'experience-post')),
+  source_type text not null check (source_type in ('philosophy-text', 'community-answer', 'file-post', 'experience-post', 'hub-guide')),
   source_id uuid,
   title text,
   content text not null,
@@ -1378,8 +1358,10 @@ alter table public.kb_documents add column if not exists content_hash text;
 -- model. A long book is indexed in resumable slices; null/other = unfinished.
 alter table public.kb_documents add column if not exists indexed_model text;
 alter table public.kb_documents drop constraint if exists kb_documents_source_type_check;
+update public.kb_documents set source_type = source_type where false;
+delete from public.kb_documents where source_type = 'admin-answer';
 alter table public.kb_documents add constraint kb_documents_source_type_check
-  check (source_type in ('philosophy-text', 'admin-answer', 'file-post', 'experience-post', 'hub-guide'));
+  check (source_type in ('philosophy-text', 'community-answer', 'file-post', 'experience-post', 'hub-guide'));
 create unique index if not exists kb_documents_source_uniq
   on public.kb_documents (source_type, source_id) where source_id is not null;
 
@@ -1640,146 +1622,173 @@ $$;
 revoke execute on function public.match_kb_chunks(vector, integer, text) from public, anon, authenticated;
 grant execute on function public.match_kb_chunks(vector, integer, text) to service_role;
 
--- ---- Questions the AI couldn't answer, routed to the admins ---------------
+-- ---- Questions: "I don't know" posts a question to the Experience Board ----
+-- (Replaces the admin inbox, chat5/6.) A question is an ordinary Experience
+-- Board post in the "question" category. Current Verified members and
+-- Answerers are told a question needs an answer; the asker is told about
+-- every comment. Only answers from a current Answerer or Verified member
+-- feed the AI (see the indexer), and they leave the AI's data the moment they
+-- are deleted, hidden or no longer eligible.
 
-create table if not exists public.admin_questions (
-  id uuid primary key default gen_random_uuid(),
-  asker_id uuid not null references public.profiles (id) on delete cascade,
-  question text not null check (char_length(question) between 3 and 1000),
-  lang text,
-  status text not null default 'open' check (status in ('open', 'answered')),
-  answer text check (answer is null or char_length(answer) <= 4000),
-  answered_by uuid references public.profiles (id) on delete set null,
-  created_at timestamptz not null default now(),
-  answered_at timestamptz
-);
+-- The old admin inbox and everything that served it.
+drop trigger if exists admin_questions_remove_kb on public.admin_questions;
+drop trigger if exists admin_questions_limit on public.admin_questions;
+drop table if exists public.admin_questions;
+drop function if exists public.limit_open_admin_questions();
+drop function if exists public.remove_kb_document_for_deleted_question();
+drop function if exists public.retract_admin_answer(uuid);
+drop function if exists public.answer_admin_question(uuid, text);
+delete from public.kb_documents where source_type = 'admin-answer';
 
-create index if not exists admin_questions_status_idx on public.admin_questions (status, created_at);
-alter table public.admin_questions enable row level security;
+alter table public.experience_posts drop constraint if exists experience_posts_category_check;
+alter table public.experience_posts add constraint experience_posts_category_check
+  check (category in ('philosophy', 'starting-out', 'milestones', 'struggles', 'curriculum-reviews', 'reflections', 'just-sharing', 'question'));
 
--- Cap open questions per member so the admin inbox can't be flooded.
-create or replace function public.limit_open_admin_questions()
+create or replace function private.limit_daily_questions()
 returns trigger
 language plpgsql
 security definer
 set search_path = public
 as $$
 begin
-  if (select count(*) from public.admin_questions where asker_id = new.asker_id and status = 'open') >= 5 then
-    raise exception 'You already have 5 open questions with the admins — please wait for an answer first.';
+  if (select count(*) from public.experience_posts
+       where author_id = new.author_id and category = 'question' and created_at > now() - interval '1 day') >= 5 then
+    raise exception 'You can post up to 5 questions a day. Please try again tomorrow.';
   end if;
   return new;
 end;
 $$;
 
-drop trigger if exists admin_questions_limit on public.admin_questions;
-create trigger admin_questions_limit before insert on public.admin_questions
-  for each row execute function public.limit_open_admin_questions();
+drop trigger if exists experience_posts_question_limit on public.experience_posts;
+create trigger experience_posts_question_limit before insert on public.experience_posts
+  for each row when (new.category = 'question') execute function private.limit_daily_questions();
 
-drop policy if exists "members ask the admins" on public.admin_questions;
-create policy "members ask the admins" on public.admin_questions
-  for insert with check (auth.uid() = asker_id and status = 'open' and answer is null and answered_by is null);
-
-drop policy if exists "askers and admins read questions" on public.admin_questions;
-create policy "askers and admins read questions" on public.admin_questions
-  for select using (auth.uid() = asker_id or private.is_admin(auth.uid()));
-
--- (Defined here, after the admin_questions table exists — creating a trigger
--- on a table that isn't there yet breaks a fresh install.)
--- Same rule for a deleted admin_questions row — this one was missed in the
--- first Phase 5 pass (found 2026-09-24: retracting a wrong answer needs the
--- indexed copy gone too, and this covers any future direct deletion as well).
-create or replace function public.remove_kb_document_for_deleted_question()
+create or replace function private.notify_question_asked()
 returns trigger
 language plpgsql
 security definer
 set search_path = public
 as $$
 begin
-  delete from public.kb_documents where source_type = 'admin-answer' and source_id = old.id;
+  insert into public.notifications (user_id, body, kind, data)
+  select distinct r.user_id,
+         'A question needs an answer: "' || left(coalesce(nullif(new.title, ''), new.body), 120) || '"',
+         'question-asked', jsonb_build_object('post_id', new.id)
+    from public.user_roles r
+    join public.profiles p on p.id = r.user_id and p.account_status = 'active'
+   where r.role in ('answerer', 'verified') and r.user_id <> new.author_id;
+  return new;
+end;
+$$;
+
+drop trigger if exists experience_posts_question_notify on public.experience_posts;
+create trigger experience_posts_question_notify after insert on public.experience_posts
+  for each row when (new.category = 'question') execute function private.notify_question_asked();
+
+create or replace function private.notify_question_answered()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_asker uuid;
+  v_category text;
+begin
+  if new.parent_type <> 'experience-post' then return new; end if;
+  select author_id, category into v_asker, v_category from public.experience_posts where id = new.parent_id;
+  if v_category = 'question' and v_asker is not null and v_asker <> new.author_id then
+    insert into public.notifications (user_id, body, kind, data)
+    values (v_asker, 'Someone answered your question.', 'question-answered',
+            jsonb_build_object('post_id', new.parent_id, 'comment_id', new.id));
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists comments_question_answered on public.comments;
+create trigger comments_question_answered after insert on public.comments
+  for each row execute function private.notify_question_answered();
+
+-- The AI must never quote a community answer that has been deleted, hidden or
+-- is no longer eligible. These remove its copy straight away; the indexer
+-- also rebuilds the set from the current state on every run.
+create or replace function private.drop_kb_for_comment(p_comment_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.kb_documents where source_type = 'community-answer' and source_id = p_comment_id;
+end;
+$$;
+
+create or replace function private.drop_kb_answers_by(p_user uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.kb_documents
+   where source_type = 'community-answer'
+     and source_id in (select id from public.comments where author_id = p_user);
+end;
+$$;
+
+create or replace function private.drop_kb_answers_on_post(p_post_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.kb_documents
+   where source_type = 'community-answer'
+     and source_id in (select id from public.comments where parent_type = 'experience-post' and parent_id = p_post_id);
+end;
+$$;
+
+create or replace function private.comment_deleted_remove_kb()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  perform private.drop_kb_for_comment(old.id);
   return old;
 end;
 $$;
 
-drop trigger if exists admin_questions_remove_kb on public.admin_questions;
-create trigger admin_questions_remove_kb after delete on public.admin_questions
-  for each row execute function public.remove_kb_document_for_deleted_question();
-
--- Undoes a wrong answer: removes it from the AI's index immediately, reopens
--- the question (so the same "answer" flow can fix it properly), and tells
--- the asker rather than letting an answer silently vanish.
-create or replace function public.retract_admin_answer(p_id uuid)
-returns void
+-- Comments point at their post by id only (no foreign key, because a comment
+-- can sit on either board), so deleting a post must remove its comments
+-- itself — which also fires the trigger above for each answer.
+create or replace function private.delete_comments_of_post()
+returns trigger
 language plpgsql
 security definer
 set search_path = public
 as $$
-declare
-  v_q public.admin_questions;
 begin
-  if not private.is_admin(auth.uid()) then
-    raise exception 'Only admins can retract an answer.';
-  end if;
-
-  update public.admin_questions
-     set status = 'open', answer = null, answered_by = null, answered_at = null
-   where id = p_id and status = 'answered'
-   returning * into v_q;
-  if v_q.id is null then
-    raise exception 'That question was not found or has no answer to retract.';
-  end if;
-
-  delete from public.kb_documents where source_type = 'admin-answer' and source_id = p_id;
-
-  insert into public.notifications (user_id, body, kind)
-  values (v_q.asker_id, 'An admin is revisiting the answer to your question: "' || left(v_q.question, 80) || '" — you''ll hear back again soon.', 'admin-answer-retracted');
+  delete from public.comments
+   where parent_id = old.id
+     and parent_type = case tg_table_name when 'file_posts' then 'file' else 'experience-post' end;
+  return old;
 end;
 $$;
 
-revoke execute on function public.retract_admin_answer(uuid) from public, anon;
-grant execute on function public.retract_admin_answer(uuid) to authenticated;
+drop trigger if exists experience_posts_delete_comments on public.experience_posts;
+create trigger experience_posts_delete_comments after delete on public.experience_posts
+  for each row execute function private.delete_comments_of_post();
+drop trigger if exists file_posts_delete_comments on public.file_posts;
+create trigger file_posts_delete_comments after delete on public.file_posts
+  for each row execute function private.delete_comments_of_post();
 
--- Answering goes through this function only: it records the answer, tells the
--- asker, and adds the Q&A to the knowledge base so the AI can answer the same
--- question itself next time (the index run picks up the new document).
-create or replace function public.answer_admin_question(p_id uuid, p_answer text)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_q public.admin_questions;
-  v_text text;
-begin
-  if not private.is_admin(auth.uid()) then
-    raise exception 'Only admins can answer questions.';
-  end if;
-  if p_answer is null or char_length(btrim(p_answer)) not between 1 and 4000 then
-    raise exception 'Answer must be between 1 and 4000 characters.';
-  end if;
-
-  update public.admin_questions
-     set status = 'answered', answer = btrim(p_answer), answered_by = auth.uid(), answered_at = now()
-   where id = p_id and status = 'open'
-   returning * into v_q;
-  if v_q.id is null then
-    raise exception 'That question was not found or was already answered.';
-  end if;
-
-  insert into public.notifications (user_id, body, kind)
-  values (v_q.asker_id, 'An admin answered your question: "' || left(v_q.question, 80) || '" — ' || left(v_q.answer, 200), 'admin-answer');
-
-  v_text := 'Question: ' || v_q.question || E'\nAnswer: ' || v_q.answer;
-  insert into public.kb_documents (source_type, source_id, title, content, content_hash)
-  values ('admin-answer', v_q.id, left(v_q.question, 120), v_text, md5(v_text))
-  on conflict (source_type, source_id) where source_id is not null
-  do update set content = excluded.content, content_hash = excluded.content_hash, title = excluded.title;
-end;
-$$;
-
-revoke execute on function public.answer_admin_question(uuid, text) from public, anon;
-grant execute on function public.answer_admin_question(uuid, text) to authenticated;
+drop trigger if exists comments_remove_kb on public.comments;
+create trigger comments_remove_kb after delete on public.comments
+  for each row execute function private.comment_deleted_remove_kb();
 
 -- ---- Bring-your-own AI key -------------------------------------------------
 
@@ -1940,6 +1949,8 @@ begin
   -- Reports about it are settled by this deletion; remember which, so undoing
   -- the deletion can reopen exactly those.
   perform private.clear_pins_for_item(p_kind, p_id);
+  if p_kind = 'comment' then perform private.drop_kb_for_comment(p_id); end if;
+  if p_kind = 'post' then perform private.drop_kb_answers_on_post(p_id); end if;
   v_report_type := case p_kind when 'file' then 'file' when 'post' then 'experience-post' else 'comment' end;
   select coalesce(array_agg(id), '{}') into v_reports
     from public.reports where target_type = v_report_type and target_id = p_id and status = 'open';
@@ -2118,6 +2129,11 @@ begin
 
   if p_role = 'verified' then
     delete from public.verified_pins where user_id = p_user_id;
+  end if;
+  -- Their answers stop feeding the AI at once; if they still hold the other
+  -- badge role, the next index run puts them back.
+  if p_role in ('answerer', 'verified') then
+    perform private.drop_kb_answers_by(p_user_id);
   end if;
   perform private.log_activity(v_uid, 'role-revoked', 'user', p_user_id, p_user_id, null, jsonb_build_object('role', p_role));
   insert into public.notifications (user_id, body, kind, data)
@@ -2345,6 +2361,7 @@ begin
 
   v_reports := private.settle_reports(p_kind, p_id);
   perform private.clear_pins_for_item(p_kind, p_id);
+  if p_kind = 'comment' then perform private.drop_kb_for_comment(p_id); end if;
 
   perform private.log_activity(
     v_uid, 'notice-set', p_kind, p_id, v_author, null,
@@ -3324,7 +3341,6 @@ grant insert (target_type, target_id, reason, details, reported_by) on public.re
 
 grant update (read) on public.notifications to authenticated;
 
-grant insert (asker_id, question, lang) on public.admin_questions to authenticated;
 
 -- ---- Functions: only the listed ones are callable from a browser ----------
 do $$
@@ -3347,9 +3363,6 @@ end $$;
 -- Functions members may call (always as themselves; each checks auth.uid()).
 grant execute on function public.set_my_ai_key(text, text, text) to authenticated;
 grant execute on function public.remove_my_ai_key() to authenticated;
-grant execute on function public.admin_notify_user(uuid, text) to authenticated;
-grant execute on function public.answer_admin_question(uuid, text) to authenticated;
-grant execute on function public.retract_admin_answer(uuid) to authenticated;
 grant execute on function public.soft_delete_item(text, uuid, text) to authenticated;
 grant execute on function public.dismiss_report(uuid, text) to authenticated;
 grant execute on function public.undo_activity(bigint) to authenticated;

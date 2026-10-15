@@ -22,6 +22,7 @@ export type FileSection =
 export type Authorship = "original" | "remix" | "notmine";
 
 export type ExperienceCategory =
+  | "question"
   | "philosophy"
   | "starting-out"
   | "milestones"

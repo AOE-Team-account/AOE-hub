@@ -5,6 +5,7 @@ import Link from "next/link";
 import { aiProvider, type AISource } from "@/lib/ai";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { friendlyWriteError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/client";
 
 interface ChatMessage {
@@ -12,7 +13,8 @@ interface ChatMessage {
   from: "ai" | "user";
   text: string;
   sources?: AISource[];
-  // The question that could not be answered, so it can be sent to the admins.
+  postHref?: string;
+  // The question the AI could not answer, offered as a post on the Experience Board.
   escalateQuestion?: string;
   isError?: boolean;
 }
@@ -126,24 +128,30 @@ export function AiFab() {
     }
   }
 
-  async function askAdmins(msgId: number, question: string) {
+  // Posts the question to the Experience Board under the member's own
+  // account. Verified members and Answerers are told by the database; the
+  // asker gets a notification for every answer.
+  async function postQuestion(msgId: number, question: string) {
     if (!user) {
       openSignInModal();
       return;
     }
     const supabase = createClient();
-    const { error } = await supabase.from("admin_questions").insert({ asker_id: user.id, question, lang });
+    const { data, error } = await supabase
+      .from("experience_posts")
+      .insert({ author_id: user.id, category: "question", body: question })
+      .select("id")
+      .single();
     setMessages((all) => [
       ...all.map((m) => (m.id === msgId ? { ...m, escalateQuestion: undefined } : m)),
       {
         id: Date.now(),
         from: "ai" as const,
         text: error
-          ? error.message.includes("open questions")
-            ? error.message
-            : "I couldn't send that to the admins. Please try again."
-          : "Sent. An admin will answer, and you'll get a notification when they do.",
+          ? friendlyWriteError(error)
+          : "Posted on the Experience Board under your name. Members who can help have been told, and you'll get a notification for each answer.",
         isError: !!error,
+        postHref: data ? `/experience/${data.id}` : undefined,
       },
     ]);
   }
@@ -198,9 +206,14 @@ export function AiFab() {
                 </div>
               )}
               {m.escalateQuestion && (
-                <button className="btn small" style={{ marginTop: 8 }} onClick={() => askAdmins(m.id, m.escalateQuestion!)}>
-                  {user ? "Send to the admins" : "Sign in to ask the admins"}
+                <button className="btn small" style={{ marginTop: 8 }} onClick={() => postQuestion(m.id, m.escalateQuestion!)}>
+                  {user ? "Yes, post my question" : "Sign in to post my question"}
                 </button>
+              )}
+              {m.postHref && (
+                <div className="tiny" style={{ marginTop: 6 }}>
+                  <Link href={m.postHref} style={{ color: "var(--accent)" }}>See your question</Link>
+                </div>
               )}
             </div>
           ))}

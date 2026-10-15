@@ -12,6 +12,7 @@ import type { ExperienceCategory, ExperiencePost, User } from "@/lib/types";
 
 const CATEGORY_OPTIONS: { value: ExperienceCategory | "all"; label: string }[] = [
   { value: "all", label: "All" },
+  { value: "question", label: "Question" },
   { value: "philosophy", label: "Philosophy" },
   { value: "starting-out", label: "Starting out" },
   { value: "milestones", label: "Milestones" },
@@ -81,6 +82,7 @@ const WELCOME_COPY: Record<WelcomeSituation, { title: string; body: React.ReactN
 };
 
 const CATEGORY_LABELS: Record<ExperienceCategory, string> = {
+  question: "Question",
   philosophy: "Philosophy",
   "starting-out": "Starting out",
   milestones: "Milestones",

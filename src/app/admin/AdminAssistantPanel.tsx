@@ -1,23 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
-
-interface OpenQuestion {
-  id: string;
-  question: string;
-  created_at: string;
-  asker: { name: string } | null;
-}
-
-interface AnsweredQuestion {
-  id: string;
-  question: string;
-  answer: string;
-  answered_at: string;
-  asker: { name: string } | null;
-}
 
 interface PhilosophyBook {
   id: string;
@@ -33,134 +17,9 @@ interface KnowledgeStatus {
 }
 
 export function AdminAssistantPanel() {
-  return (
-    <>
-      <QuestionsInbox />
-      <KnowledgeTools />
-    </>
-  );
+  return <KnowledgeTools />;
 }
 
-// Questions the assistant wasn't confident about and members sent to the
-// admins. Answering notifies the asker and adds the Q&A to the assistant's
-// knowledge, so the same question doesn't need an admin next time. Recently
-// answered ones stay visible with a Retract option, for when an answer
-// turns out to be wrong — retracting pulls it out of the index immediately
-// and reopens the question rather than silently deleting it.
-function QuestionsInbox() {
-  const [questions, setQuestions] = useState<OpenQuestion[] | null>(null);
-  const [answered, setAnswered] = useState<AnsweredQuestion[] | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    const supabase = createClient();
-    const { data: open } = await supabase
-      .from("admin_questions")
-      .select("id, question, created_at, asker:profiles!admin_questions_asker_id_fkey(name)")
-      .eq("status", "open")
-      .order("created_at");
-    setQuestions((open ?? []) as unknown as OpenQuestion[]);
-    const { data: done } = await supabase
-      .from("admin_questions")
-      .select("id, question, answer, answered_at, asker:profiles!admin_questions_asker_id_fkey(name)")
-      .eq("status", "answered")
-      .order("answered_at", { ascending: false })
-      .limit(10);
-    setAnswered((done ?? []) as unknown as AnsweredQuestion[]);
-  }, []);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    load();
-  }, [load]);
-
-  async function answer(id: string) {
-    const text = (drafts[id] ?? "").trim();
-    if (!text) return;
-    setBusyId(id);
-    setError(null);
-    const supabase = createClient();
-    const { error: rpcError } = await supabase.rpc("answer_admin_question", { p_id: id, p_answer: text });
-    setBusyId(null);
-    if (rpcError) {
-      setError(rpcError.message);
-      return;
-    }
-    // Fire-and-forget: pull the new answer into the assistant's knowledge.
-    fetch("/api/admin/knowledge/index", { method: "POST" }).catch(() => {});
-    setDrafts((d) => ({ ...d, [id]: "" }));
-    await load();
-  }
-
-  async function retract(id: string) {
-    setBusyId(id);
-    setError(null);
-    const supabase = createClient();
-    const { error: rpcError } = await supabase.rpc("retract_admin_answer", { p_id: id });
-    setBusyId(null);
-    if (rpcError) {
-      setError(rpcError.message);
-      return;
-    }
-    await load();
-  }
-
-  return (
-    <>
-      <p className="label" style={{ fontWeight: 500, margin: "20px 0 8px" }}>Questions for the admins</p>
-      <p className="tiny" style={{ marginBottom: 10 }}>
-        Questions the AI assistant couldn&apos;t answer confidently. Your answer is sent to the member and added to what
-        the assistant knows.
-      </p>
-      {questions === null && <p className="muted">Loading…</p>}
-      {questions?.length === 0 && <p className="muted">No open questions.</p>}
-      {error && <p className="tiny" style={{ color: "#b5471f" }}>{error}</p>}
-      {questions?.map((q) => (
-        <div className="card" key={q.id}>
-          <div className="row between wrap" style={{ gap: 8, marginBottom: 6 }}>
-            <span className="tiny">{q.asker?.name ?? "A member"}</span>
-            <span className="tiny">{new Date(q.created_at).toLocaleString()}</span>
-          </div>
-          <p style={{ margin: "0 0 8px" }}>{q.question}</p>
-          <textarea
-            rows={3}
-            placeholder="Write your answer…"
-            value={drafts[q.id] ?? ""}
-            onChange={(e) => setDrafts((d) => ({ ...d, [q.id]: e.target.value }))}
-          />
-          <div style={{ marginTop: 8 }}>
-            <Button variant="primary" size="small" disabled={busyId === q.id || !(drafts[q.id] ?? "").trim()} onClick={() => answer(q.id)}>
-              {busyId === q.id ? "Sending…" : "Send answer"}
-            </Button>
-          </div>
-        </div>
-      ))}
-
-      {answered !== null && answered.length > 0 && (
-        <>
-          <p className="tiny" style={{ fontWeight: 500, margin: "14px 0 8px" }}>Recently answered</p>
-          {answered.map((q) => (
-            <div className="card" key={q.id}>
-              <div className="row between wrap" style={{ gap: 8, marginBottom: 6 }}>
-                <span className="tiny">{q.asker?.name ?? "A member"}</span>
-                <span className="tiny">{new Date(q.answered_at).toLocaleString()}</span>
-              </div>
-              <p className="tiny" style={{ margin: "0 0 4px" }}>{q.question}</p>
-              <p style={{ margin: "0 0 8px" }}>{q.answer}</p>
-              <Button size="small" disabled={busyId === q.id} onClick={() => retract(q.id)}>
-                {busyId === q.id ? "Retracting…" : "Retract this answer"}
-              </Button>
-            </div>
-          ))}
-        </>
-      )}
-    </>
-  );
-}
-
-// Adds philosophy books and keeps the assistant's index current.
 function KnowledgeTools() {
   const [status, setStatus] = useState<KnowledgeStatus | null>(null);
   const [title, setTitle] = useState("");
