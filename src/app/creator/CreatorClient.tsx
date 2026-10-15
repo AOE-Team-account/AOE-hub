@@ -57,6 +57,9 @@ const ACTION_TEXT: Record<string, string> = {
   "report-to-creator": "Reported an account to the Creator",
   "dismiss-referral": "Dismissed a report about an account",
   purge: "Erased expired items for good",
+  "two-step-requested": "Asked a member to turn on two-step sign-in",
+  "recovery-key-used": "A recovery key was used",
+  "setting-changed": "Changed a hub setting",
 };
 const KIND_WORD: Record<string, string> = { file: "file", post: "post", comment: "comment", user: "account", report: "report" };
 const UNDOABLE = new Set(["delete", "warn", "notice-set", "notice-removed", "dismiss-report", "suspend", "restrict", "delete-account"]);
@@ -74,6 +77,7 @@ const EVENT_TEXT: Record<string, string> = {
   "key-wrong": "Wrong recovery key",
   "recovery-used": "A recovery key was used",
   "keys-created": "New recovery keys created",
+  "two-step-requested": "Asked a member to turn on two-step sign-in",
 };
 
 export function CreatorClient({ data }: { data: CreatorData }) {
@@ -213,6 +217,12 @@ export function CreatorClient({ data }: { data: CreatorData }) {
                           <strong>{r.label}</strong> — {r.help}
                           {needsTwoStep && <span className="tiny"> (They need to turn on two-step sign-in in Settings first.)</span>}
                         </span>
+                        {needsTwoStep && (
+                          <Button size="small" disabled={busy} onClick={(e) => {
+                            e.preventDefault();
+                            perform(() => supabase.rpc("ask_for_two_step", { p_user_id: p.id }), `${p.name} was asked to turn on two-step sign-in.`);
+                          }}>Ask them</Button>
+                        )}
                       </label>
                     );
                   })}

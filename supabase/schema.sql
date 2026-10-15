@@ -3164,6 +3164,32 @@ as $$
   );
 $$;
 
+-- Creator only: send a member a private note asking them to turn on two-step
+-- sign-in (so they can be made a Watcher or Deacon). Says nothing about why.
+create or replace function public.ask_for_two_step(p_user_id uuid)
+returns void
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+begin
+  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
+  if not exists (select 1 from public.profiles where id = p_user_id and account_status = 'active') then
+    raise exception 'That person does not exist.';
+  end if;
+  if exists (select 1 from public.notifications
+              where user_id = p_user_id and kind = 'two-step-request' and created_at > now() - interval '1 day') then
+    raise exception 'They were already asked in the last day.';
+  end if;
+  insert into public.notifications (user_id, body, kind, data)
+  values (p_user_id,
+          'Please turn on two-step sign-in: open Settings → Two-step sign-in and scan the picture with an authenticator app (Google Authenticator, Microsoft Authenticator or Authy). It makes your account much safer.',
+          'two-step-request', '{}'::jsonb);
+  perform private.log_activity(auth.uid(), 'two-step-requested', 'user', p_user_id, p_user_id, null, '{}'::jsonb);
+end;
+$$;
+
 -- Creator only: look a person up by name or email (nobody is ever listed
 -- without a search).
 drop function if exists public.find_people(text);
@@ -3357,6 +3383,7 @@ grant execute on function public.get_hub_settings() to authenticated;
 grant execute on function public.set_hub_setting(text, jsonb) to authenticated;
 grant execute on function public.my_two_step_status() to authenticated;
 grant execute on function public.am_i_admin() to authenticated;
+grant execute on function public.ask_for_two_step(uuid) to authenticated;
 grant execute on function public.pin_my_item(text, uuid) to authenticated;
 grant execute on function public.unpin_my_item(text) to authenticated;
 grant execute on function public.creator_account_queue() to authenticated;
