@@ -7,7 +7,7 @@ import "server-only";
 export class AINotConfiguredError extends Error {}
 
 export type ChatTarget =
-  | { kind: "openai-compatible"; baseUrl: string; apiKey?: string; model: string }
+  | { kind: "openai-compatible"; baseUrl: string; apiKey?: string; model: string; extraBody?: Record<string, unknown> }
   | { kind: "anthropic"; baseUrl: string; apiKey: string; model: string };
 
 export interface EmbeddingConfig {

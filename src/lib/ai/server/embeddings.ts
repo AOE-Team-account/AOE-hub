@@ -27,10 +27,13 @@ function normalize(v: number[]): number[] {
   return v.map((x) => x / n);
 }
 
-function retryAfterSeconds(res: Response): number | undefined {
+function retryAfterSeconds(res: Response, body?: string): number | undefined {
   const h = res.headers.get("retry-after");
   const n = h ? Number(h) : NaN;
-  return Number.isFinite(n) && n > 0 ? n : undefined;
+  if (Number.isFinite(n) && n > 0) return n;
+  // Google puts the wait in the message ("Please retry in 38.7s") and in RetryInfo ("retryDelay": "38s").
+  const m = body?.match(/retry in ([\d.]+)s/i) ?? body?.match(/"retryDelay":\s*"([\d.]+)s"/i);
+  return m ? Math.ceil(Number(m[1])) : undefined;
 }
 
 async function embedGemini(model: string, texts: string[], kind: EmbedKind): Promise<number[][]> {
@@ -58,8 +61,9 @@ async function embedGemini(model: string, texts: string[], kind: EmbedKind): Pro
       throw new AIProviderError("Could not reach the embedding service.");
     }
     if (!res.ok) {
+      const body = await res.text().catch(() => "");
       const err = new AIProviderError(`The embedding service returned an error (${res.status}).`, res.status);
-      err.retryAfterSec = retryAfterSeconds(res);
+      err.retryAfterSec = retryAfterSeconds(res, body);
       throw err;
     }
     const data = await res.json();

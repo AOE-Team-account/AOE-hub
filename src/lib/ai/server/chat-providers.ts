@@ -74,7 +74,7 @@ export async function chatComplete(
   const data = await post(
     `${trimSlash(target.baseUrl)}/chat/completions`,
     target.apiKey ? { authorization: `Bearer ${target.apiKey}` } : {},
-    { model: target.model, messages, max_tokens: maxTokens, temperature, stream: false }
+    { model: target.model, messages, max_tokens: maxTokens, temperature, stream: false, ...(target.extraBody ?? {}) }
   );
   const text = data?.choices?.[0]?.message?.content;
   if (typeof text !== "string" || !text.trim()) throw new AIProviderError("The AI service returned an empty answer.");

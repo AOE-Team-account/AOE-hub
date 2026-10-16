@@ -28,6 +28,8 @@ export interface IndexStatus {
   processedThisRun: number;
   /** True when the provider asked us to slow down; the next run resumes. */
   rateLimited: boolean;
+  /** How many seconds the provider asked us to wait before the next run. */
+  retryAfterSec: number | null;
   done: boolean;
 }
 
@@ -180,7 +182,7 @@ async function syncDocuments(db: Db) {
 // rows already exist for that model. A passage the provider rejects is stored
 // with no vector (logged) so the numbering stays contiguous and the indexer
 // never loops on it. A rate limit stops the run cleanly; the next run resumes.
-async function embedPending(db: Db, model: string, budgetMs: number): Promise<{ processed: number; rateLimited: boolean }> {
+async function embedPending(db: Db, model: string, budgetMs: number): Promise<{ processed: number; rateLimited: boolean; retryAfterSec: number | null }> {
   const deadline = Date.now() + budgetMs;
   let processed = 0;
 
@@ -197,7 +199,18 @@ async function embedPending(db: Db, model: string, budgetMs: number): Promise<{ 
     try {
       while (next < chunks.length && Date.now() < deadline) {
         const slice = chunks.slice(next, next + 32);
-        const vectors = await embedPassages(slice.map((c) => `${doc.title ?? ""}\n${c}`), model);
+        let vectors: (number[] | null)[];
+        try {
+          vectors = await embedPassages(slice.map((c) => `${doc.title ?? ""}\n${c}`), model);
+        } catch (err) {
+          // A short rate-limit wait that fits in this run: wait it out and go on,
+          // so the limit is used fully instead of stopping at every hit.
+          if (err instanceof AIProviderError && err.status === 429 && err.retryAfterSec && Date.now() + (err.retryAfterSec + 1) * 1000 < deadline) {
+            await new Promise((r) => setTimeout(r, (err.retryAfterSec! + 1) * 1000));
+            continue;
+          }
+          throw err;
+        }
         const rows = slice.map((content, i) => ({
           document_id: doc.id,
           chunk_index: next + i,
@@ -210,7 +223,7 @@ async function embedPending(db: Db, model: string, budgetMs: number): Promise<{ 
         next += slice.length;
       }
     } catch (err) {
-      if (err instanceof AIProviderError && err.status === 429) return { processed, rateLimited: true };
+      if (err instanceof AIProviderError && err.status === 429) return { processed, rateLimited: true, retryAfterSec: err.retryAfterSec ?? null };
       throw err;
     }
 
@@ -221,7 +234,7 @@ async function embedPending(db: Db, model: string, budgetMs: number): Promise<{ 
       break; // out of time mid-document; the next call resumes here
     }
   }
-  return { processed, rateLimited: false };
+  return { processed, rateLimited: false, retryAfterSec: null };
 }
 
 async function pendingFor(db: Db, model: string): Promise<number> {
@@ -251,12 +264,14 @@ export async function runIndexing(budgetMs = 40_000): Promise<IndexStatus> {
   const liveRun = await embedPending(db, live, budgetMs);
   let processed = liveRun.processed;
   let rateLimited = liveRun.rateLimited;
+  let retryAfterSec = liveRun.retryAfterSec;
   if (next && !rateLimited) {
     const left = budgetMs - (Date.now() - started);
     if (left > 2000) {
       const nextRun = await embedPending(db, next, left);
       processed += nextRun.processed;
       rateLimited = nextRun.rateLimited;
+      retryAfterSec = nextRun.retryAfterSec;
     }
   }
   const status = await getIndexStatus(db);
@@ -264,6 +279,7 @@ export async function runIndexing(budgetMs = 40_000): Promise<IndexStatus> {
     ...status,
     processedThisRun: processed,
     rateLimited,
+    retryAfterSec,
     done: status.pendingDocuments === 0 && (status.pendingNext ?? 0) === 0,
   };
 }

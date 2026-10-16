@@ -31,6 +31,19 @@ const DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b";
 // First rest period grows with repeated failures: 1 min, 5 min, 30 min, 2 h, 6 h.
 const REST_LADDER_SEC = [60, 300, 1800, 7200, 21600];
 
+function groqTarget(apiKey: string): ChatTarget {
+  const model = process.env.GROQ_CHAT_MODEL || DEFAULT_GROQ_MODEL;
+  // Groq's gpt-oss models "think" before answering and the thinking uses up
+  // the token allowance; keep it short so answers are not cut off or slow.
+  return {
+    kind: "openai-compatible",
+    baseUrl: GROQ_BASE,
+    apiKey,
+    model,
+    ...(model.includes("gpt-oss") ? { extraBody: { reasoning_effort: "low" } } : {}),
+  };
+}
+
 export function hubProviders(): HubProvider[] {
   const out: HubProvider[] = [];
   const google = process.env.GOOGLE_AI_API_KEY;
@@ -46,7 +59,7 @@ export function hubProviders(): HubProvider[] {
     out.push({
       id: "groq",
       label: "Groq",
-      target: { kind: "openai-compatible", baseUrl: GROQ_BASE, apiKey: groq, model: process.env.GROQ_CHAT_MODEL || DEFAULT_GROQ_MODEL },
+      target: groqTarget(groq),
     });
   }
   if (out.length === 0) {
@@ -72,7 +85,9 @@ async function loadStates(): Promise<Map<string, StateRow>> {
 async function rest(provider: string, prior: StateRow | undefined, err: AIProviderError) {
   const strikes = (prior?.strikes ?? 0) + 1;
   let seconds: number;
-  if (err.status === 429) seconds = Math.max(err.retryAfterSec ?? 0, REST_LADDER_SEC[Math.min(strikes - 1, REST_LADDER_SEC.length - 1)]);
+  // A short per-minute limit says how long to wait (honour it); a daily limit
+  // without a hint gets the growing ladder.
+  if (err.status === 429) seconds = err.retryAfterSec ? Math.max(err.retryAfterSec, 5) : REST_LADDER_SEC[Math.min(strikes - 1, REST_LADDER_SEC.length - 1)];
   else if (err.status === 401 || err.status === 403) seconds = 3600;
   else seconds = 30;
   await createServiceRoleClient().from("ai_provider_state").upsert({
