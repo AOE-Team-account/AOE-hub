@@ -182,12 +182,25 @@ async function syncDocuments(db: Db) {
 // rows already exist for that model. A passage the provider rejects is stored
 // with no vector (logged) so the numbering stays contiguous and the indexer
 // never loops on it. A rate limit stops the run cleanly; the next run resumes.
+// A dropped connection or a timeout, as opposed to a refusal: worth trying again.
+function isTransient(err: unknown): boolean {
+  if (err instanceof AIProviderError) return err.status === undefined && /could not reach/i.test(err.message);
+  if (err instanceof Error) return /fetch failed|timed out|timeout|aborted|ECONNRESET|ETIMEDOUT|network/i.test(`${err.name} ${err.message} ${(err as { cause?: { message?: string } }).cause?.message ?? ""}`);
+  return false;
+}
+
 async function embedPending(db: Db, model: string, budgetMs: number): Promise<{ processed: number; rateLimited: boolean; retryAfterSec: number | null }> {
   const deadline = Date.now() + budgetMs;
+  const t0 = Date.now();
+  // Set INDEX_TIMING=1 to log how long each step takes (for diagnosing slowness).
+  const tick = (label: string) => { if (process.env.INDEX_TIMING) console.log(`[index ${model}] +${((Date.now() - t0) / 1000).toFixed(1)}s ${label}`); };
   let processed = 0;
+  let transientFailures = 0;
 
   while (Date.now() < deadline) {
+    try {
     const { data: docs, error } = await db.rpc("kb_pending_documents", { p_model: model, p_limit: 1 });
+    tick("pending-document lookup");
     if (error) throw new Error(error.message);
     if (!docs || docs.length === 0) break;
     const doc = docs[0] as { id: string; title: string | null; content: string };
@@ -195,6 +208,7 @@ async function embedPending(db: Db, model: string, budgetMs: number): Promise<{ 
     const chunks = chunkText(doc.content);
     const { count } = await db.from("kb_chunks").select("id", { count: "exact", head: true }).eq("document_id", doc.id).eq("embedding_model", model);
     let next = count ?? 0;
+    tick(`resume at piece ${next}`);
 
     try {
       while (next < chunks.length && Date.now() < deadline) {
@@ -202,7 +216,9 @@ async function embedPending(db: Db, model: string, budgetMs: number): Promise<{ 
         let vectors: (number[] | null)[];
         try {
           vectors = await embedPassages(slice.map((c) => `${doc.title ?? ""}\n${c}`), model);
+          tick(`embedded ${slice.length}`);
         } catch (err) {
+          tick(`embed failed: ${err instanceof Error ? err.message : err} (retry-after ${(err as AIProviderError).retryAfterSec ?? "none"})`);
           // A short rate-limit wait that fits in this run: wait it out and go on,
           // so the limit is used fully instead of stopping at every hit.
           if (err instanceof AIProviderError && err.status === 429 && err.retryAfterSec && Date.now() + (err.retryAfterSec + 1) * 1000 < deadline) {
@@ -220,6 +236,7 @@ async function embedPending(db: Db, model: string, budgetMs: number): Promise<{ 
         }));
         const { error: insErr } = await db.from("kb_chunks").insert(rows);
         if (insErr) throw new Error(insErr.message);
+        tick(`saved ${slice.length}`);
         next += slice.length;
       }
     } catch (err) {
@@ -228,10 +245,22 @@ async function embedPending(db: Db, model: string, budgetMs: number): Promise<{ 
     }
 
     if (next >= chunks.length) {
-      await db.from("kb_document_models").upsert({ document_id: doc.id, model });
+      const { error: doneErr } = await db.from("kb_document_models").upsert({ document_id: doc.id, model });
+      if (doneErr) throw new Error(doneErr.message);
       processed++;
     } else {
       break; // out of time mid-document; the next call resumes here
+    }
+    } catch (err) {
+      // A dropped connection: wait a moment and start the step again. The loop
+      // re-reads how many pieces are already saved, so nothing is doubled.
+      if (isTransient(err) && transientFailures < 6) {
+        transientFailures++;
+        console.error(`Indexing: temporary network problem (${transientFailures}); retrying.`);
+        await new Promise((r) => setTimeout(r, 3000));
+        continue;
+      }
+      throw err;
     }
   }
   return { processed, rateLimited: false, retryAfterSec: null };

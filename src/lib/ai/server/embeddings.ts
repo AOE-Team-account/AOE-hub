@@ -55,7 +55,7 @@ async function embedGemini(model: string, texts: string[], kind: EmbedKind): Pro
             outputDimensionality: EMBEDDING_DIMENSIONS,
           })),
         }),
-        signal: AbortSignal.timeout(120_000),
+        signal: AbortSignal.timeout(60_000),
       });
     } catch {
       throw new AIProviderError("Could not reach the embedding service.");

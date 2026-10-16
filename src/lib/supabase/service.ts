@@ -11,5 +11,11 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "placeholder-ser
 export function createServiceRoleClient() {
   return createSupabaseClient(supabaseUrl, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
+    // A request that never answers (a dropped connection) must fail within
+    // 30 seconds so long jobs such as indexing can notice and try again,
+    // instead of hanging for minutes.
+    global: {
+      fetch: (input, init) => fetch(input, { ...init, signal: init?.signal ?? AbortSignal.timeout(30_000) }),
+    },
   });
 }

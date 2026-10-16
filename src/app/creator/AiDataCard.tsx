@@ -59,7 +59,15 @@ export function AiDataCard() {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) { setError(data?.error ?? "Indexing failed."); break; }
         await load();
-        if (data.rateLimited) { setMessage("The AI company asked us to slow down. Press the button again in a few minutes; nothing is lost."); break; }
+        if (data.rateLimited) {
+          const secs = Number(data.retryAfterSec) || 0;
+          setMessage(
+            secs > 900
+              ? `Google's free daily limit (1,000 pieces a day) is used up. It opens again in about ${Math.ceil(secs / 3600)} hour(s). Press the button again then; nothing is lost.`
+              : "Google asked us to slow down. Press the button again in a minute; nothing is lost."
+          );
+          break;
+        }
         if (data.done) { setMessage("Everything is up to date."); break; }
       }
     } finally {
