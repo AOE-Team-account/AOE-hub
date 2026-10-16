@@ -9,7 +9,7 @@ import { GEMINI_EMBEDDING_MODEL, getLiveEmbeddingModel } from "./embedding-model
 // development model). Vectors are always 768 numbers, to fit the database.
 
 const OPENAI_BATCH = 16;
-const GEMINI_BATCH = 24;
+const GEMINI_BATCH = 32;
 const GEMINI_BASE = process.env.GEMINI_API_BASE || "https://generativelanguage.googleapis.com/v1beta";
 
 export type EmbedKind = "document" | "query";

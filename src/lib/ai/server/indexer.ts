@@ -196,7 +196,7 @@ async function embedPending(db: Db, model: string, budgetMs: number): Promise<{ 
 
     try {
       while (next < chunks.length && Date.now() < deadline) {
-        const slice = chunks.slice(next, next + 16);
+        const slice = chunks.slice(next, next + 32);
         const vectors = await embedPassages(slice.map((c) => `${doc.title ?? ""}\n${c}`), model);
         const rows = slice.map((content, i) => ({
           document_id: doc.id,
