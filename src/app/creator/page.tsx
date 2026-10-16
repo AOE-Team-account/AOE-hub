@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/auth/staff";
 import { loadReviewData } from "@/lib/data/review";
 import { CreatorClient, type CreatorData } from "./CreatorClient";
+import type { KeyHelpRow } from "./KeyHelpEditor";
 
 // The Creator panel: a protected page re-checked on the server for every
 // request. (The sign-in access code and two-factor step arrive with the
@@ -19,7 +20,8 @@ export default async function CreatorPage() {
 
   const review = await loadReviewData(supabase, userId, ["file", "post", "comment"]);
 
-  const [settingsRes, eventsRes, holdersRes, queueRes, trashRes, logRes] = await Promise.all([
+  const [keyHelpRes, settingsRes, eventsRes, holdersRes, queueRes, trashRes, logRes] = await Promise.all([
+    supabase.rpc("list_ai_key_help"),
     supabase.rpc("get_hub_settings"),
     supabase.rpc("creator_security_events_list"),
     supabase.from("user_roles").select("user_id, role, granted_at").in("role", ["watcher", "deacon", "answerer", "verified"]),
@@ -53,6 +55,7 @@ export default async function CreatorPage() {
     trash,
     log,
     names,
+    keyHelp: (keyHelpRes.data ?? []) as KeyHelpRow[],
     security: {
       requireTwoStepForStaff: (settingsRes.data as Record<string, unknown> | null)?.require_2fa_staff !== false,
       events: (eventsRes.data ?? []) as { at: string; kind: string }[],

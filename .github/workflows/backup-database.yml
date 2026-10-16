@@ -11,11 +11,18 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
+      # Needed for scripts/prune-backups.py (the retention rule).
+      - uses: actions/checkout@v4
+
       - name: Dump database
         shell: bash
         run: |
+          # The AI's search vectors (kb_chunks) are left out: they can be rebuilt
+          # from the text and are more than half of the database's size. After a
+          # restore, see RECOVERY.md to rebuild them.
           docker run --rm postgres:17 \
             pg_dump "$SUPABASE_DB_URL" --no-owner --format=plain \
+              --exclude-table-data=public.kb_chunks \
             | gzip > backup.sql.gz
 
           size=$(stat -c%s backup.sql.gz)
@@ -39,8 +46,21 @@ jobs:
           export AWS_DEFAULT_REGION="$(printf '%s' "$B2_ENDPOINT" | sed -E 's/^s3\.([^.]+)\.backblazeb2\.com$/\1/')"
 
           pip install --quiet awscli
-          aws s3 cp backup.sql.gz "s3://$B2_BUCKET_NAME/backups/aoehub-supabase.sql.gz" \
+          TODAY="$(date -u +%Y-%m-%d)"
+          aws s3 cp backup.sql.gz "s3://$B2_BUCKET_NAME/backups/daily/aoehub-$TODAY.sql.gz" \
             --endpoint-url "https://$B2_ENDPOINT"
+
+          # Retention: every daily copy for 30 days, then one a week (Sundays)
+          # for a year. Only files named backups/daily/aoehub-YYYY-MM-DD.sql.gz
+          # are ever considered for deletion.
+          aws s3api list-objects-v2 --bucket "$B2_BUCKET_NAME" --prefix backups/daily/ \
+            --endpoint-url "https://$B2_ENDPOINT" --query 'Contents[].Key' --output json \
+            | python3 scripts/prune-backups.py > prune.txt
+          while IFS= read -r key; do
+            [ -n "$key" ] && aws s3 rm "s3://$B2_BUCKET_NAME/$key" --endpoint-url "https://$B2_ENDPOINT"
+          done < prune.txt
+          echo "Pruned $(wc -l < prune.txt | tr -d ' ') old backup(s)."
+
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.B2_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.B2_APPLICATION_KEY }}

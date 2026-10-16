@@ -3,8 +3,10 @@ import { createServiceRoleClient } from "@/lib/supabase/service";
 import { BYO_PROVIDERS, type ByoProviderId } from "../byo-providers";
 import type { AIHistoryTurn, AIReply, AISource, LanguageCode } from "../types";
 import { AIProviderError, chatComplete, type ChatMessage } from "./chat-providers";
-import { getHubChatTarget, type ChatTarget } from "./config";
-import { currentEmbeddingModel, embedTexts } from "./embeddings";
+import type { ChatTarget } from "./config";
+import { getLiveEmbeddingModel } from "./embedding-models";
+import { embedTexts } from "./embeddings";
+import { hubChat } from "./hub-ai";
 
 const TOP_K = 6;
 const MAX_PASSAGE_CHARS = 1200;
@@ -41,7 +43,7 @@ interface Passage {
   similarity: number;
 }
 
-async function resolveTarget(userId: string | null): Promise<{ target: ChatTarget; ownKey: boolean }> {
+async function resolveTarget(userId: string | null): Promise<{ target: ChatTarget | null; ownKey: boolean }> {
   if (userId) {
     const db = createServiceRoleClient();
     const { data } = await db.rpc("get_user_ai_key", { p_user_id: userId });
@@ -57,16 +59,18 @@ async function resolveTarget(userId: string | null): Promise<{ target: ChatTarge
       }
     }
   }
-  return { target: getHubChatTarget(), ownKey: false };
+  // No key of their own: the hub's AI (Gemini, then Groq) answers.
+  return { target: null, ownKey: false };
 }
 
 async function retrieve(question: string): Promise<Passage[]> {
-  const [vector] = await embedTexts([question], "query");
+  const model = await getLiveEmbeddingModel();
+  const [vector] = await embedTexts([question], "query", model);
   const db = createServiceRoleClient();
   const { data, error } = await db.rpc("match_kb_chunks", {
     query_embedding: JSON.stringify(vector),
     match_count: TOP_K,
-    p_model: currentEmbeddingModel(),
+    p_model: model,
   });
   if (error) throw new Error(error.message);
   return ((data ?? []) as Passage[]).filter((p) => p.similarity >= MIN_SIMILARITY);
@@ -121,10 +125,15 @@ export async function answerQuestion(opts: {
 
   let raw: string;
   try {
-    raw = await chatComplete(target, messages);
+    raw = target ? await chatComplete(target, messages) : (await hubChat(messages)).text;
   } catch (err) {
     if (ownKey && err instanceof AIProviderError) {
       throw new AIProviderError(`Your own AI key didn't work: ${err.message} Check it in Settings, or remove it to use the hub's default assistant.`, err.status);
+    }
+    // The AI refused or returned nothing (for example its safety filter): treat
+    // it as "not confident" so the member is offered the Question flow.
+    if (err instanceof AIProviderError && err.status === undefined && /empty answer/i.test(err.message)) {
+      return { text: NOT_CONFIDENT[lang], sources: [], escalate: true };
     }
     throw err;
   }

@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useImperativeHandle, useState, type Ref } from "react";
-import { BYO_PROVIDERS, BYO_PROVIDER_ORDER, type ByoProviderId } from "@/lib/ai/byo-providers";
+import { BYO_PROVIDERS, providersForRegion, type ByoProviderId } from "@/lib/ai/byo-providers";
+import { createClient } from "@/lib/supabase/client";
+import type { Region } from "@/lib/types";
 
 export interface AiKeyFormHandle {
   /** Saves the key if one was typed. Resolves true when there's nothing to save or it saved fine. */
@@ -14,16 +16,39 @@ interface Saved {
   model: string | null;
 }
 
+interface HelpRow {
+  provider_id: string;
+  region: Region;
+  title: string;
+  steps: string[];
+  note: string | null;
+  link_url: string | null;
+}
+
 // `standalone` (Settings) shows its own Save/Remove buttons. Onboarding passes
 // standalone={false} and saves through the page's Continue button instead.
-export function AiKeyForm({ ref, standalone = true }: { ref?: Ref<AiKeyFormHandle>; standalone?: boolean }) {
+// `region` picks which free-key help is shown (the text is editable data).
+export function AiKeyForm({ ref, standalone = true, region = null }: { ref?: Ref<AiKeyFormHandle>; standalone?: boolean; region?: Region | null }) {
   const [saved, setSaved] = useState<Saved | null>(null);
-  const [provider, setProvider] = useState<ByoProviderId>("google");
-  const [model, setModel] = useState(BYO_PROVIDERS.google.defaultModel);
+  // What the member picked; until they pick, the first service for their region is suggested.
+  const [providerChoice, setProviderChoice] = useState<ByoProviderId | null>(null);
+  const [modelChoice, setModelChoice] = useState<string | null>(null);
+  const provider: ByoProviderId = providerChoice ?? (region ? providersForRegion(region)[0] : "google");
+  const model = modelChoice ?? BYO_PROVIDERS[provider].defaultModel;
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [help, setHelp] = useState<HelpRow[]>([]);
+  const [showHelp, setShowHelp] = useState(false);
+
+  useEffect(() => {
+    createClient()
+      .from("ai_key_help")
+      .select("provider_id, region, title, steps, note, link_url")
+      .order("sort_order")
+      .then(({ data }) => setHelp((data ?? []) as HelpRow[]));
+  }, []);
 
   useEffect(() => {
     fetch("/api/ai/key")
@@ -33,8 +58,8 @@ export function AiKeyForm({ ref, standalone = true }: { ref?: Ref<AiKeyFormHandl
   }, []);
 
   function pickProvider(id: ByoProviderId) {
-    setProvider(id);
-    setModel(BYO_PROVIDERS[id].defaultModel);
+    setProviderChoice(id);
+    setModelChoice(null);
   }
 
   async function save(): Promise<boolean> {
@@ -92,7 +117,7 @@ export function AiKeyForm({ ref, standalone = true }: { ref?: Ref<AiKeyFormHandl
         </p>
       )}
       <select value={provider} onChange={(e) => pickProvider(e.target.value as ByoProviderId)} style={{ maxWidth: 320 }}>
-        {BYO_PROVIDER_ORDER.map((id) => (
+        {providersForRegion(region).map((id) => (
           <option key={id} value={id}>{BYO_PROVIDERS[id].label}</option>
         ))}
       </select>
@@ -108,16 +133,43 @@ export function AiKeyForm({ ref, standalone = true }: { ref?: Ref<AiKeyFormHandl
       <input
         placeholder="Model"
         value={model}
-        onChange={(e) => setModel(e.target.value)}
+        onChange={(e) => setModelChoice(e.target.value)}
         style={{ marginTop: 8 }}
         aria-label="Model name"
       />
       <p className="tiny" style={{ marginTop: 6 }}>
-        Don&apos;t have a key? Get one from{" "}
-        <a href={info.keyHelpUrl} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>
-          {info.label.replace(" (free key available)", "")}
-        </a>
-        . Your key is checked once, then stored encrypted and used only to answer your questions.
+        Your key is checked once, then stored encrypted and used only to answer your questions.
+      </p>
+      {!region ? (
+        <p className="tiny" style={{ marginTop: 6 }}>Choose where you are above to see which free AI services we suggest.</p>
+      ) : (
+        <div className="tiny" style={{ marginTop: 8 }}>
+          We sincerely recommend using your own API instead of the hub&apos;s default AI. If you use the hub&apos;s default AI,
+          it may be very slow. Don&apos;t have one? You can get a free one from the services below.
+          <div style={{ marginTop: 8 }}>
+            <button type="button" className="btn small" onClick={() => setShowHelp((v) => !v)}>
+              Get free API instructions
+            </button>
+          </div>
+          {showHelp &&
+            help
+              .filter((h) => h.region === region)
+              .map((h) => (
+                <div key={h.provider_id} style={{ marginTop: 10 }}>
+                  <strong>{h.title}</strong>
+                  <ol style={{ margin: "4px 0 4px 18px", padding: 0 }}>
+                    {h.steps.map((s, i) => <li key={i} style={{ marginBottom: 3 }}>{s}</li>)}
+                  </ol>
+                  {h.note && <span>{h.note} </span>}
+                  {h.link_url && <a href={h.link_url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>Open the site ↗</a>}
+                </div>
+              ))}
+          {showHelp && help.filter((h) => h.region === region).length === 0 && <p style={{ marginTop: 8 }}>No instructions are available yet.</p>}
+        </div>
+      )}
+      <p className="tiny" style={{ marginTop: 6 }}>
+        Already have a key? Choose its service in the list above and paste it.{" "}
+        <a href={info.keyHelpUrl} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>{info.label.replace(" (free key available)", "").replace(" (free plan available)", "")} ↗</a>
       </p>
       <div className="row" style={{ gap: 8, marginTop: 8 }}>
         {standalone && (

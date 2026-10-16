@@ -48,11 +48,14 @@ The recovery e-mail with a waiting period (chat6) is not built yet: it needs the
 
 ## After restoring the database from a backup
 
-The nightly backup leaves out the AI's search data (the vectors) because it can be rebuilt. After a restore, tell the app those documents still need indexing, then press **Update index** in the admin dashboard:
+The nightly backup leaves out the AI's search data (the vectors, `kb_chunks`) because it can be rebuilt. After a restore the app must be told those documents still need indexing, then press **Update index** in the Admin tools page (it may take a few runs; Google's daily limit can slow it):
 
 ```sql
-update public.kb_documents set indexed_model = null;
+delete from public.kb_chunks;
+delete from public.kb_document_models;
 ```
+
+Backups are kept as one file per night under `backups/daily/` in Backblaze: every night for 30 days, then one a week (Sundays) for a year (`scripts/prune-backups.py`). In the Backblaze bucket settings choose the lifecycle rule **"Keep only the last version of the file"**, otherwise B2 keeps hidden copies of deleted backups and the space never frees up.
 
 ## Start of the testing stage: empty the hub
 

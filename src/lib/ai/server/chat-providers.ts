@@ -8,6 +8,8 @@ export interface ChatMessage {
 
 // Errors carry only a safe, key-free message — callers may show it to members.
 export class AIProviderError extends Error {
+  /** Seconds the provider asked us to wait (Retry-After), when it said. */
+  retryAfterSec?: number;
   constructor(message: string, readonly status?: number) {
     super(message);
   }
@@ -32,9 +34,13 @@ async function post(url: string, headers: Record<string, string>, body: unknown)
     throw new AIProviderError("Could not reach the AI service.");
   }
   if (!res.ok) {
-    if (res.status === 401 || res.status === 403) throw new AIProviderError("The AI service rejected the API key.", res.status);
-    if (res.status === 429) throw new AIProviderError("The AI service is rate-limiting requests right now.", res.status);
-    throw new AIProviderError(`The AI service returned an error (${res.status}).`, res.status);
+    const retry = Number(res.headers.get("retry-after"));
+    let err: AIProviderError;
+    if (res.status === 401 || res.status === 403) err = new AIProviderError("The AI service rejected the API key.", res.status);
+    else if (res.status === 429) err = new AIProviderError("The AI service is rate-limiting requests right now.", res.status);
+    else err = new AIProviderError(`The AI service returned an error (${res.status}).`, res.status);
+    if (Number.isFinite(retry) && retry > 0) err.retryAfterSec = retry;
+    throw err;
   }
   return res.json();
 }

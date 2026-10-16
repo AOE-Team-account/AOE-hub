@@ -21,6 +21,9 @@ export type FileSection =
 
 export type Authorship = "original" | "remix" | "notmine";
 
+/** Where a member says they are using the hub from (their own statement). */
+export type Region = "china" | "world";
+
 export type ExperienceCategory =
   | "question"
   | "philosophy"
@@ -58,6 +61,8 @@ export interface User {
   isCreator: boolean;
   /** Own standing only: 'suspended' means a reviewer paused the account pending the Creator's review. */
   accountStatus: "active" | "suspended" | "deleted";
+  /** Own profile only. Null until chosen. */
+  region: Region | null;
   /** Set while a one-week restriction is in force (ISO time it ends). */
   restrictedUntil?: string;
   memberSince: string; // ISO date

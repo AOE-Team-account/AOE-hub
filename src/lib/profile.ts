@@ -18,6 +18,7 @@ export interface ProfileRow {
   following_count: number;
   files_count: number;
   account_status?: "active" | "suspended" | "deleted";
+  region?: "china" | "world" | null;
 }
 
 // `roles` is only ever passed for the signed-in person themselves: who holds a
@@ -38,6 +39,7 @@ export function userFromProfileRow(
     isAdmin: roles.includes("creator") || roles.includes("watcher"),
     isCreator: roles.includes("creator"),
     accountStatus: row.account_status ?? "active",
+    region: row.region ?? null,
     restrictedUntil,
     memberSince: row.member_since,
     points: row.points,

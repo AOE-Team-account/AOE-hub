@@ -6,6 +6,8 @@ import { useAuth, useRequireAuthPage } from "@/contexts/AuthContext";
 import { createClient } from "@/lib/supabase/client";
 import { ChipRow } from "@/components/ui/ChipRow";
 import { AiKeyForm, type AiKeyFormHandle } from "@/components/ai/AiKeyForm";
+import { RegionPicker } from "@/components/ai/RegionPicker";
+import type { Region } from "@/lib/types";
 
 // Q1 widened from a homeschooling-experience scale to a broader "what's your
 // situation" question, since the hub's stated audience is homeschool/
@@ -54,9 +56,21 @@ export default function OnboardingPage() {
   const [reason, setReason] = useState<Reason>("notsure");
   const [referral, setReferral] = useState<Referral>("unspecified");
   const [saving, setSaving] = useState(false);
+  const [region, setRegion] = useState<Region | null>(null);
+  const [regionError, setRegionError] = useState(false);
   const keyForm = useRef<AiKeyFormHandle>(null);
 
   async function finish(save: boolean) {
+    // The region question is required: both Continue and Skip wait for it.
+    if (!region) {
+      setRegionError(true);
+      return;
+    }
+    if (!save && user) {
+      setSaving(true);
+      await createClient().from("profiles").update({ region }).eq("id", user.id);
+      setSaving(false);
+    }
     if (save && user) {
       setSaving(true);
       // A typed-in AI key is verified first; if it's wrong, stay here so it
@@ -72,6 +86,7 @@ export default function OnboardingPage() {
           onboarding_experience: situation,
           onboarding_reason: reason,
           referral_source: referral === "unspecified" ? null : referral,
+          region,
         })
         .eq("id", user.id);
       setSaving(false);
@@ -97,10 +112,20 @@ export default function OnboardingPage() {
         Welcome to AOEhub
       </p>
       <p className="muted" style={{ marginBottom: 20 }}>
-        A few quick questions — totally optional, just helps us show you the right things first.
+        One quick question is required; the rest are optional and just help us show you the right things first.
       </p>
 
       <p className="field-label" style={{ marginTop: 0 }}>
+        Where are you using AOEhub from? <span className="tiny">(required)</span>
+      </p>
+      <RegionPicker value={region} onChange={(r) => { setRegion(r); setRegionError(false); }} />
+      <p className="tiny" style={{ marginTop: 6 }}>
+        This only decides which free AI services we suggest to you. You can change it any time in Settings. It is your
+        choice, so we don&apos;t check it.
+      </p>
+      {regionError && <p className="tiny" style={{ color: "#b5471f", marginTop: 6 }}>Please choose one of the two to continue.</p>}
+
+      <p className="field-label">
         What&apos;s your situation?
       </p>
       <ChipRow options={Q1_OPTIONS} value={situation} onChange={setSituation} />
@@ -118,7 +143,7 @@ export default function OnboardingPage() {
         Don&apos;t have one, or don&apos;t want to? That&apos;s fine — you can use our built-in AI, but it will be slower and
         not as good. You can add or change this any time in Settings.
       </p>
-      <AiKeyForm ref={keyForm} standalone={false} />
+      <AiKeyForm ref={keyForm} standalone={false} region={region} />
 
       <button
         className="btn primary"

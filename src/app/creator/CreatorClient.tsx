@@ -11,6 +11,7 @@ import { BackLink } from "@/components/ui/BackLink";
 import { ReviewPanel } from "@/components/review/ReviewPanel";
 import { RulesButton } from "@/components/review/RulesModal";
 import type { ReviewData } from "@/lib/data/review";
+import { KeyHelpEditor, type KeyHelpRow } from "./KeyHelpEditor";
 
 export interface CreatorData {
   review: ReviewData;
@@ -29,6 +30,7 @@ export interface CreatorData {
     details: Record<string, unknown>; undoes: number | null;
   }[];
   names: Record<string, string>;
+  keyHelp: KeyHelpRow[];
   security: { requireTwoStepForStaff: boolean; events: { at: string; kind: string }[]; keysLeft: number };
 }
 
@@ -402,6 +404,7 @@ export function CreatorClient({ data }: { data: CreatorData }) {
               Post announcement
             </Button>
           </div>
+          <KeyHelpEditor rows={data.keyHelp} />
           <div className="card">
             <p className="title" style={{ marginBottom: 4 }}>Rules for reviewers</p>
             <p className="muted" style={{ marginBottom: 10 }}>The strict rules every Watcher and Deacon follows.</p>

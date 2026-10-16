@@ -401,6 +401,11 @@ create table if not exists public.terms_acceptances (
 alter table public.profiles add column if not exists age_attested_min integer check (age_attested_min is null or age_attested_min >= 13);
 alter table public.profiles add column if not exists age_attested_at timestamptz;
 
+-- Where the member says they are using the hub from (their own statement, not
+-- checked): only decides which free-AI-key instructions are shown. Required at
+-- sign-up, changeable in Settings. It is personal information (Privacy Policy).
+alter table public.profiles add column if not exists region text check (region is null or region in ('china', 'world'));
+
 alter table public.terms_versions enable row level security;
 alter table public.terms_acceptances enable row level security;
 revoke all on public.terms_versions, public.terms_acceptances from anon, authenticated;
@@ -1354,9 +1359,6 @@ create index if not exists kb_chunks_document_id_idx on public.kb_chunks (docume
 -- posts are never re-embedded), and a 'hub-guide' source type for the built-in
 -- "how the hub works" text.
 alter table public.kb_documents add column if not exists content_hash text;
--- Set only once EVERY chunk of the document has been embedded with this
--- model. A long book is indexed in resumable slices; null/other = unfinished.
-alter table public.kb_documents add column if not exists indexed_model text;
 alter table public.kb_documents drop constraint if exists kb_documents_source_type_check;
 update public.kb_documents set source_type = source_type where false;
 delete from public.kb_documents where source_type = 'admin-answer';
@@ -1614,13 +1616,183 @@ as $$
          1 - (c.embedding <=> query_embedding) as similarity
   from public.kb_chunks c
   join public.kb_documents d on d.id = c.document_id
-  where c.embedding_model = p_model
+  where c.embedding_model = p_model and c.embedding is not null
   order by c.embedding <=> query_embedding
   limit least(greatest(match_count, 1), 20);
 $$;
 
 revoke execute on function public.match_kb_chunks(vector, integer, text) from public, anon, authenticated;
 grant execute on function public.match_kb_chunks(vector, integer, text) to service_role;
+
+-- ---- Free-AI-key help (editable data; the steps change often) --------------
+-- One row per service we point members to, per region. The Creator edits the
+-- text in the Hub tab; nothing here is hard-coded in the app. Seeded once
+-- ("do nothing" on conflict), so re-running this file never undoes an edit.
+-- Steps for Alibaba, Zhipu and SiliconFlow follow their own documentation as
+-- read on 2026-10-16; Google's and Groq's come from Google's general key
+-- instructions and third-party guides and must be re-checked before launch.
+create table if not exists public.ai_key_help (
+  provider_id text primary key,
+  region text not null check (region in ('china', 'world')),
+  title text not null,
+  steps text[] not null default '{}',
+  note text,
+  link_url text,
+  sort_order integer not null default 0,
+  active boolean not null default true,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.ai_key_help (provider_id, region, title, steps, note, link_url, sort_order) values
+  ('qwen-cn', 'china', 'Qwen (Alibaba Cloud Model Studio, mainland China)',
+   array['Open Alibaba Cloud Model Studio (also called Bailian) and sign up or log in.',
+         'Turn on Model Studio and agree to its terms. New accounts may get a free starting amount; check the console.',
+         'Open the API Key page, choose your region in the top-right corner, and press Create API Key. A key only works in the region it was made in: if you chose mainland China pick "Qwen (mainland China)" here, if you chose the international region pick "Qwen (international)".',
+         'Copy the key straight away (it cannot be shown again) and paste it in the box here.'],
+   'The free starting amount lasts a limited time. When it runs out the service asks you to verify your identity and add funds before it continues.',
+   'https://bailian.console.aliyun.com/', 10),
+  ('zhipu', 'china', 'Zhipu GLM (bigmodel.cn)',
+   array['Open open.bigmodel.cn and press register / log in.',
+         'After logging in, open your personal center and the API Keys page.',
+         'Create a new API key.',
+         'Copy it and paste it in the box here.'],
+   'Check Zhipu''s model page for which models are free and what the limits are; they change.',
+   'https://open.bigmodel.cn/', 20),
+  ('siliconflow', 'china', 'SiliconFlow',
+   array['Open SiliconFlow and sign in with your phone number or email.',
+         'In the console open the API keys page and press the new-key button.',
+         'Copy the key and paste it in the box here.'],
+   'Check SiliconFlow''s model list for which models are free and whether new accounts get credit.',
+   'https://cloud.siliconflow.cn/', 30),
+  ('google', 'world', 'Google AI Studio',
+   array['Open Google AI Studio (aistudio.google.com) and sign in with a Google account.',
+         'Choose "Get API key".',
+         'Press "Create API key".',
+         'Copy the key and paste it in the box here.'],
+   'Google AI Studio is not available in some places, including mainland China. The free tier has daily limits, and Google may use what you send it on the free tier, so avoid sharing private details.',
+   'https://aistudio.google.com/apikey', 10),
+  ('groq', 'world', 'Groq',
+   array['Open console.groq.com and sign up with email, Google or GitHub (no card is needed for the free plan).',
+         'Open the API Keys page and press "Create API Key".',
+         'Copy the key (it starts with gsk_) straight away and paste it in the box here.'],
+   'The free plan has daily limits per organisation. These steps come from guides, not from Groq itself: check them on the Groq site.',
+   'https://console.groq.com/keys', 20)
+on conflict (provider_id) do nothing;
+
+alter table public.ai_key_help enable row level security;
+drop policy if exists "key help is public" on public.ai_key_help;
+create policy "key help is public" on public.ai_key_help for select using (active);
+
+-- Creator only: edit one entry (steps, note, on/off).
+create or replace function public.set_ai_key_help(p_provider_id text, p_steps text[], p_note text, p_active boolean)
+returns void
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+begin
+  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
+  if p_steps is null or array_length(p_steps, 1) is null or array_length(p_steps, 1) > 12 then raise exception 'Give between 1 and 12 steps.'; end if;
+  update public.ai_key_help
+     set steps = p_steps, note = nullif(btrim(coalesce(p_note, '')), ''), active = coalesce(p_active, active), updated_at = now()
+   where provider_id = p_provider_id;
+  if not found then raise exception 'Unknown service.'; end if;
+  perform private.log_activity(auth.uid(), 'setting-changed', null, null, null, null, jsonb_build_object('key', 'ai_key_help:' || p_provider_id));
+end;
+$$;
+
+-- Creator only: read every entry including switched-off ones.
+create or replace function public.list_ai_key_help()
+returns setof public.ai_key_help
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+begin
+  if auth.uid() is null or not private.creator_unlocked(false) then raise exception 'Unlock the Creator panel first.'; end if;
+  return query select * from public.ai_key_help order by region, sort_order;
+end;
+$$;
+
+-- ---- Which embedding model has indexed which document -----------------------
+-- A model name, not a single flag, so two models can be maintained side by
+-- side while the library is re-embedded ("re-embed, verify, cut over, clean
+-- up" — never an instant swap). Chunks carry the model that made them;
+-- the live model is chosen in hub_settings (embedding_model_live) and only
+-- chunks from it are searched. A document with a row here for a model has
+-- EVERY chunk embedded for that model.
+create table if not exists public.kb_document_models (
+  document_id uuid not null references public.kb_documents (id) on delete cascade,
+  model text not null,
+  completed_at timestamptz not null default now(),
+  primary key (document_id, model)
+);
+alter table public.kb_document_models enable row level security;
+
+do $$
+begin
+  if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'kb_documents' and column_name = 'indexed_model') then
+    execute 'insert into public.kb_document_models (document_id, model) select id, indexed_model from public.kb_documents where indexed_model is not null on conflict do nothing';
+    execute 'alter table public.kb_documents drop column indexed_model';
+  end if;
+end $$;
+
+create or replace function public.kb_pending_documents(p_model text, p_limit integer default 1)
+returns table (id uuid, title text, content text)
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select d.id, d.title, d.content
+    from public.kb_documents d
+   where not exists (select 1 from public.kb_document_models m where m.document_id = d.id and m.model = p_model)
+   order by d.created_at, d.id
+   limit greatest(p_limit, 1);
+$$;
+
+create or replace function public.kb_pending_count(p_model text)
+returns integer
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select count(*)::integer from public.kb_documents d
+   where not exists (select 1 from public.kb_document_models m where m.document_id = d.id and m.model = p_model);
+$$;
+
+-- Deletes the AI's data made by any model NOT in the keep list (the "clean
+-- up" step, run only after a cut-over has been checked). Returns chunks removed.
+create or replace function public.kb_cleanup_models(p_keep text[])
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_n integer;
+begin
+  delete from public.kb_chunks where embedding_model is null or embedding_model <> all (p_keep);
+  get diagnostics v_n = row_count;
+  delete from public.kb_document_models where model <> all (p_keep);
+  return v_n;
+end;
+$$;
+
+-- Which of the hub's AI providers is resting after hitting a limit, so the
+-- answer/translation AI can fall back (Gemini first, then Groq) and return.
+create table if not exists public.ai_provider_state (
+  provider text primary key,
+  rested_until timestamptz,
+  strikes integer not null default 0,
+  last_error text,
+  last_ok_at timestamptz,
+  updated_at timestamptz not null default now()
+);
+alter table public.ai_provider_state enable row level security;
 
 -- ---- Questions: "I don't know" posts a question to the Experience Board ----
 -- (Replaces the admin inbox, chat5/6.) A question is an ordinary Experience
@@ -1796,11 +1968,15 @@ create trigger comments_remove_kb after delete on public.comments
 -- and which Vault secret. The browser can read its own row (never the key).
 create table if not exists public.user_ai_settings (
   user_id uuid primary key references public.profiles (id) on delete cascade,
-  provider text not null check (provider in ('google', 'anthropic', 'openai')),
+  provider text not null check (provider in ('google', 'anthropic', 'openai', 'groq', 'qwen-cn', 'qwen-intl', 'zhipu', 'siliconflow')),
   model text not null check (char_length(model) between 1 and 100),
   vault_secret_id uuid not null,
   updated_at timestamptz not null default now()
 );
+
+alter table public.user_ai_settings drop constraint if exists user_ai_settings_provider_check;
+alter table public.user_ai_settings add constraint user_ai_settings_provider_check
+  check (provider in ('google', 'anthropic', 'openai', 'groq', 'qwen-cn', 'qwen-intl', 'zhipu', 'siliconflow'));
 
 alter table public.user_ai_settings enable row level security;
 
@@ -1838,7 +2014,7 @@ declare
   v_secret uuid;
 begin
   if v_uid is null then raise exception 'Not signed in.'; end if;
-  if p_provider not in ('google', 'anthropic', 'openai') then raise exception 'Unsupported provider.'; end if;
+  if p_provider not in ('google', 'anthropic', 'openai', 'groq', 'qwen-cn', 'qwen-intl', 'zhipu', 'siliconflow') then raise exception 'Unsupported provider.'; end if;
   if p_model is null or p_model !~ '^[A-Za-z0-9._:/-]{1,100}$' then raise exception 'Invalid model name.'; end if;
   if p_key is null or char_length(p_key) not between 8 and 512 then raise exception 'Invalid key.'; end if;
 
@@ -3311,12 +3487,14 @@ alter default privileges in schema public revoke insert, update, delete, truncat
 -- Internal tables: the API roles have no business even reading them.
 revoke all on public.kb_documents, public.kb_chunks, public.post_views from anon, authenticated;
 revoke all on public.warnings, public.account_referrals from anon, authenticated;
+revoke all on public.kb_document_models, public.ai_provider_state from anon, authenticated;
+revoke insert, update, delete, truncate on public.ai_key_help from anon, authenticated;
 revoke all on public.hub_settings, public.creator_access, public.creator_sessions, public.creator_recovery_keys, public.creator_security_events from anon, authenticated;
 revoke all on public.restrictions from anon;
 
 -- profiles: only the person's own presentation fields. Points, counters,
 -- account status and age attestation are changed by functions/triggers only.
-grant update (name, display_name, onboarding_experience, onboarding_reason, referral_source)
+grant update (name, display_name, onboarding_experience, onboarding_reason, referral_source, region)
   on public.profiles to authenticated;
 
 grant insert, delete on public.follows to authenticated;
@@ -3396,6 +3574,8 @@ grant execute on function public.get_hub_settings() to authenticated;
 grant execute on function public.set_hub_setting(text, jsonb) to authenticated;
 grant execute on function public.my_two_step_status() to authenticated;
 grant execute on function public.am_i_admin() to authenticated;
+grant execute on function public.set_ai_key_help(text, text[], text, boolean) to authenticated;
+grant execute on function public.list_ai_key_help() to authenticated;
 grant execute on function public.ask_for_two_step(uuid) to authenticated;
 grant execute on function public.pin_my_item(text, uuid) to authenticated;
 grant execute on function public.unpin_my_item(text) to authenticated;

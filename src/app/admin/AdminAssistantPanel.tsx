@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { AiDataCard } from "./AiDataCard";
 
 interface PhilosophyBook {
   id: string;
@@ -17,7 +18,13 @@ interface KnowledgeStatus {
 }
 
 export function AdminAssistantPanel() {
-  return <KnowledgeTools />;
+  return (
+    <>
+      <p className="label" style={{ fontWeight: 500, margin: "0 0 8px" }}>AI status</p>
+      <AiDataCard />
+      <KnowledgeTools />
+    </>
+  );
 }
 
 function KnowledgeTools() {

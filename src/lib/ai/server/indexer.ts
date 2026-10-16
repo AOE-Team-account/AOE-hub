@@ -2,7 +2,9 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { chunkText } from "../chunking";
-import { currentEmbeddingModel, embedTexts } from "./embeddings";
+import { AIProviderError } from "./chat-providers";
+import { getLiveEmbeddingModel, getNextEmbeddingModel } from "./embedding-models";
+import { embedPassages } from "./embeddings";
 import { HUB_GUIDE_SOURCE_ID, HUB_GUIDE_TEXT, HUB_GUIDE_TITLE } from "./hub-guide";
 
 type Db = ReturnType<typeof createServiceRoleClient>;
@@ -17,8 +19,15 @@ interface DesiredDoc {
 
 export interface IndexStatus {
   documents: number;
+  /** Documents still to embed for the LIVE model. */
   pendingDocuments: number;
+  /** Documents still to embed for the model being built alongside (null: none). */
+  pendingNext: number | null;
+  liveModel: string;
+  nextModel: string | null;
   processedThisRun: number;
+  /** True when the provider asked us to slow down; the next run resumes. */
+  rateLimited: boolean;
   done: boolean;
 }
 
@@ -152,7 +161,8 @@ async function syncDocuments(db: Db) {
       if (error) throw new Error(error.message);
     } else if (found.content_hash !== hash) {
       await db.from("kb_chunks").delete().eq("document_id", found.id);
-      const { error } = await db.from("kb_documents").update({ title: d.title, content: d.content, content_hash: hash, indexed_model: null }).eq("id", found.id);
+      await db.from("kb_document_models").delete().eq("document_id", found.id);
+      const { error } = await db.from("kb_documents").update({ title: d.title, content: d.content, content_hash: hash }).eq("id", found.id);
       if (error) throw new Error(error.message);
     }
   }
@@ -164,73 +174,98 @@ async function syncDocuments(db: Db) {
   }
 }
 
-// Embeds unfinished documents until the time budget runs out. Long books are
-// embedded in resumable slices: chunking is deterministic, so a later call
-// simply continues from however many chunks already exist.
-async function embedPending(db: Db, model: string, budgetMs: number): Promise<number> {
+// Embeds the documents still unfinished for ONE model until the time budget
+// runs out. Long books are embedded in resumable slices: chunking is
+// deterministic, so a later call simply continues from however many chunk
+// rows already exist for that model. A passage the provider rejects is stored
+// with no vector (logged) so the numbering stays contiguous and the indexer
+// never loops on it. A rate limit stops the run cleanly; the next run resumes.
+async function embedPending(db: Db, model: string, budgetMs: number): Promise<{ processed: number; rateLimited: boolean }> {
   const deadline = Date.now() + budgetMs;
   let processed = 0;
 
-  // A model swap invalidates every vector made by the old one.
-  await db.from("kb_chunks").delete().or(`embedding_model.is.null,embedding_model.neq.${model}`);
-
   while (Date.now() < deadline) {
-    const { data: docs, error } = await db
-      .from("kb_documents")
-      .select("id, title, content")
-      .or(`indexed_model.is.null,indexed_model.neq.${model}`)
-      .order("created_at")
-      .limit(1);
+    const { data: docs, error } = await db.rpc("kb_pending_documents", { p_model: model, p_limit: 1 });
     if (error) throw new Error(error.message);
     if (!docs || docs.length === 0) break;
-    const doc = docs[0];
+    const doc = docs[0] as { id: string; title: string | null; content: string };
 
     const chunks = chunkText(doc.content);
     const { count } = await db.from("kb_chunks").select("id", { count: "exact", head: true }).eq("document_id", doc.id).eq("embedding_model", model);
     let next = count ?? 0;
 
-    while (next < chunks.length && Date.now() < deadline) {
-      const slice = chunks.slice(next, next + 16);
-      const vectors = await embedTexts(slice.map((c) => `${doc.title ?? ""}\n${c}`), "document");
-      const rows = slice.map((content, i) => ({
-        document_id: doc.id,
-        chunk_index: next + i,
-        content,
-        embedding: JSON.stringify(vectors[i]),
-        embedding_model: model,
-      }));
-      const { error: insErr } = await db.from("kb_chunks").insert(rows);
-      if (insErr) throw new Error(insErr.message);
-      next += slice.length;
+    try {
+      while (next < chunks.length && Date.now() < deadline) {
+        const slice = chunks.slice(next, next + 16);
+        const vectors = await embedPassages(slice.map((c) => `${doc.title ?? ""}\n${c}`), model);
+        const rows = slice.map((content, i) => ({
+          document_id: doc.id,
+          chunk_index: next + i,
+          content,
+          embedding: vectors[i] ? JSON.stringify(vectors[i]) : null,
+          embedding_model: model,
+        }));
+        const { error: insErr } = await db.from("kb_chunks").insert(rows);
+        if (insErr) throw new Error(insErr.message);
+        next += slice.length;
+      }
+    } catch (err) {
+      if (err instanceof AIProviderError && err.status === 429) return { processed, rateLimited: true };
+      throw err;
     }
 
     if (next >= chunks.length) {
-      await db.from("kb_documents").update({ indexed_model: model }).eq("id", doc.id);
+      await db.from("kb_document_models").upsert({ document_id: doc.id, model });
       processed++;
     } else {
       break; // out of time mid-document; the next call resumes here
     }
   }
-  return processed;
+  return { processed, rateLimited: false };
 }
 
-export async function getIndexStatus(db: Db = createServiceRoleClient()): Promise<Pick<IndexStatus, "documents" | "pendingDocuments">> {
-  const model = currentEmbeddingModel();
+async function pendingFor(db: Db, model: string): Promise<number> {
+  const { data } = await db.rpc("kb_pending_count", { p_model: model });
+  return (data as number) ?? 0;
+}
+
+export async function getIndexStatus(db: Db = createServiceRoleClient()): Promise<Pick<IndexStatus, "documents" | "pendingDocuments" | "pendingNext" | "liveModel" | "nextModel">> {
+  const [liveModel, nextModel] = await Promise.all([getLiveEmbeddingModel(), getNextEmbeddingModel()]);
   const { count: documents } = await db.from("kb_documents").select("id", { count: "exact", head: true });
-  const { count: pending } = await db
-    .from("kb_documents")
-    .select("id", { count: "exact", head: true })
-    .or(`indexed_model.is.null,indexed_model.neq.${model}`);
-  return { documents: documents ?? 0, pendingDocuments: pending ?? 0 };
+  return {
+    documents: documents ?? 0,
+    pendingDocuments: await pendingFor(db, liveModel),
+    pendingNext: nextModel ? await pendingFor(db, nextModel) : null,
+    liveModel,
+    nextModel,
+  };
 }
 
+// One time-boxed slice: bring the live model up to date first (so searches
+// are never stale), then spend what is left building the next model.
 export async function runIndexing(budgetMs = 40_000): Promise<IndexStatus> {
   const db = createServiceRoleClient();
-  const model = currentEmbeddingModel();
+  const [live, next] = await Promise.all([getLiveEmbeddingModel(), getNextEmbeddingModel()]);
+  const started = Date.now();
   await syncDocuments(db);
-  const processedThisRun = await embedPending(db, model, budgetMs);
+  const liveRun = await embedPending(db, live, budgetMs);
+  let processed = liveRun.processed;
+  let rateLimited = liveRun.rateLimited;
+  if (next && !rateLimited) {
+    const left = budgetMs - (Date.now() - started);
+    if (left > 2000) {
+      const nextRun = await embedPending(db, next, left);
+      processed += nextRun.processed;
+      rateLimited = nextRun.rateLimited;
+    }
+  }
   const status = await getIndexStatus(db);
-  return { ...status, processedThisRun, done: status.pendingDocuments === 0 };
+  return {
+    ...status,
+    processedThisRun: processed,
+    rateLimited,
+    done: status.pendingDocuments === 0 && (status.pendingNext ?? 0) === 0,
+  };
 }
 
 // Adds (or replaces, by title) a philosophy book. Embedding happens in

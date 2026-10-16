@@ -31,7 +31,7 @@ This is the inventory the Privacy Policy and Terms are written from. If the buil
 - Backblaze B2 — nightly database backups (contain everything in the database).
 - Namecheap — website hosting and the domain.
 - Google — (a) AI embeddings and Gemini answers/translation (member questions and public content are sent), (b) Google Cloud Run (the virus scanner, once built).
-- Groq — planned backup AI for answers/translation (if enabled).
+- Groq — backup AI for answers and translation: used automatically when Gemini hits its limit, and the hub returns to Gemini when it has rested (Clara's design, 2026-10-16). **Both Google and Groq must be named in the Privacy Policy**, with what each receives (member questions, public content to translate) and that the member cannot tell which one answered; a member's own key bypasses both.
 - A member's own AI company — receives their questions if they add their own key.
 - An email-sending service — password reset and alerts (provider not chosen yet).
 - GitHub — the code and the backup job (no member data in the code).

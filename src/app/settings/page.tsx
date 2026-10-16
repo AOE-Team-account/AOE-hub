@@ -12,6 +12,7 @@ import { Toggle } from "@/components/ui/Toggle";
 import type { LanguageCode } from "@/lib/types";
 import { useAuth } from "@/contexts/AuthContext";
 import { AiKeyForm } from "@/components/ai/AiKeyForm";
+import { RegionPicker } from "@/components/ai/RegionPicker";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { createClient } from "@/lib/supabase/client";
@@ -22,7 +23,7 @@ export default function SettingsPage() {
   const { themeKey, setThemeKey, dark, setDark, textZoom, setTextZoom } = useTheme();
   const { lang, setLang } = useLanguage();
   const [notifyOn, setNotifyOn] = useState(true);
-  const { status, signOut } = useAuth();
+  const { status, signOut, user } = useAuth();
   const router = useRouter();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
@@ -116,7 +117,12 @@ export default function SettingsPage() {
             The assistant uses the hub&apos;s own AI by default. If you have your own AI API key you can use that instead — it
             may answer better than ours.
           </p>
-          <AiKeyForm />
+          <p className="label" style={{ marginTop: 14 }}>Where are you using AOEhub from?</p>
+          <RegionPicker value={user?.region ?? null} saveNow />
+          <p className="tiny" style={{ margin: "6px 0 12px" }}>
+            This only decides which free AI services we suggest. It is your own choice, so we don&apos;t check it.
+          </p>
+          <AiKeyForm region={user?.region ?? null} />
         </section>
       )}
 
