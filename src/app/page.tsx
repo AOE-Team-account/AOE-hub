@@ -78,7 +78,7 @@ export default function HomePage() {
           educate at all, from the Bible, Charlotte Mason{" "}
           <span className="tiny">(a 19th-century educator known for her living-books, nature-study approach)</span>,
           Karl Witte <span className="tiny">(a 19th-century writer known for his early-education philosophy)</span>,
-          and everyone here who has their own thoughts to share. This isn&apos;t just the admins&apos; philosophy —
+          and everyone here who has their own thoughts to share. This isn&apos;t just the founders&apos; philosophy —
           it&apos;s everybody&apos;s, filed under its own tag so it&apos;s easy to find.
         </p>
       </Reveal>

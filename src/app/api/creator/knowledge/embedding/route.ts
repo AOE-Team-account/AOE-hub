@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin, requireCreator } from "@/lib/ai/server/admin-guard";
+import { requireCreator } from "@/lib/ai/server/creator-guard";
 import {
   GEMINI_EMBEDDING_MODEL,
   cancelNextEmbeddingModel,
@@ -13,11 +13,11 @@ import { getIndexStatus } from "@/lib/ai/server/indexer";
 
 export const runtime = "nodejs";
 
-// The "AI data" card on the admin page: which embedding model searches use,
+// The "AI data" card in the Creator panel: which embedding model searches use,
 // how far the next one is, and the safe cut-over steps (start, switch, clean
-// up). Reading is for admins; changing is for the unlocked Creator only.
+// up). Creator only, like everything in this folder.
 export async function GET() {
-  const guard = await requireAdmin();
+  const guard = await requireCreator();
   if (!guard.ok) return guard.response;
   const [status, providers] = await Promise.all([getIndexStatus(), getProviderStatuses()]);
   return NextResponse.json({

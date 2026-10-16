@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 // and embeds anything unfinished. Same protection as the scan cron — a
 // shared secret in `Authorization: Bearer <CRON_SECRET>`. NOT yet attached
 // to a scheduler (Phase 7, alongside check-pending-scans); until then the
-// admin dashboard's "Update index" button does the same work by hand.
+// Creator panel's "Update index" button does the same work by hand.
 export async function POST(request: Request) {
   const expected = process.env.CRON_SECRET;
   if (!expected || request.headers.get("authorization") !== `Bearer ${expected}`) {

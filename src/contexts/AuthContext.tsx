@@ -151,8 +151,8 @@ export function useAuth() {
 }
 
 /** For pages that only make sense when signed in: redirects to `redirectTo`
- *  if the visitor turns out to be a guest, an admin-only page can pass
- *  `extraCheck` (e.g. `(user) => user.isAdmin`) to also gate on that. Waits
+ *  if the visitor turns out to be a guest, a page can pass `extraCheck`
+ *  (e.g. `(user) => user.isCreator`) to also gate on that. Waits
  *  for `hydrated` first — see the note on AuthContextValue.hydrated. */
 export function useRequireAuthPage(redirectTo: string, extraCheck?: (user: User) => boolean): boolean {
   const { hydrated, status, user, requireAuth } = useAuth();

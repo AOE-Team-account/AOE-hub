@@ -17,7 +17,7 @@ interface KnowledgeStatus {
   books: PhilosophyBook[];
 }
 
-export function AdminAssistantPanel() {
+export function KnowledgePanel() {
   return (
     <>
       <p className="label" style={{ fontWeight: 500, margin: "0 0 8px" }}>AI status</p>
@@ -37,7 +37,7 @@ function KnowledgeTools() {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const res = await fetch("/api/admin/knowledge");
+    const res = await fetch("/api/creator/knowledge");
     const data = await res.json().catch(() => ({}));
     if (res.ok) setStatus(data);
     else setError(data?.error ?? "Could not read the knowledge base.");
@@ -55,7 +55,7 @@ function KnowledgeTools() {
     setMessage(null);
     try {
       for (let i = 0; i < 200; i++) {
-        const res = await fetch("/api/admin/knowledge/index", { method: "POST" });
+        const res = await fetch("/api/creator/knowledge/index", { method: "POST" });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           setError(data?.error ?? "Indexing failed.");
@@ -80,7 +80,7 @@ function KnowledgeTools() {
     form.set("title", title);
     if (file) form.set("file", file);
     else form.set("text", text);
-    const res = await fetch("/api/admin/knowledge", { method: "POST", body: form });
+    const res = await fetch("/api/creator/knowledge", { method: "POST", body: form });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       setBusy(null);
@@ -98,7 +98,7 @@ function KnowledgeTools() {
     setBusy(id);
     setError(null);
     setMessage(null);
-    const res = await fetch(`/api/admin/knowledge?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    const res = await fetch(`/api/creator/knowledge?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     const data = await res.json().catch(() => ({}));
     setBusy(null);
     if (!res.ok) {
@@ -113,7 +113,7 @@ function KnowledgeTools() {
     <>
       <p className="label" style={{ fontWeight: 500, margin: "20px 0 8px" }}>Assistant knowledge</p>
       <p className="tiny" style={{ marginBottom: 10 }}>
-        The assistant answers from the hub&apos;s posts, files, its guide, admin answers, and the philosophy books added
+        The assistant answers from the hub&apos;s posts, files, its guide, community answers, and the philosophy books added
         here. New and edited posts are picked up when you update the index.
       </p>
       <div className="card">

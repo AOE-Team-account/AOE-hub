@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/ai/server/admin-guard";
+import { requireCreator } from "@/lib/ai/server/creator-guard";
 import { AINotConfiguredError } from "@/lib/ai/server/config";
 import { DocumentExtractError, extractEpubText, extractPdfText } from "@/lib/ai/server/document-extract";
 import { addPhilosophyText, deletePhilosophyBook, getIndexStatus, listPhilosophyBooks } from "@/lib/ai/server/indexer";
 
 export const runtime = "nodejs";
 
-// Admin-only upload, not the public File Board upload, so a more generous
+// Creator-only upload, not the public File Board upload, so a more generous
 // cap than a plain-text book would need is fine — real PDF/EPUB books run
 // larger than their extractable text for the same content (fonts, images,
 // formatting). Real project philosophy books ran up to ~45MB with genuine
@@ -17,7 +17,7 @@ export const runtime = "nodejs";
 const MAX_BOOK_BYTES = 60 * 1024 * 1024;
 
 export async function GET() {
-  const guard = await requireAdmin();
+  const guard = await requireCreator();
   if (!guard.ok) return guard.response;
   try {
     const [status, books] = await Promise.all([getIndexStatus(), listPhilosophyBooks()]);
@@ -29,10 +29,10 @@ export async function GET() {
 }
 
 // Deletes one philosophy book by id (never any other kb_documents source —
-// file/experience posts are removed by deleting the post itself, and admin
-// answers are removed via retract, both elsewhere).
+// file/experience posts are removed by deleting the post itself, and
+// community answers by deleting the comment, both elsewhere).
 export async function DELETE(request: Request) {
-  const guard = await requireAdmin();
+  const guard = await requireCreator();
   if (!guard.ok) return guard.response;
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Missing book id." }, { status: 400 });
@@ -49,7 +49,7 @@ export async function DELETE(request: Request) {
 // pasted text. It is only stored here; embedding happens in the index step
 // so a large book never has to finish inside a single request.
 export async function POST(request: Request) {
-  const guard = await requireAdmin();
+  const guard = await requireCreator();
   if (!guard.ok) return guard.response;
 
   const form = await request.formData();

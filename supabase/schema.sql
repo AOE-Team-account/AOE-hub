@@ -170,10 +170,6 @@ as $$
   );
 $$;
 
--- Legacy meaning of "admin" (the old is_admin flag): Creator or Watcher.
--- Only still used by the admin inbox and the admin dashboard, which the new
--- panels replace. New code uses reviewer_can() / has_role() instead.
--- (private.is_admin is defined below, with the Creator-unlock and two-step checks.)
 
 -- The highest reviewer tier a person holds, for the activity log.
 create or replace function private.top_reviewer_role(p_user_id uuid)
@@ -858,37 +854,8 @@ grant execute on function private.setting_true(text) to anon, authenticated, ser
 grant execute on function private.creator_unlocked(boolean) to anon, authenticated, service_role;
 grant execute on function private.reviewer_can(uuid, text, text) to anon, authenticated, service_role;
 
--- Legacy meaning of "admin" (the old is_admin flag): Creator or Watcher. Used
--- by the question inbox and the knowledge-base tools until the new question
--- flow replaces them. It now carries the same protections as everything else.
-create or replace function private.is_admin(p_user_id uuid)
-returns boolean
-language plpgsql
-security definer
-volatile
-set search_path = public
-as $$
-begin
-  if p_user_id is null or p_user_id is distinct from auth.uid() then return false; end if;
-  if private.has_role(p_user_id, 'creator') and private.creator_unlocked(false) then return true; end if;
-  if private.has_role(p_user_id, 'watcher')
-     and (not private.setting_true('require_2fa_staff') or private.is_aal2()) then
-    return true;
-  end if;
-  return false;
-end;
-$$;
-grant execute on function private.is_admin(uuid) to anon, authenticated, service_role;
-
-create or replace function public.am_i_admin()
-returns boolean
-language sql
-security definer
-volatile
-set search_path = public
-as $$
-  select private.is_admin(auth.uid());
-$$;
+-- (There is no "admin" role: only Creator, Watcher, Deacon, Answerer and Verified.)
+drop function if exists public.am_i_admin();
 
 -- The Creator sees everyone's roles only from an unlocked session.
 drop policy if exists "roles are visible only as badges, to oneself, or to the Creator" on public.user_roles;
@@ -988,9 +955,9 @@ create table if not exists public.experience_posts (
 create index if not exists experience_posts_author_id_idx on public.experience_posts (author_id);
 create index if not exists experience_posts_created_at_idx on public.experience_posts (created_at desc);
 
-comment on column public.experience_posts.is_announcement is 'Admin-only pinned announcements — enforced by the announcement_author_must_be_admin trigger below.';
+comment on column public.experience_posts.is_announcement is 'Creator-only pinned announcements — enforced by the announcement_author_must_be_creator trigger below.';
 
-create or replace function public.announcement_author_must_be_admin()
+create or replace function public.announcement_author_must_be_creator()
 returns trigger
 language plpgsql
 security definer
@@ -1007,7 +974,8 @@ $$;
 drop trigger if exists experience_posts_announcement_check on public.experience_posts;
 create trigger experience_posts_announcement_check
   before insert or update on public.experience_posts
-  for each row execute function public.announcement_author_must_be_admin();
+  for each row execute function public.announcement_author_must_be_creator();
+drop function if exists public.announcement_author_must_be_admin();
 
 -- ============================================================================
 -- Comments — shared by File Board and Experience Board
@@ -1385,7 +1353,7 @@ alter table public.kb_documents enable row level security;
 alter table public.kb_chunks enable row level security;
 
 -- profiles: readable by everyone (public profile pages); only the owner
--- can update their own row (points/admin/counters are function/trigger
+-- can update their own row (points/counters are function/trigger
 -- managed, not client-writable — see the column grants below).
 drop policy if exists "profiles are publicly readable" on public.profiles;
 create policy "profiles are publicly readable" on public.profiles
@@ -1408,7 +1376,7 @@ create policy "users manage their own follows" on public.follows
   for all using (auth.uid() = follower_id) with check (auth.uid() = follower_id);
 
 -- File Board: browsing is always free (even logged-out/anon), per the
--- access model. Writes require auth; only the author (or an admin) may
+-- access model. Writes require auth; only the author may
 -- update/delete their own posts.
 drop policy if exists "file posts are publicly readable" on public.file_posts;
 create policy "file posts are publicly readable" on public.file_posts
@@ -1439,7 +1407,7 @@ create policy "authors can delete file posts" on public.file_posts
 -- Per project memory: "flagged files get quarantined automatically, never
 -- shown publicly." Only clean assets are visible to everyone; the
 -- uploader can still see their own pending/flagged assets (so they get
--- feedback on what happened), and admins can see everything for moderation.
+-- feedback on what happened), and reviewers can see everything for moderation.
 drop policy if exists "clean file assets are publicly readable" on public.file_assets;
 create policy "clean file assets are publicly readable" on public.file_assets
   for select using (
@@ -1459,7 +1427,7 @@ create policy "post authors manage their file assets" on public.file_assets
   );
 
 -- Experience Board: same public-read / authed-write shape. The
--- announcement_author_must_be_admin trigger (above) is the real guard on
+-- announcement_author_must_be_creator trigger (above) is the real guard on
 -- is_announcement; this policy just gates writes to signed-in users.
 drop policy if exists "experience posts are publicly readable" on public.experience_posts;
 create policy "experience posts are publicly readable" on public.experience_posts
@@ -1532,10 +1500,10 @@ drop policy if exists "admins update reports" on public.reports;
 -- points_events: written only by award_points() (SECURITY DEFINER, runs as
 -- the function owner, bypassing RLS) — no direct client insert policy on
 -- purpose. Readable by the point recipient (for "how points work"
--- transparency) and admins.
+-- transparency) and the unlocked Creator.
 drop policy if exists "users see their own points history" on public.points_events;
 create policy "users see their own points history" on public.points_events
-  for select using (auth.uid() = user_id or private.is_admin(auth.uid()));
+  for select using (auth.uid() = user_id or private.creator_unlocked(false));
 
 -- post_views: written only via record_view() (SECURITY DEFINER). No
 -- client-facing policies needed at all.
@@ -1563,7 +1531,7 @@ create extension if not exists supabase_vault;
 
 -- ---- Keep the knowledge base in step with the boards ----------------------
 
--- When a post is deleted (by its author, an admin, or a cascade from a
+-- When a post is deleted (by its author, a reviewer, or a cascade from a
 -- banned/deleted account) its knowledge-base copy must disappear with it, so
 -- the AI can never quote content that has been removed. kb_documents has no
 -- client policies, hence SECURITY DEFINER.
@@ -1803,9 +1771,15 @@ alter table public.ai_provider_state enable row level security;
 -- are deleted, hidden or no longer eligible.
 
 -- The old admin inbox and everything that served it.
-drop trigger if exists admin_questions_remove_kb on public.admin_questions;
-drop trigger if exists admin_questions_limit on public.admin_questions;
-drop table if exists public.admin_questions;
+do $$
+begin
+  -- Only when the old table is still there (a database from before this
+  -- change). Written with EXECUTE so nothing here names the table until it is
+  -- known to exist; dropping the table also drops its triggers and policies.
+  if to_regclass('public.admin_questions') is not null then
+    execute 'drop table public.admin_questions cascade';
+  end if;
+end $$;
 drop function if exists public.limit_open_admin_questions();
 drop function if exists public.remove_kb_document_for_deleted_question();
 drop function if exists public.retract_admin_answer(uuid);
@@ -2388,6 +2362,7 @@ begin
   end if;
 end $$;
 drop function if exists public.is_admin(uuid);
+drop function if exists private.is_admin(uuid);
 
 
 -- ============================================================================
@@ -3573,7 +3548,6 @@ grant execute on function public.creator_security_events_list() to authenticated
 grant execute on function public.get_hub_settings() to authenticated;
 grant execute on function public.set_hub_setting(text, jsonb) to authenticated;
 grant execute on function public.my_two_step_status() to authenticated;
-grant execute on function public.am_i_admin() to authenticated;
 grant execute on function public.set_ai_key_help(text, text[], text, boolean) to authenticated;
 grant execute on function public.list_ai_key_help() to authenticated;
 grant execute on function public.ask_for_two_step(uuid) to authenticated;

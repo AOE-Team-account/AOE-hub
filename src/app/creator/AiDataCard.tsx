@@ -26,7 +26,7 @@ export function AiDataCard() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/admin/knowledge/embedding");
+    const res = await fetch("/api/creator/knowledge/embedding");
     const data = await res.json().catch(() => ({}));
     if (res.ok) setS(data);
     else setError(data?.error ?? "Could not read the AI status.");
@@ -41,7 +41,7 @@ export function AiDataCard() {
     setBusy(true);
     setError(null);
     setMessage(null);
-    const res = await fetch("/api/admin/knowledge/embedding", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...extra }) });
+    const res = await fetch("/api/creator/knowledge/embedding", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...extra }) });
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) return setError(data?.error ?? "That did not work.");
@@ -55,7 +55,7 @@ export function AiDataCard() {
     setMessage(null);
     try {
       for (let i = 0; i < 400; i++) {
-        const res = await fetch("/api/admin/knowledge/index", { method: "POST" });
+        const res = await fetch("/api/creator/knowledge/index", { method: "POST" });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) { setError(data?.error ?? "Indexing failed."); break; }
         await load();

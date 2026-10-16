@@ -159,11 +159,6 @@ export function TopBar() {
                   <Link href="/settings" onClick={() => setOpenDropdown(null)}>
                     Settings
                   </Link>
-                  {user?.isAdmin && (
-                    <Link href="/admin" onClick={() => setOpenDropdown(null)}>
-                      Admin tools <span className="admin-tag">questions &amp; books</span>
-                    </Link>
-                  )}
                   <hr />
                   <button onClick={signOut}>Sign out</button>
                 </div>

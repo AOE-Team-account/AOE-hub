@@ -64,7 +64,7 @@ function FileBoardContent({ files, authors }: { files: FilePost[]; authors: Reco
         <div className="start-here">
           <div>
             <p className="title" style={{ margin: "0 0 2px", fontSize: 14.5 }}>New here? Start with these</p>
-            <p className="tiny">A short, admin-picked path for families just getting started.</p>
+            <p className="tiny">A short, hand-picked path for families just getting started.</p>
           </div>
           <button className="btn">Browse</button>
         </div>

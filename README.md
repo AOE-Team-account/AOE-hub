@@ -14,11 +14,11 @@ The hub is fully wired to real backends everywhere — no mock data anywhere in 
 | Database schema | **Real**, live-tested end to end | `supabase/schema.sql` |
 | pgvector (for RAG) | **In use** — 768-dimension HNSW-indexed chunks, each tagged with the embedding model that made it | `supabase/schema.sql` (`kb_documents`, `kb_chunks`, `match_kb_chunks`) |
 | Points | **Real formula**, server-enforced via triggers/functions | `supabase/schema.sql` (`award_points`, `record_view`, `record_download`), `src/lib/points.ts` |
-| Every board, Admin Dashboard, notifications, your own profile | **Real queries and real writes** | `src/lib/data/*.ts`, plus direct browser-client calls in each page |
+| Every board, the Creator/Watcher/Deacon panels, notifications, your own profile | **Real queries and real writes** | `src/lib/data/*.ts`, plus direct browser-client calls in each page |
 | File uploads | **Real** — routes to Cloudflare R2 (small files) or Internet Archive (large files) automatically, gated by a real VirusTotal malware scan | `src/app/api/upload/route.ts`, `src/lib/storage/`, `src/lib/malware-scan/` |
 | File downloads | **Real** — signed URL (R2) or direct IA URL, only for scan-confirmed-clean files; increments the download counter and awards points | `src/app/api/download/[assetId]/route.ts` |
 | Database backups | **Real** — nightly GitHub Action dumps Supabase Postgres to Backblaze B2; retention via B2's own version-lifecycle rule, not custom code | `.github/workflows/backup-database.yml` |
-| RAG AI assistant | **Real** — retrieval over pgvector (posts, files, philosophy books, admin answers, a built-in hub guide) feeding a swappable model; members can use their own key; unsure questions can be posted to the Experience Board as a Question, and answers from Verified members and Answerers feed the AI | `src/lib/ai/`, `src/app/api/ai/`, `src/app/admin/AdminAssistantPanel.tsx` |
+| RAG AI assistant | **Real** — retrieval over pgvector (posts, files, philosophy books, answers from Verified members and Answerers, a built-in hub guide) feeding a swappable model; members can use their own key; unsure questions can be posted to the Experience Board as a Question, and answers from Verified members and Answerers feed the AI | `src/lib/ai/`, `src/app/api/ai/`, `src/app/admin/AdminAssistantPanel.tsx` |
 | Content translation | Seeded cache, no real API call | `src/lib/i18n/translate.ts` → Phase 8 |
 
 **Two patterns for real data, by design:** server-rendered pages (detail pages, board list pages) fetch through `src/lib/data/*.ts` using the server Supabase client. Write actions (posting, commenting, joining a group) call the *browser* Supabase client directly from a Client Component, then call `router.refresh()` — Row Level Security enforces who's allowed to do what either way, so this split is about which client is convenient, not about security. File uploads are the one write that goes through a server Route Handler instead (`/api/upload`), since the storage/scanning credentials are server-only secrets.
@@ -46,7 +46,7 @@ The hub is fully wired to real backends everywhere — no mock data anywhere in 
    - **service_role key** (secret — server-only, never in browser code) → `SUPABASE_SERVICE_ROLE_KEY`
 4. Copy `.env.example` to `.env.local` and fill in those three values. `.env.local` is gitignored — never commit real keys.
 5. (Optional, for easier local testing) In **Authentication → Sign In / Providers → Email**, turn off "Confirm email" so signing up logs you straight in without needing to click an email link.
-6. To make an account the Creator (full power; the old "admin" for testing the Admin Dashboard): sign up normally, then in the **SQL Editor** run `insert into public.user_roles (user_id, role) select id, 'creator' from public.profiles where name = 'YOUR NAME';` (see `RECOVERY.md`). Roles live in the `user_roles` table now; there is no `is_admin` column any more. The Creator role is only ever set this way, never from inside the app.
+6. To make an account the Creator (full power): sign up normally, then in the **SQL Editor** run `insert into public.user_roles (user_id, role) select id, 'creator' from public.profiles where name = 'YOUR NAME';` (see `RECOVERY.md`). Roles live in the `user_roles` table now; there is no `is_admin` column any more. The Creator role is only ever set this way, never from inside the app.
 
 Without a `.env.local`, the app still builds and runs — auth and real-data pages just won't function (guest browsing works regardless).
 
@@ -81,18 +81,18 @@ Once the secrets exist, the workflow runs automatically at 09:00 UTC daily, or y
 
 ## Setting up the AI assistant
 
-**How it works.** A question is embedded, the closest passages are pulled from `kb_chunks` (pgvector), and a chat model answers using only those passages. If the passages don't contain the answer, the assistant says so and offers to send the question to the admins; when an admin answers, the member gets an in-app notification and the answer is added to the assistant's knowledge so it can answer the same question itself next time.
+**How it works.** A question is embedded, the closest passages are pulled from `kb_chunks` (pgvector), and a chat model answers using only those passages. If the passages don't contain the answer, the assistant says so and offers to post the question on the Experience Board (Question category); Verified members and Answerers are notified, the asker is notified of every answer, and answers from Verified members and Answerers are added to the assistant's knowledge (and removed from it the moment they are deleted).
 
-**What gets indexed** (only public content): File Board posts that have at least one *scan-clean* file (title, section, type, file labels, description — the uploaded files' own contents are **not** indexed yet), all Experience Board posts, philosophy books added by an admin, admin answers, and a built-in "how AOEhub works" guide (`src/lib/ai/server/hub-guide.ts`). Deleted posts leave the index automatically (database trigger), and posts whose files are all flagged drop out on the next update.
+**What gets indexed** (only public content): File Board posts that have at least one *scan-clean* file (title, section, type, file labels, description — the uploaded files' own contents are **not** indexed yet), all Experience Board posts, philosophy books added by the Creator, community answers from Verified members and Answerers, and a built-in "how AOEhub works" guide (`src/lib/ai/server/hub-guide.ts`). Deleted posts leave the index automatically (database trigger), and posts whose files are all flagged drop out on the next update.
 
 **Swappable models — all in environment variables, no code changes** (see `.env.example`):
 - *Chat model* — `AI_PROVIDER` (`openai-compatible` covers Ollama, vLLM, Google's Gemini endpoint, OpenAI; or `anthropic`), `AI_BASE_URL`, `AI_API_KEY`, `AI_CHAT_MODEL`.
-- *Embedding model* — `EMBEDDING_*`. Separate from chat. The database column is fixed at 768 dimensions; changing the embedding model just needs the admin **Update index** button (it detects the swap and re-embeds everything — vectors from different models are never mixed).
+- *Embedding model* — `EMBEDDING_*`. Separate from chat. The database column is fixed at 768 dimensions; changing the embedding model just needs the **Update index** button in the Creator panel (AI & books tab) (it detects the swap and re-embeds everything — vectors from different models are never mixed).
 - **Development default is a local Ollama** (`gemma4` for chat, `nomic-embed-text` for embeddings: `ollama pull nomic-embed-text`). `localhost` only exists on your own machine — before the live site goes up (Phase 7), point `AI_*`/`EMBEDDING_*` at an endpoint the hosting server can actually reach.
 
 **Members' own keys.** Onboarding question 3 and **Settings → AI assistant**. A key is verified with one tiny request, then stored **encrypted in Supabase Vault** (never a normal column), read only server-side for that member's own questions, and deleted with their account. Providers are a fixed list (Google AI Studio, Anthropic, OpenAI) with fixed URLs — members can't enter a custom URL, which would let them aim this server at internal addresses. If a member's key stops working they're told so; the assistant does not silently fall back to (and spend) the hub's budget.
 
-**Admin tools** (Admin tools page): *Add a philosophy book* (.txt, .md, .pdf, .epub, or pasted text — PDF/EPUB extraction is pure JS, no native/system dependency, so it keeps working on Namecheap/cPanel shared hosting later), and **Update index**, which processes in time-boxed slices so even a whole book never has to fit in one request. The same work is available to a scheduler at `POST /api/cron/index-knowledge` (`Authorization: Bearer $CRON_SECRET`) — **not yet attached to a scheduler**, alongside `check-pending-scans` (Phase 7).
+**AI & books** (Creator panel): *Add a philosophy book* (.txt, .md, .pdf, .epub, or pasted text — PDF/EPUB extraction is pure JS, no native/system dependency, so it keeps working on Namecheap/cPanel shared hosting later), and **Update index**, which processes in time-boxed slices so even a whole book never has to fit in one request. The same work is available to a scheduler at `POST /api/cron/index-knowledge` (`Authorization: Bearer $CRON_SECRET`) — **not yet attached to a scheduler**, alongside `check-pending-scans` (Phase 7).
 
 **One-time setup:** re-run `supabase/schema.sql` in the Supabase SQL Editor (it's safe to re-run; it migrates the vector column 1536 → 768, adds the new tables/functions, and enables Vault), then run `ollama pull nomic-embed-text`.
 
@@ -113,7 +113,7 @@ Then open http://localhost:3000.
 src/
   app/                    routes (App Router) — one folder per page in hub-prototype.html
     login/, signup/        real Supabase auth forms
-    experience/, files/, admin/   each has a Server Component page.tsx (real data fetch)
+    experience/, files/, mod/, creator/   each has a Server Component page.tsx (real data fetch)
                                             + a *Client.tsx sibling (interactivity, real writes)
     api/
       upload/               receives a file, scans it, routes it to storage
@@ -163,5 +163,5 @@ One accessibility detail worth knowing before touching layout: the text-size con
 5. RAG AI — embedding pipeline, swappable model, bring-your-own-API-key ← **you are here** (built; see "Setting up the AI assistant")
 6. Marketing copy, translation & policy wording — final marketing copy, real translation API, and the actual Content Policy/Safety Policy text
 7. Hosting & domain — Namecheap shared hosting via cPanel's Git Version Control tool (deliberately switched from an earlier Cloudflare Pages plan — already-paid-for hosting), `aoe.ai` DNS stays on Namecheap pointing directly at it. Note: this deploy path has no auto-deploy-on-push — needs either manually clicking "Deploy HEAD Commit" in cPanel or a small webhook, decide which when this phase starts. Also when the pending-scan cron job gets wired to an actual scheduler. Deliberately placed after Backups/RAG/copy so the app is feature-complete before going live.
-8. Populate content — admins upload the real first-wave content
+8. Populate content — the team uploads (through ordinary accounts) the real first-wave content
 9. Launch

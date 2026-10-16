@@ -56,8 +56,6 @@ export interface User {
   roles: string[];
   /** Public A / V badges (the only roles anyone else can see). */
   badges: ("answerer" | "verified")[];
-  /** Creator or Watcher: may use the current admin dashboard. */
-  isAdmin: boolean;
   isCreator: boolean;
   /** Own standing only: 'suspended' means a reviewer paused the account pending the Creator's review. */
   accountStatus: "active" | "suspended" | "deleted";
@@ -120,16 +118,6 @@ export interface ExperiencePost {
   createdAt: string;
   pinned?: boolean;
   isAnnouncement?: boolean;
-}
-
-export interface AdminReport {
-  id: string;
-  targetType: ReportTargetType;
-  targetId: string;
-  reason: ReportReason;
-  details?: string;
-  createdAt: string;
-  status: "open" | "dismissed" | "resolved";
 }
 
 export interface NotificationItem {

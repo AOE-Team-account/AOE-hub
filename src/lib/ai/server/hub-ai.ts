@@ -11,7 +11,7 @@ import { getHubChatTarget, type ChatTarget } from "./config";
 // When a company answers "too many requests" (or its key is refused, or it is
 // down) it is marked resting for a while — the length it asked for, or a
 // growing default — and skipped until then. The resting state lives in the
-// database (ai_provider_state) so it is shared and the admin page can show it.
+// database (ai_provider_state) so it is shared and the Creator panel can show it.
 
 export type HubProviderId = "gemini" | "groq" | "local";
 
@@ -86,7 +86,7 @@ async function rest(provider: string, prior: StateRow | undefined, err: AIProvid
 
 async function markWorking(provider: string, prior: StateRow | undefined) {
   // Healthy and already recorded: no write on every answer. The first success
-  // (and the first one after a rest) is recorded so the admin page can say "working".
+  // (and the first one after a rest) is recorded so the Creator panel can say "working".
   if (prior && prior.strikes === 0 && !prior.rested_until) return;
   await createServiceRoleClient().from("ai_provider_state").upsert({
     provider,

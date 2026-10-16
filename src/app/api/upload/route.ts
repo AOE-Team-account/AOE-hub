@@ -86,7 +86,7 @@ export async function POST(request: Request) {
     // Upload first, regardless of scan outcome — the file needs to exist
     // somewhere for a *later* scan check to confirm it either way (see
     // /api/cron/check-pending-scans). RLS keeps non-"clean" file_assets
-    // rows hidden from everyone but the uploader/admins, and the download
+    // rows hidden from everyone but the uploader and reviewers, and the download
     // route independently refuses anything that isn't "clean", so sitting
     // in storage pre-verification is safe — it's just not reachable yet.
     try {

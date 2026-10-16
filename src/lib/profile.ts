@@ -36,7 +36,6 @@ export function userFromProfileRow(
     initials: initialsFromName(row.display_name || row.name),
     roles,
     badges: badges ?? (roles.filter((r) => r === "answerer" || r === "verified") as ("answerer" | "verified")[]),
-    isAdmin: roles.includes("creator") || roles.includes("watcher"),
     isCreator: roles.includes("creator"),
     accountStatus: row.account_status ?? "active",
     region: row.region ?? null,

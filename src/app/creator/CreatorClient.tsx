@@ -12,6 +12,7 @@ import { ReviewPanel } from "@/components/review/ReviewPanel";
 import { RulesButton } from "@/components/review/RulesModal";
 import type { ReviewData } from "@/lib/data/review";
 import { KeyHelpEditor, type KeyHelpRow } from "./KeyHelpEditor";
+import { KnowledgePanel } from "./KnowledgePanel";
 
 export interface CreatorData {
   review: ReviewData;
@@ -34,7 +35,7 @@ export interface CreatorData {
   security: { requireTwoStepForStaff: boolean; events: { at: string; kind: string }[]; keysLeft: number };
 }
 
-type Tab = "review" | "people" | "accounts" | "trash" | "log" | "hub";
+type Tab = "review" | "people" | "accounts" | "trash" | "log" | "ai" | "hub";
 
 const ROLES: { code: "watcher" | "deacon" | "answerer" | "verified"; label: string; help: string }[] = [
   { code: "watcher", label: "Watcher", help: "Sees every post, comment, file and report; can add a notice, warn, delete or dismiss." },
@@ -173,6 +174,7 @@ export function CreatorClient({ data }: { data: CreatorData }) {
           { value: "accounts", label: `Accounts${data.accounts.length ? ` (${data.accounts.length})` : ""}` },
           { value: "trash", label: "Deleted items" },
           { value: "log", label: "Activity log" },
+          { value: "ai", label: "AI & books" },
           { value: "hub", label: "Hub" },
         ]}
         value={tab}
@@ -387,6 +389,10 @@ export function CreatorClient({ data }: { data: CreatorData }) {
             );
           })}
         </>
+      )}
+
+      {tab === "ai" && (
+        <KnowledgePanel />
       )}
 
       {tab === "hub" && (

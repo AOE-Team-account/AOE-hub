@@ -8,7 +8,7 @@ export interface AISource {
 export interface AIReply {
   text: string;
   sources: AISource[];
-  /** True when the assistant isn't confident and the question should go to the admins. */
+  /** True when the assistant isn't confident and the question should be offered the chance to post it on the Experience Board. */
   escalate: boolean;
 }
 
