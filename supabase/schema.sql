@@ -1853,6 +1853,43 @@ as $$
   update public.translation_usage set used = greatest(0, used - p_n) where day = current_date and kind = p_kind;
 $$;
 
+-- A translation is deleted together with the text it translates (promised in
+-- the Terms and Privacy Policy). Notices are keyed "<kind>:<item id>".
+create or replace function private.drop_translations()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id text;
+begin
+  if tg_argv[0] = 'notice' then
+    v_id := old.item_kind || ':' || old.item_id::text;
+  else
+    v_id := old.id::text;
+  end if;
+  delete from public.content_translations where item_type = tg_argv[0] and item_id = v_id;
+  return old;
+end;
+$$;
+
+drop trigger if exists drop_translations_experience on public.experience_posts;
+create trigger drop_translations_experience after delete on public.experience_posts
+  for each row execute function private.drop_translations('experience-post');
+drop trigger if exists drop_translations_file on public.file_posts;
+create trigger drop_translations_file after delete on public.file_posts
+  for each row execute function private.drop_translations('file');
+drop trigger if exists drop_translations_comment on public.comments;
+create trigger drop_translations_comment after delete on public.comments
+  for each row execute function private.drop_translations('comment');
+drop trigger if exists drop_translations_notification on public.notifications;
+create trigger drop_translations_notification after delete on public.notifications
+  for each row execute function private.drop_translations('notification');
+drop trigger if exists drop_translations_notice on public.item_notices;
+create trigger drop_translations_notice after delete on public.item_notices
+  for each row execute function private.drop_translations('notice');
+
 insert into public.hub_settings (key, value) values
   ('translation_daily_cap', '2000'::jsonb),
   ('new_language_daily_cap', '3'::jsonb),
