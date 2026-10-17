@@ -5,20 +5,23 @@ import { useReport } from "@/contexts/ReportContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { createClient } from "@/lib/supabase/client";
 import { Modal } from "@/components/ui/Modal";
+import { useLanguage } from "@/contexts/LanguageContext";
+import type { UiKey } from "@/lib/i18n/strings";
 import type { ReportReason } from "@/lib/types";
 
-const REASONS: { value: ReportReason; label: string }[] = [
-  { value: "scam", label: "Scam or asking for money" },
-  { value: "off-topic", label: "Off-topic / not education related" },
-  { value: "inappropriate", label: "Inappropriate content" },
-  { value: "paywalled", label: "Paywalled or costs money" },
-  { value: "copyright", label: "Copyright — not their work" },
-  { value: "other", label: "Something else" },
+const REASONS: { value: ReportReason; label: UiKey }[] = [
+  { value: "scam", label: "report.reason.scam" },
+  { value: "off-topic", label: "report.reason.offTopic" },
+  { value: "inappropriate", label: "report.reason.inappropriate" },
+  { value: "paywalled", label: "report.reason.paywalled" },
+  { value: "copyright", label: "report.reason.copyright" },
+  { value: "other", label: "report.reason.other" },
 ];
 
 export function ReportModal() {
   const { target, closeReport } = useReport();
   const { user } = useAuth();
+  const { t } = useLanguage();
   const [reason, setReason] = useState<ReportReason>("scam");
   const [details, setDetails] = useState("");
   const [busy, setBusy] = useState(false);
@@ -46,7 +49,7 @@ export function ReportModal() {
     });
     setBusy(false);
     if (insertError) {
-      setError("Couldn't submit the report. Please try again.");
+      setError(t("report.error"));
       return;
     }
     reset();
@@ -55,19 +58,19 @@ export function ReportModal() {
 
   return (
     <Modal open={Boolean(target)} onClose={closeReport}>
-      <p className="title">Report this</p>
+      <p className="title">{t("report.title")}</p>
       <p className="muted" style={{ marginBottom: 10 }}>
-        What&apos;s the issue?
+        {t("report.whatIssue")}
       </p>
       <select value={reason} onChange={(e) => setReason(e.target.value as ReportReason)} style={{ marginBottom: 10 }}>
         {REASONS.map((r) => (
           <option key={r.value} value={r.value}>
-            {r.label}
+            {t(r.label)}
           </option>
         ))}
       </select>
       <textarea
-        placeholder="Add any details (optional)"
+        placeholder={t("report.detailsPlaceholder")}
         style={{ minHeight: 60 }}
         value={details}
         onChange={(e) => setDetails(e.target.value)}
@@ -75,10 +78,10 @@ export function ReportModal() {
       {error && <p className="tiny" style={{ color: "#b5471f", marginTop: 6 }}>{error}</p>}
       <div className="row" style={{ gap: 8 }}>
         <button className="btn primary" disabled={busy} onClick={submit}>
-          {busy ? "Submitting…" : "Submit report"}
+          {busy ? t("report.submitting") : t("report.submit")}
         </button>
         <button className="btn" onClick={closeReport}>
-          Cancel
+          {t("common.cancel")}
         </button>
       </div>
     </Modal>

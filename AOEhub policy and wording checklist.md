@@ -1,5 +1,7 @@
 # AOEhub — policy pages and final wording: what each one must contain
 
+> **Updated 2026-10-17.** This file is the current list. The older `AOEhub content and safety policy DRAFT 1.md` is **obsolete** (it still talks about Groups, four admins, public announcements and "No ads. No scams.") — do not write from it; at most borrow a sentence or two of wording. The final policy drafts ("DRAFT 2") will be written from this checklist once the decisions in section 11 and section 12 are answered. Changes since 2026-10-16 are marked **[new 10-17]** below.
+
 Written 2026-10-16 for Clara, from the memory doc (chat7), the real build, and the policy DRAFT 1. This is a **checklist of points**, not the policies themselves. Use it to (1) brief a lawyer, (2) decide what you want each page to say, and (3) check my drafts later. Items marked **DECIDE** need an answer from Clara; items marked **LAWYER** need professional advice; items marked **BUILD** mean the policy only makes sense if a feature exists (so it affects the code, not just the words).
 
 How these will be used: step 6b (the last step) writes the final text of everything below. Nothing here is legal advice.
@@ -36,6 +38,15 @@ This is the inventory the Privacy Policy and Terms are written from. If the buil
 - An email-sending service — password reset and alerts (provider not chosen yet).
 - GitHub — the code and the backup job (no member data in the code).
 - **Google's free tier can use what is sent and human reviewers may read it** (chat7 risk 1) → **DECIDE** free vs paid tier; the Privacy Policy must match the choice.
+
+**More things the hub does now [new 10-17] — every one needs a sentence in the Terms and/or Privacy Policy**
+- **Automatic translation of members' posts, titles, comments and file descriptions into each reader's language** (Gemini first, Groq as backup). The translated copy is **stored** (so it is made once), shown as "Translated from … · Show original", and **deleted with the original**. Terms: members allow the hub to translate and store translations of what they post. Privacy: the text is sent to Google/Groq to be translated. Translations are machine-made and can be wrong.
+- **The interface language:** chosen from the browser's language on a first visit, saved in a **cookie called `aoehub.lang`** (a functional cookie), and saved on the member's profile so it follows them. Visitors in an unlisted language can cause that language to be **added automatically** and machine-translated (labelled as such).
+- **Search for the AI ("embeddings")**: all public posts, files' descriptions, comments by Answerers/Verified on Questions and the philosophy books are turned into numbers by **Google's embedding service**, and every question a member asks the hub AI is also sent to Google for that. Google's free tier: Google may use what is sent, and its limits are low (1,000 pieces a day). The hub uses **two Google projects' keys** for capacity.
+- **Backups:** every night a full copy of the database (all personal data and safety records, but not the AI search numbers) goes to Backblaze B2; kept daily for 30 days, then one a week for a year. State this in the retention table.
+- **Sign-in security:** the Creator, Watchers and Deacons must use two-step sign-in (authenticator app); the Creator also has an access code and recovery keys; sign-in attempts to the Creator panel are logged. Members may turn on two-step sign-in too.
+- **Questions posted by the AI on a member's behalf:** the hub AI can post an unanswered question to the Experience Board under the member's own name, after the member says yes.
+- **The terms the member accepted** (which version, when) are recorded; a new version can require re-acceptance for one feature only.
 
 **Moderation facts (Community, Content, Safety and Terms must describe them accurately)**
 - Reviewers: Watchers (posts, comments, files), Deacons (posts, comments), the Creator (everything). Nobody can see who holds these roles; they show no badge. Only **A** (Answerer) and **V** (Verified) badges are public.
@@ -79,7 +90,7 @@ This is the inventory the Privacy Policy and Terms are written from. If the buil
 6. **Children:** accounts from 13; what happens if we learn someone is under 13 (delete); parent/guardian accounts; no verified-parental-consent flow. LAWYER (COPPA).
 7. **How long we keep things (retention table):** trash 30 days; deleted accounts 30 days; **warnings, activity log and evidence kept after deletion** (period DECIDE/LAWYER); backups (nightly, retention rule: daily 30 days then weekly, DECIDE final); access logs (hosting company's policy); the AI's copy of content (removed when content is deleted).
 8. **Your rights and how to use them:** see your data, correct it, delete your account, object, and **a copy of your data** (**BUILD gap: a "download my data" function does not exist yet; decide whether to build it**). Erasure limits: evidence kept for legal claims, Internet Archive files, backups.
-9. Cookies and local storage: sign-in cookies (essential), browser storage for theme/text size/language/welcome card; no advertising or analytics trackers today (state it only while true). LAWYER: whether a consent banner is needed in some countries.
+9. Cookies and local storage: sign-in cookies (essential), the **language cookie `aoehub.lang`** and browser storage for theme/text size/language/welcome card; the hub also reads the browser's language setting on a first visit; no advertising or analytics trackers today (state it only while true). LAWYER: whether a consent banner is needed in some countries.
 10. International transfers (servers outside your country; the operator in China) and **laws for users in mainland China** (item 28). LAWYER.
 11. Security: encryption in transit, passwords scrambled, two-step sign-in, role checks on the server, API key vault; honest statement that no system is perfectly secure; what we do if there is a breach (notify, timing). LAWYER.
 12. Changes to this policy (notice, version, re-acceptance).
@@ -180,3 +191,26 @@ General contact, safety/urgent contact, DMCA agent contact, privacy requests, ap
 10. Governing law and dispute venue (lawyer).
 11. How much the About page says about who is behind the hub.
 12. Which three welcome cards.
+13. **[new 10-17]** Which Google plan at launch (free: no card, but Google may use the data and the daily limits are low; paid: a few cents, no data use) — the Privacy Policy must match.
+14. **[new 10-17]** Whether the policy pages themselves are machine-translated into other languages, and the sentence saying the English (or Chinese) version is the one that counts. (LAWYER)
+15. **[new 10-17]** Whether a cookie notice is needed for the language and sign-in cookies. (LAWYER)
+
+---
+
+## 12. Answer these FIRST — they change what I build (the rest of the text can wait) [new 10-17]
+
+Everything else in this file is words, and the words can be finished last. These decisions, however, change the screens and features in the next build steps (scanner, game hosting, link-outs, profile pictures, password reset). Please answer them before, or while, you write the policies:
+
+| # | Decision | Why it matters to the build |
+|---|---|---|
+| 1 | **What licence do members give others when they upload a file** (download/use/remix with credit; any limits)? | The upload form shows it, and the remix feature depends on it (Step 7). |
+| 2 | **Must members say when a post or file is AI-made?** | A checkbox/label on the upload and post forms. |
+| 3 | **Approved link-out sites** for games/apps over 50 MB (GitHub, itch.io, Steam, the member's own site — others?) and the **daily upload limit per member** | Stored as data; the limit protects the scanner's cost (Step 7). |
+| 4 | **Do you want a takedown form** (a copyright holder fills it in and it becomes a report), **an appeals form** (a member contests a warning/restriction/suspension), **an urgent-report button** (serious safety concern), **"download my data"**? Yes or no for each. | Each is a small build I would add in Step 7/8 or at the end. |
+| 5 | **Contact addresses** (general, safety, copyright/DMCA, privacy requests, suspension appeals) and the **"from" name/address for system emails** | Password reset and alert emails (Step 8) and the suspension screen need them. |
+| 6 | **Operator name and address** (who runs the hub, legally) | Appears in the Terms, Privacy Policy and sign-up page. |
+| 7 | **Evidence retention** (how long warnings and the activity log are kept after an account is deleted) | Sets the purge rules. |
+| 8 | **Profile pictures:** allowed? who can see them? report them like posts? | Step 8 build rules. |
+
+Once you answer 1 to 8, I can build Steps 7 and 8 without redoing anything when the policy text arrives.
+

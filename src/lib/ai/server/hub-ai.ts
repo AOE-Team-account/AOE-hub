@@ -2,6 +2,7 @@ import "server-only";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { AIProviderError, chatComplete, type ChatMessage } from "./chat-providers";
 import { getHubChatTarget, type ChatTarget } from "./config";
+import { googleKeys } from "./google-keys";
 
 // The hub's own answer-and-translation AI: Gemini first, Groq when Gemini is
 // full, and back to Gemini as soon as it has rested. (A member's own key
@@ -13,7 +14,7 @@ import { getHubChatTarget, type ChatTarget } from "./config";
 // growing default — and skipped until then. The resting state lives in the
 // database (ai_provider_state) so it is shared and the Creator panel can show it.
 
-export type HubProviderId = "gemini" | "groq" | "local";
+export type HubProviderId = string;
 
 interface HubProvider {
   id: HubProviderId;
@@ -46,13 +47,13 @@ function groqTarget(apiKey: string): ChatTarget {
 
 export function hubProviders(): HubProvider[] {
   const out: HubProvider[] = [];
-  const google = process.env.GOOGLE_AI_API_KEY;
   const groq = process.env.GROQ_API_KEY;
-  if (google) {
+  // Each Google key (ideally each from its own project) is tried in order.
+  for (const g of googleKeys()) {
     out.push({
-      id: "gemini",
-      label: "Gemini",
-      target: { kind: "openai-compatible", baseUrl: GEMINI_OPENAI_BASE, apiKey: google, model: process.env.GEMINI_CHAT_MODEL || DEFAULT_GEMINI_MODEL },
+      id: g.id === "1" ? "gemini" : `gemini-${g.id}`,
+      label: g.id === "1" ? "Gemini" : `Gemini (key ${g.id})`,
+      target: { kind: "openai-compatible", baseUrl: GEMINI_OPENAI_BASE, apiKey: g.key, model: process.env.GEMINI_CHAT_MODEL || DEFAULT_GEMINI_MODEL },
     });
   }
   if (groq) {

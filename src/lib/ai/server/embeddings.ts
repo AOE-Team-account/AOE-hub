@@ -1,6 +1,7 @@
 import "server-only";
 import { AIProviderError } from "./chat-providers";
 import { EMBEDDING_DIMENSIONS, getEmbeddingConfig } from "./config";
+import { googleKeys } from "./google-keys";
 import { GEMINI_EMBEDDING_MODEL, getLiveEmbeddingModel } from "./embedding-models";
 
 // Embeds text. The model decides the company: gemini-embedding-001 goes to
@@ -36,43 +37,76 @@ function retryAfterSeconds(res: Response, body?: string): number | undefined {
   return m ? Math.ceil(Number(m[1])) : undefined;
 }
 
+// Keys that recently hit a limit, and until when (this server process). A
+// daily limit rests a key for hours; a per-minute one for about a minute.
+const keyRestUntil = new Map<string, number>();
+
+async function embedGeminiBatch(model: string, key: string, batch: string[], kind: EmbedKind): Promise<number[][]> {
+  let res: Response;
+  try {
+    res = await fetch(`${GEMINI_BASE}/models/${model}:batchEmbedContents`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify({
+        requests: batch.map((text) => ({
+          model: `models/${model}`,
+          content: { parts: [{ text }] },
+          taskType: kind === "document" ? "RETRIEVAL_DOCUMENT" : "RETRIEVAL_QUERY",
+          outputDimensionality: EMBEDDING_DIMENSIONS,
+        })),
+      }),
+      signal: AbortSignal.timeout(60_000),
+    });
+  } catch {
+    throw new AIProviderError("Could not reach the embedding service.");
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    const err = new AIProviderError(`The embedding service returned an error (${res.status}).`, res.status);
+    err.retryAfterSec = retryAfterSeconds(res, body);
+    throw err;
+  }
+  const data = await res.json();
+  const vectors: number[][] = (data?.embeddings ?? []).map((e: { values: number[] }) => e.values);
+  if (vectors.length !== batch.length) throw new AIProviderError("The embedding service returned the wrong number of vectors.");
+  for (const v of vectors) {
+    if (v.length !== EMBEDDING_DIMENSIONS) throw new AIProviderError(`Embedding model returned ${v.length} dimensions; the database expects ${EMBEDDING_DIMENSIONS}.`);
+  }
+  return vectors.map(normalize);
+}
+
 async function embedGemini(model: string, texts: string[], kind: EmbedKind): Promise<number[][]> {
-  const key = process.env.GOOGLE_AI_API_KEY;
-  if (!key) throw new AIProviderError("GOOGLE_AI_API_KEY is not set, so Google embeddings are not available.");
+  const keys = googleKeys();
+  if (keys.length === 0) throw new AIProviderError("GOOGLE_AI_API_KEY is not set, so Google embeddings are not available.");
   const out: number[][] = [];
   for (let i = 0; i < texts.length; i += GEMINI_BATCH) {
     const batch = texts.slice(i, i + GEMINI_BATCH);
-    let res: Response;
-    try {
-      res = await fetch(`${GEMINI_BASE}/models/${model}:batchEmbedContents`, {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-goog-api-key": key },
-        body: JSON.stringify({
-          requests: batch.map((text) => ({
-            model: `models/${model}`,
-            content: { parts: [{ text }] },
-            taskType: kind === "document" ? "RETRIEVAL_DOCUMENT" : "RETRIEVAL_QUERY",
-            outputDimensionality: EMBEDDING_DIMENSIONS,
-          })),
-        }),
-        signal: AbortSignal.timeout(60_000),
-      });
-    } catch {
-      throw new AIProviderError("Could not reach the embedding service.");
+    let lastLimit: AIProviderError | null = null;
+    let done: number[][] | null = null;
+    // First key that is not resting; if it hits a limit, rest it and try the next.
+    for (const k of keys) {
+      if ((keyRestUntil.get(k.id) ?? 0) > Date.now()) continue;
+      try {
+        done = await embedGeminiBatch(model, k.key, batch, kind);
+        break;
+      } catch (err) {
+        if (err instanceof AIProviderError && err.status === 429) {
+          keyRestUntil.set(k.id, Date.now() + (err.retryAfterSec ?? 60) * 1000);
+          lastLimit = err;
+          continue;
+        }
+        throw err;
+      }
     }
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      const err = new AIProviderError(`The embedding service returned an error (${res.status}).`, res.status);
-      err.retryAfterSec = retryAfterSeconds(res, body);
+    if (!done) {
+      // Every key is resting: report how long until the first one is free.
+      const soonest = Math.min(...keys.map((k) => keyRestUntil.get(k.id) ?? 0));
+      const err = new AIProviderError("The embedding service is rate-limiting requests right now.", 429);
+      err.retryAfterSec = Math.max(1, Math.ceil((soonest - Date.now()) / 1000));
+      if (lastLimit && !err.retryAfterSec) err.retryAfterSec = lastLimit.retryAfterSec;
       throw err;
     }
-    const data = await res.json();
-    const vectors: number[][] = (data?.embeddings ?? []).map((e: { values: number[] }) => e.values);
-    if (vectors.length !== batch.length) throw new AIProviderError("The embedding service returned the wrong number of vectors.");
-    for (const v of vectors) {
-      if (v.length !== EMBEDDING_DIMENSIONS) throw new AIProviderError(`Embedding model returned ${v.length} dimensions; the database expects ${EMBEDDING_DIMENSIONS}.`);
-      out.push(normalize(v));
-    }
+    out.push(...done);
   }
   return out;
 }

@@ -8,6 +8,7 @@ import {
   switchBackEmbeddingModel,
   switchToNextEmbeddingModel,
 } from "@/lib/ai/server/embedding-models";
+import { googleKeys } from "@/lib/ai/server/google-keys";
 import { getProviderStatuses } from "@/lib/ai/server/hub-ai";
 import { getIndexStatus } from "@/lib/ai/server/indexer";
 
@@ -23,7 +24,8 @@ export async function GET() {
   return NextResponse.json({
     ...status,
     providers,
-    googleConfigured: Boolean(process.env.GOOGLE_AI_API_KEY),
+    googleConfigured: googleKeys().length > 0,
+    googleKeyCount: googleKeys().length,
     groqConfigured: Boolean(process.env.GROQ_API_KEY),
     suggestedModel: GEMINI_EMBEDDING_MODEL,
   });
@@ -36,7 +38,7 @@ export async function POST(request: Request) {
   try {
     switch (body.action) {
       case "start-next":
-        if (!process.env.GOOGLE_AI_API_KEY) return NextResponse.json({ error: "GOOGLE_AI_API_KEY is not set in .env.local yet." }, { status: 400 });
+        if (googleKeys().length === 0) return NextResponse.json({ error: "GOOGLE_AI_API_KEY is not set in .env.local yet." }, { status: 400 });
         await startNextEmbeddingModel(GEMINI_EMBEDDING_MODEL);
         return NextResponse.json({ ok: true });
       case "cancel-next":

@@ -14,13 +14,23 @@ const MAX_PASSAGE_CHARS = 1200;
 // per embedding model via AI_MIN_SIMILARITY.
 const MIN_SIMILARITY = Number(process.env.AI_MIN_SIMILARITY || 0.4);
 
-const LANGUAGE_NAMES: Record<LanguageCode, string> = {
+const LANGUAGE_NAMES: Record<string, string> = {
   en: "English",
   "zh-CN": "Simplified Chinese (简体中文)",
   "zh-TW": "Traditional Chinese (繁體中文)",
 };
 
-const NOT_CONFIDENT: Record<LanguageCode, string> = {
+// Any other language code: ask the runtime for its English name ("Spanish").
+function languageName(code: string): string {
+  if (LANGUAGE_NAMES[code]) return LANGUAGE_NAMES[code];
+  try {
+    return new Intl.DisplayNames(["en"], { type: "language" }).of(code) ?? "English";
+  } catch {
+    return "English";
+  }
+}
+
+const NOT_CONFIDENT: Record<string, string> = {
   en: "I'm not confident I can answer that well. Would you like me to post your question on the Experience Board so people can answer it?",
   "zh-CN": "这个问题我没有把握答好。要不要我把它发到经验分享板，让大家来回答？",
   "zh-TW": "這個問題我沒有把握答好。要不要我把它發到經驗分享板，讓大家來回答？",
@@ -86,7 +96,7 @@ function systemPrompt(lang: LanguageCode) {
     "- If the context does not contain enough to answer well, reply with exactly the single word NO_ANSWER and nothing else. Simple greetings and thanks do not need context.",
     "- Be warm and concise: a few sentences. Name the file or post you are drawing on.",
     "- When you use a passage labelled as a community answer, say plainly that it comes from a member's answer on the Experience Board (a Verified member or an Answerer), not from the hub itself.",
-    `- Reply in ${LANGUAGE_NAMES[lang]}.`,
+    `- Reply in ${languageName(lang)}.`,
   ].join("\n");
 }
 
@@ -133,13 +143,13 @@ export async function answerQuestion(opts: {
     // The AI refused or returned nothing (for example its safety filter): treat
     // it as "not confident" so the member is offered the Question flow.
     if (err instanceof AIProviderError && err.status === undefined && /empty answer/i.test(err.message)) {
-      return { text: NOT_CONFIDENT[lang], sources: [], escalate: true };
+      return { text: (NOT_CONFIDENT[lang] ?? NOT_CONFIDENT.en), sources: [], escalate: true };
     }
     throw err;
   }
 
   if (/NO_ANSWER/.test(raw)) {
-    return { text: NOT_CONFIDENT[lang], sources: [], escalate: true };
+    return { text: (NOT_CONFIDENT[lang] ?? NOT_CONFIDENT.en), sources: [], escalate: true };
   }
 
   // A community answer is stored under its comment id; its page is the post.

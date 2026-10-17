@@ -6,14 +6,13 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { createClient } from "@/lib/supabase/client";
-import { LANGUAGE_LABELS, LANGUAGE_ORDER } from "@/lib/i18n/dictionaries";
-import type { LanguageCode, NotificationItem } from "@/lib/types";
+import type { NotificationItem } from "@/lib/types";
 
 type DropdownId = "plus" | "notif" | "avatar" | null;
 
 export function TopBar() {
   const { status, user, signOut } = useAuth();
-  const { lang, setLang, dict } = useLanguage();
+  const { lang, setLang, t, languages } = useLanguage();
   const router = useRouter();
   // The reviewer panels are review-only: no create menu inside them.
   const pathname = usePathname();
@@ -81,7 +80,7 @@ export function TopBar() {
             <path d="M21 21l-4.3-4.3" />
           </svg>
           <input
-            placeholder="Search files and experiences..."
+            placeholder={t("nav.searchPlaceholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={onSearchKeyDown}
@@ -95,7 +94,7 @@ export function TopBar() {
               <div className="plus-wrap">
                 <button
                   className="plus-btn"
-                  aria-label="Create"
+                  aria-label={t("nav.create")}
                   onClick={(e) => {
                     e.stopPropagation();
                     toggleDropdown("plus");
@@ -107,10 +106,10 @@ export function TopBar() {
                 </button>
                 <div className={`dropdown${openDropdown === "plus" ? " open" : ""}`}>
                   <Link href="/files/new" onClick={() => setOpenDropdown(null)}>
-                    Upload a file
+                    {t("nav.uploadFile")}
                   </Link>
                   <Link href="/experience/new" onClick={() => setOpenDropdown(null)}>
-                    Share an experience
+                    {t("nav.shareExperience")}
                   </Link>
                 </div>
               </div>
@@ -119,7 +118,7 @@ export function TopBar() {
               <div className="avatar-wrap">
                 <button
                   className="icon-btn"
-                  aria-label="Notifications"
+                  aria-label={t("nav.notifications")}
                   onClick={(e) => {
                     e.stopPropagation();
                     toggleDropdown("notif");
@@ -132,7 +131,7 @@ export function TopBar() {
                   {notifications.some((n) => !n.read) && <span className="dot" />}
                 </button>
                 <div className={`dropdown${openDropdown === "notif" ? " open" : ""}`}>
-                  {notifications.length === 0 && <div className="notif-item">No notifications yet.</div>}
+                  {notifications.length === 0 && <div className="notif-item">{t("nav.noNotifications")}</div>}
                   {notifications.map((n, i) => (
                     <div key={n.id}>
                       <div className="notif-item">{n.body}</div>
@@ -154,13 +153,13 @@ export function TopBar() {
                 </button>
                 <div className={`dropdown${openDropdown === "avatar" ? " open" : ""}`}>
                   <Link href="/profile" onClick={() => setOpenDropdown(null)}>
-                    Profile
+                    {t("nav.profile")}
                   </Link>
                   <Link href="/settings" onClick={() => setOpenDropdown(null)}>
-                    Settings
+                    {t("nav.settings")}
                   </Link>
                   <hr />
-                  <button onClick={signOut}>Sign out</button>
+                  <button onClick={signOut}>{t("common.signOut")}</button>
                 </div>
               </div>
             </>
@@ -168,21 +167,21 @@ export function TopBar() {
             <div className="loggedout-actions">
               <select
                 value={lang}
-                onChange={(e) => setLang(e.target.value as LanguageCode)}
+                onChange={(e) => setLang(e.target.value)}
                 style={{ width: "auto", padding: "8px 10px", fontSize: 13 }}
-                aria-label="Language"
+                aria-label={t("common.language")}
               >
-                {LANGUAGE_ORDER.map((code) => (
-                  <option key={code} value={code}>
-                    {LANGUAGE_LABELS[code]}
+                {languages.map((l) => (
+                  <option key={l.code} value={l.code}>
+                    {l.label}
                   </option>
                 ))}
               </select>
               <button className="btn" onClick={() => router.push("/login")}>
-                {dict.headerLogin}
+                {t("common.logIn")}
               </button>
               <button className="btn primary" onClick={() => router.push("/signup")}>
-                {dict.headerSignup}
+                {t("common.signUp")}
               </button>
             </div>
           )}

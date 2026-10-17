@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { createClient } from "@/lib/supabase/client";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
@@ -16,6 +17,7 @@ interface RoleMessage {
 // another the next time they sign in; each is marked read when dismissed.
 export function RoleMessageModal() {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const [queue, setQueue] = useState<RoleMessage[]>([]);
 
   useEffect(() => {
@@ -44,9 +46,9 @@ export function RoleMessageModal() {
 
   return (
     <Modal open={Boolean(current)} onClose={dismiss}>
-      <p className="title">A message for you</p>
+      <p className="title">{t("roleMessage.title")}</p>
       <p className="muted">{current?.body}</p>
-      <div className="row"><Button variant="primary" onClick={dismiss}>Got it</Button></div>
+      <div className="row"><Button variant="primary" onClick={dismiss}>{t("common.gotIt")}</Button></div>
     </Modal>
   );
 }

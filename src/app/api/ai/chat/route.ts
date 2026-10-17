@@ -8,7 +8,8 @@ import type { AIHistoryTurn, LanguageCode } from "@/lib/ai/types";
 
 export const runtime = "nodejs";
 
-const LANGS: LanguageCode[] = ["en", "zh-CN", "zh-TW"];
+// Any well-formed language code is accepted (languages beyond the three written ones are added by AI).
+const LANG_PATTERN = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 const MAX_MESSAGE = 1000;
 
 export async function POST(request: Request) {
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
   }
 
   const message = typeof body.message === "string" ? body.message.trim() : "";
-  const lang = LANGS.includes(body.lang as LanguageCode) ? (body.lang as LanguageCode) : "en";
+  const lang: LanguageCode = typeof body.lang === "string" && LANG_PATTERN.test(body.lang) ? body.lang : "en";
   if (!message || message.length > MAX_MESSAGE) {
     return NextResponse.json({ error: `Please ask a question of 1–${MAX_MESSAGE} characters.` }, { status: 400 });
   }

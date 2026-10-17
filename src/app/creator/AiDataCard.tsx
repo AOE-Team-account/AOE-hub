@@ -12,6 +12,7 @@ interface Status {
   nextModel: string | null;
   providers: Provider[];
   googleConfigured: boolean;
+  googleKeyCount: number;
   groqConfigured: boolean;
   suggestedModel: string;
 }
@@ -81,7 +82,7 @@ export function AiDataCard() {
   return (
     <div className="card">
       <p style={{ fontWeight: 500, fontSize: 14, margin: "0 0 8px" }}>The hub&apos;s AI</p>
-      <p className="tiny" style={{ marginBottom: 6 }}>Answers and translation use Gemini first, and Groq when Gemini is full. It returns to Gemini by itself after resting.</p>
+      <p className="tiny" style={{ marginBottom: 6 }}>Answers and translation use Gemini first ({s.googleKeyCount} Google key{s.googleKeyCount === 1 ? "" : "s"}, tried in order), and Groq when they are full. It returns to Gemini by itself after resting. Search data uses the same Google keys.</p>
       {s.providers.map((p) => (
         <p className="tiny" key={p.id} style={{ margin: "0 0 2px" }}>
           <strong>{p.label}</strong> ({p.model}):{" "}

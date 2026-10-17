@@ -5,7 +5,8 @@
 // implementations with real Supabase queries — these types should map
 // closely onto that future Postgres schema, but nothing here is DB-specific.
 
-export type LanguageCode = "en" | "zh-CN" | "zh-TW";
+/** A language code such as "en", "zh-CN" or "es". Three are written by hand; others are added by AI. */
+export type LanguageCode = string;
 
 export type MediaType = "document" | "image" | "audio" | "video" | "game" | "app";
 
@@ -61,6 +62,8 @@ export interface User {
   accountStatus: "active" | "suspended" | "deleted";
   /** Own profile only. Null until chosen. */
   region: Region | null;
+  /** Own profile only: the saved interface language. */
+  language: string | null;
   /** Set while a one-week restriction is in force (ISO time it ends). */
   restrictedUntil?: string;
   memberSince: string; // ISO date

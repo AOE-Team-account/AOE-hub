@@ -267,8 +267,10 @@ async function embedPending(db: Db, model: string, budgetMs: number): Promise<{ 
 }
 
 async function pendingFor(db: Db, model: string): Promise<number> {
-  const { data } = await db.rpc("kb_pending_count", { p_model: model });
-  return (data as number) ?? 0;
+  const { data, error } = await db.rpc("kb_pending_count", { p_model: model });
+  // A failed lookup must never look like "nothing left to do".
+  if (error || typeof data !== "number") throw new Error(`Could not count the documents still waiting: ${error?.message ?? "no answer"}`);
+  return data;
 }
 
 export async function getIndexStatus(db: Db = createServiceRoleClient()): Promise<Pick<IndexStatus, "documents" | "pendingDocuments" | "pendingNext" | "liveModel" | "nextModel">> {

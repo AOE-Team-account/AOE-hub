@@ -6,11 +6,11 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { THEME_SWATCH_ORDER, TEXT_ZOOM_OPTIONS, type TextZoom } from "@/lib/theme-presets";
-import { LANGUAGE_LABELS, LANGUAGE_ORDER } from "@/lib/i18n/dictionaries";
+import { rich } from "@/lib/i18n/rich";
 import { Segmented } from "@/components/ui/Segmented";
 import { Toggle } from "@/components/ui/Toggle";
-import type { LanguageCode } from "@/lib/types";
 import { useAuth } from "@/contexts/AuthContext";
+import type { UiKey } from "@/lib/i18n/strings";
 import { AiKeyForm } from "@/components/ai/AiKeyForm";
 import { RegionPicker } from "@/components/ai/RegionPicker";
 import { Modal } from "@/components/ui/Modal";
@@ -21,7 +21,7 @@ const ZOOM_FONT_SIZE: Record<TextZoom, number> = { 0.9: 12, 1: 15, 1.15: 18, 1.3
 
 export default function SettingsPage() {
   const { themeKey, setThemeKey, dark, setDark, textZoom, setTextZoom } = useTheme();
-  const { lang, setLang } = useLanguage();
+  const { lang, setLang, t, languages, machineTranslated } = useLanguage();
   const [notifyOn, setNotifyOn] = useState(true);
   const { status, signOut, user } = useAuth();
   const router = useRouter();
@@ -46,32 +46,32 @@ export default function SettingsPage() {
   return (
     <>
       <section className="settings-block">
-        <p className="label">Appearance</p>
+        <p className="label">{t("settings.appearance")}</p>
         <Segmented
           options={[
-            { value: "light", label: "Light" },
-            { value: "dark", label: "Dark" },
+            { value: "light", label: t("settings.light") },
+            { value: "dark", label: t("settings.dark") },
           ]}
           value={dark ? "dark" : "light"}
           onChange={(v) => setDark(v === "dark")}
         />
-        <p className="tiny" style={{ margin: "14px 0 8px", fontWeight: 500 }}>Theme</p>
+        <p className="tiny" style={{ margin: "14px 0 8px", fontWeight: 500 }}>{t("settings.theme")}</p>
         <div className="row wrap" style={{ gap: 8, marginBottom: 8 }}>
-          {THEME_SWATCH_ORDER.map((t) => (
+          {THEME_SWATCH_ORDER.map((sw) => (
             <button
-              key={t.key}
-              className={`swatch${themeKey === t.key ? " active" : ""}`}
-              style={{ background: t.color }}
-              title={t.label}
-              onClick={() => setThemeKey(t.key)}
+              key={sw.key}
+              className={`swatch${themeKey === sw.key ? " active" : ""}`}
+              style={{ background: sw.color }}
+              title={t(`theme.${sw.key}` as UiKey)}
+              onClick={() => setThemeKey(sw.key)}
             />
           ))}
         </div>
-        <p className="tiny">Hover any swatch for its name.</p>
+        <p className="tiny">{t("settings.themeHint")}</p>
       </section>
 
       <section className="settings-block">
-        <p className="label">Text size</p>
+        <p className="label">{t("settings.textSize")}</p>
         <div className="seg">
           {TEXT_ZOOM_OPTIONS.map((z) => (
             <button
@@ -84,79 +84,65 @@ export default function SettingsPage() {
             </button>
           ))}
         </div>
-        <p className="tiny" style={{ marginTop: 6 }}>Makes everything on the hub bigger — text, buttons, spacing.</p>
+        <p className="tiny" style={{ marginTop: 6 }}>{t("settings.textSizeHint")}</p>
       </section>
 
       <section className="settings-block">
-        <p className="label">Language</p>
-        <select value={lang} onChange={(e) => setLang(e.target.value as LanguageCode)} style={{ width: "auto", maxWidth: 260 }}>
-          {LANGUAGE_ORDER.map((code) => (
-            <option key={code} value={code}>{LANGUAGE_LABELS[code]}</option>
+        <p className="label">{t("common.language")}</p>
+        <select value={lang} onChange={(e) => setLang(e.target.value)} style={{ width: "auto", maxWidth: 260 }}>
+          {languages.map((l) => (
+            <option key={l.code} value={l.code}>{l.label}{l.source === "ai" ? " (AI)" : ""}</option>
           ))}
         </select>
-        <p className="tiny" style={{ marginTop: 6 }}>
-          Post titles and descriptions are shown in your chosen language when available. Downloaded files are not
-          translated.
-        </p>
+        <p className="tiny" style={{ marginTop: 6 }}>{t("settings.languageHint")}</p>
+        {machineTranslated && <p className="tiny" style={{ marginTop: 4 }}>{t("common.machineTranslated")}</p>}
       </section>
 
       {status === "authed" && (
         <section className="settings-block">
-          <p className="label">Two-step sign-in</p>
-          <p className="tiny" style={{ marginBottom: 10 }}>
-            Add a 6-digit code from an authenticator app to your sign-in, so a stolen password alone is not enough.
-          </p>
-          <Link href="/security" className="btn small">Manage two-step sign-in</Link>
+          <p className="label">{t("settings.twoStepTitle")}</p>
+          <p className="tiny" style={{ marginBottom: 10 }}>{t("settings.twoStepBody")}</p>
+          <Link href="/security" className="btn small">{t("settings.twoStepManage")}</Link>
         </section>
       )}
 
       {status === "authed" && (
         <section className="settings-block">
-          <p className="label">AI assistant</p>
-          <p className="tiny" style={{ marginBottom: 10 }}>
-            The assistant uses the hub&apos;s own AI by default. If you have your own AI API key you can use that instead — it
-            may answer better than ours.
-          </p>
-          <p className="label" style={{ marginTop: 14 }}>Where are you using AOEhub from?</p>
+          <p className="label">{t("settings.aiTitle")}</p>
+          <p className="tiny" style={{ marginBottom: 10 }}>{t("settings.aiBody")}</p>
+          <p className="label" style={{ marginTop: 14 }}>{t("settings.regionQuestion")}</p>
           <RegionPicker value={user?.region ?? null} saveNow />
-          <p className="tiny" style={{ margin: "6px 0 12px" }}>
-            This only decides which free AI services we suggest. It is your own choice, so we don&apos;t check it.
-          </p>
+          <p className="tiny" style={{ margin: "6px 0 12px" }}>{t("settings.regionHint")}</p>
           <AiKeyForm region={user?.region ?? null} />
         </section>
       )}
 
       <section className="settings-block">
-        <p className="label">Notifications</p>
+        <p className="label">{t("settings.notifications")}</p>
         <div className="card row between">
-          <p className="muted" style={{ margin: 0 }}>Notify me about replies and comments</p>
-          <Toggle on={notifyOn} onChange={setNotifyOn} label="Notify me about replies and comments" />
+          <p className="muted" style={{ margin: 0 }}>{t("settings.notifyReplies")}</p>
+          <Toggle on={notifyOn} onChange={setNotifyOn} label={t("settings.notifyReplies")} />
         </div>
       </section>
 
       {status === "authed" && (
         <section className="settings-block">
-          <p className="label">Delete my account</p>
-          <p className="tiny" style={{ marginBottom: 10 }}>
-            Your account is switched off and your posts, files and comments are hidden right away. After 30 days
-            everything is erased for good. Until then, only the hub&apos;s Creator can restore it.
-          </p>
-          <Button variant="danger" onClick={() => setDeleteOpen(true)}>Delete my account</Button>
+          <p className="label">{t("settings.deleteTitle")}</p>
+          <p className="tiny" style={{ marginBottom: 10 }}>{t("settings.deleteBody")}</p>
+          <Button variant="danger" onClick={() => setDeleteOpen(true)}>{t("settings.deleteTitle")}</Button>
         </section>
       )}
 
       <Modal open={deleteOpen} onClose={() => setDeleteOpen(false)}>
-        <p className="title">Delete your account?</p>
-        <p className="muted">
-          You will be signed out and your content disappears from the hub. Type <strong>DELETE</strong> to confirm.
-        </p>
+        <p className="title">{t("settings.deleteConfirmTitle")}</p>
+        <p className="muted">{rich(t("settings.deleteConfirmBody"), { b: (c) => <strong>{c}</strong> })}</p>
         <input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="DELETE" autoComplete="off" />
         {deleteError && <p className="muted" style={{ color: "#b5471f", marginTop: 8 }}>{deleteError}</p>}
         <div className="row" style={{ gap: 8 }}>
           <Button variant="danger" disabled={deleting || confirmText.trim() !== "DELETE"} onClick={deleteMyAccount}>
-            {deleting ? "Deleting…" : "Delete my account"}
+            {deleting ? t("settings.deleting") : t("settings.deleteTitle")}
           </Button>
-          <Button onClick={() => setDeleteOpen(false)}>Cancel</Button>
+          <Button onClick={() => setDeleteOpen(false)}>{t("common.cancel")}</Button>
         </div>
       </Modal>
     </>

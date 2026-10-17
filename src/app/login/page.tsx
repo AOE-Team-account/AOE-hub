@@ -5,12 +5,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { contactSentence } from "@/lib/site";
 import { Button } from "@/components/ui/Button";
 
 export default function LoginPage() {
   const router = useRouter();
   const { consumePendingReturn } = useAuth();
+  const { t } = useLanguage();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +29,7 @@ export default function LoginPage() {
       // A suspended or deleted account is blocked at sign-in by the auth service.
       setError(
         /banned/i.test(signInError.message)
-          ? `This account is suspended or has been deleted. ${contactSentence()}`
+          ? `${t("login.banned")} ${contactSentence(t)}`
           : signInError.message
       );
       return;
@@ -38,11 +40,11 @@ export default function LoginPage() {
 
   return (
     <>
-      <p className="title" style={{ marginBottom: 14 }}>Log in</p>
+      <p className="title" style={{ marginBottom: 14 }}>{t("login.title")}</p>
       <form onSubmit={handleSubmit}>
-        <label className="field-label" style={{ marginTop: 0 }}>Email</label>
+        <label className="field-label" style={{ marginTop: 0 }}>{t("login.email")}</label>
         <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
-        <label className="field-label">Password</label>
+        <label className="field-label">{t("login.password")}</label>
         <input
           type="password"
           required
@@ -56,13 +58,13 @@ export default function LoginPage() {
           </p>
         )}
         <Button variant="primary" type="submit" style={{ width: "100%", marginTop: 18 }} disabled={loading}>
-          {loading ? "Logging in…" : "Log in"}
+          {loading ? t("login.submitting") : t("login.submit")}
         </Button>
       </form>
       <p className="tiny" style={{ marginTop: 14 }}>
-        New here?{" "}
+        {t("login.newHere")}{" "}
         <Link href="/signup" style={{ color: "var(--accent)" }}>
-          Sign up free
+          {t("common.signUpFree")}
         </Link>
       </p>
     </>

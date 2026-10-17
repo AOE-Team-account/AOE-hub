@@ -402,6 +402,9 @@ alter table public.profiles add column if not exists age_attested_at timestamptz
 -- sign-up, changeable in Settings. It is personal information (Privacy Policy).
 alter table public.profiles add column if not exists region text check (region is null or region in ('china', 'world'));
 
+-- The member's chosen interface language (so it follows them to a new device).
+alter table public.profiles add column if not exists language text check (language is null or language ~ '^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$');
+
 alter table public.terms_versions enable row level security;
 alter table public.terms_acceptances enable row level security;
 revoke all on public.terms_versions, public.terms_acceptances from anon, authenticated;
@@ -3471,7 +3474,7 @@ revoke all on public.restrictions from anon;
 
 -- profiles: only the person's own presentation fields. Points, counters,
 -- account status and age attestation are changed by functions/triggers only.
-grant update (name, display_name, onboarding_experience, onboarding_reason, referral_source, region)
+grant update (name, display_name, onboarding_experience, onboarding_reason, referral_source, region, language)
   on public.profiles to authenticated;
 
 grant insert, delete on public.follows to authenticated;

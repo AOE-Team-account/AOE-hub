@@ -5,9 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { rich } from "@/lib/i18n/rich";
 
 export default function SignupPage() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -46,12 +49,10 @@ export default function SignupPage() {
   if (needsEmailConfirmation) {
     return (
       <>
-        <p className="title" style={{ marginBottom: 8 }}>Check your email</p>
-        <p className="muted">
-          We sent a confirmation link to <strong>{email}</strong>. Click it, then come back and log in.
-        </p>
+        <p className="title" style={{ marginBottom: 8 }}>{t("signup.checkEmail")}</p>
+        <p className="muted">{rich(t("signup.confirmationSent", { email }), { b: (c) => <strong>{c}</strong> })}</p>
         <Button variant="primary" style={{ marginTop: 18 }} onClick={() => router.push("/login")}>
-          Go to log in
+          {t("signup.goToLogin")}
         </Button>
       </>
     );
@@ -59,14 +60,14 @@ export default function SignupPage() {
 
   return (
     <>
-      <p className="title" style={{ marginBottom: 4 }}>Sign up</p>
-      <p className="muted" style={{ marginBottom: 14 }}>Free, always — the Experience Board and File Board.</p>
+      <p className="title" style={{ marginBottom: 4 }}>{t("signup.title")}</p>
+      <p className="muted" style={{ marginBottom: 14 }}>{t("signup.freeLine")}</p>
       <form onSubmit={handleSubmit}>
-        <label className="field-label" style={{ marginTop: 0 }}>Your name</label>
+        <label className="field-label" style={{ marginTop: 0 }}>{t("signup.name")}</label>
         <input required value={name} onChange={(e) => setName(e.target.value)} autoComplete="name" />
-        <label className="field-label">Email</label>
+        <label className="field-label">{t("login.email")}</label>
         <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
-        <label className="field-label">Password</label>
+        <label className="field-label">{t("login.password")}</label>
         <input
           type="password"
           required
@@ -83,10 +84,7 @@ export default function SignupPage() {
             onChange={(e) => setAgreed(e.target.checked)}
             style={{ width: "auto", marginTop: 3 }}
           />
-          <span className="tiny">
-            I am 13 or older (if you are younger, a parent or guardian should create the account), and I agree to the
-            Terms of Service and the content and safety policies.
-          </span>
+          <span className="tiny">{t("signup.agree")}</span>
         </label>
         {error && (
           <p className="muted" style={{ color: "#b5471f", marginTop: 10 }}>
@@ -94,13 +92,13 @@ export default function SignupPage() {
           </p>
         )}
         <Button variant="primary" type="submit" style={{ width: "100%", marginTop: 18 }} disabled={loading || !agreed}>
-          {loading ? "Signing up…" : "Sign up free"}
+          {loading ? t("signup.submitting") : t("common.signUpFree")}
         </Button>
       </form>
       <p className="tiny" style={{ marginTop: 14 }}>
-        Already have an account?{" "}
+        {t("signup.haveAccount")}{" "}
         <Link href="/login" style={{ color: "var(--accent)" }}>
-          Log in
+          {t("login.submit")}
         </Link>
       </p>
     </>

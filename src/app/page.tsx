@@ -7,10 +7,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Logo } from "@/components/brand/Logo";
 import { Reveal } from "@/components/ui/Reveal";
+import { rich } from "@/lib/i18n/rich";
 
 export default function HomePage() {
   const { status, hydrated } = useAuth();
-  const { dict } = useLanguage();
+  const { t } = useLanguage();
   const router = useRouter();
 
   // Only redirect an already-authed visitor who lands here directly (e.g. a
@@ -30,35 +31,35 @@ export default function HomePage() {
     <>
       <div className="landing-hero">
         <Logo />
-        <p className="tagline">{dict.heroTaglineEyebrow}</p>
-        <h1 dangerouslySetInnerHTML={{ __html: dict.heroH1 }} />
-        <p>{dict.heroSubhead}</p>
+        <p className="tagline">{t("landing.eyebrow")}</p>
+        <h1 dangerouslySetInnerHTML={{ __html: t("landing.h1") }} />
+        <p>{t("landing.subhead")}</p>
         <div className="landing-cta">
           <button className="btn primary" onClick={() => router.push("/signup")}>
-            {dict.heroSignup}
+            {t("landing.signupFree")}
           </button>
           <button className="btn" onClick={() => router.push("/login")}>
-            {dict.heroLogin}
+            {t("landing.logIn")}
           </button>
         </div>
         <p className="tiny">
-          <span>{dict.browsePre}</span>{" "}
+          <span>{t("landing.browsePre")}</span>{" "}
           <Link href="/files" style={{ color: "var(--accent)" }}>
-            {dict.browseLink}
+            {t("landing.browseLink")}
           </Link>
-          <span>{dict.browsePost}</span>
+          <span>{t("landing.browsePost")}</span>
         </p>
         <p className="tiny">
-          <span>{dict.signupPre}</span> <strong>{dict.signupStrong}</strong>
+          <span>{t("landing.signupPre")}</span> <strong>{t("landing.signupStrong")}</strong>
         </p>
         <Reveal>
-          <p className="hero-pullquote">{dict.heroPullquote}</p>
+          <p className="hero-pullquote">{t("landing.pullquote")}</p>
         </Reveal>
         <Reveal>
-          <p className="hero-tagline-small">{dict.heroTaglineSmall}</p>
+          <p className="hero-tagline-small">{t("landing.taglineSmall")}</p>
         </Reveal>
         <Reveal>
-          <p className="hero-tagline-small" style={{ marginTop: 2 }}>{dict.heroMarketplaceNote}</p>
+          <p className="hero-tagline-small" style={{ marginTop: 2 }}>{t("landing.marketplaceNote")}</p>
         </Reveal>
       </div>
 
@@ -71,15 +72,10 @@ export default function HomePage() {
             <path d="M18 20l1 3-4-2" />
           </svg>
         </div>
-        <p className="feature-eyebrow">Experience Board</p>
-        <h3 className="feature-title">Real stories, and the philosophy behind them</h3>
+        <p className="feature-eyebrow">{t("landing.expEyebrow")}</p>
+        <h3 className="feature-title">{t("landing.expTitle")}</h3>
         <p className="feature-desc">
-          What worked, what didn&apos;t, and what they&apos;d do differently — plus honest reflections on why we
-          educate at all, from the Bible, Charlotte Mason{" "}
-          <span className="tiny">(a 19th-century educator known for her living-books, nature-study approach)</span>,
-          Karl Witte <span className="tiny">(a 19th-century writer known for his early-education philosophy)</span>,
-          and everyone here who has their own thoughts to share. This isn&apos;t just the founders&apos; philosophy —
-          it&apos;s everybody&apos;s, filed under its own tag so it&apos;s easy to find.
+          {rich(t("landing.expDesc"), { note: (c) => <span className="tiny">{c}</span> })}
         </p>
       </Reveal>
 
@@ -91,22 +87,22 @@ export default function HomePage() {
             <path d="M4 19h16" />
           </svg>
         </div>
-        <p className="feature-eyebrow">File Board</p>
-        <h3 className="feature-title">Free curriculum, books, cards, games, and printables</h3>
-        <p className="feature-desc">Download, use, and remix anything — always at no cost, and always credited back to whoever made it first.</p>
+        <p className="feature-eyebrow">{t("landing.fileEyebrow")}</p>
+        <h3 className="feature-title">{t("landing.fileTitle")}</h3>
+        <p className="feature-desc">{t("landing.fileDesc")}</p>
       </Reveal>
 
       <div className="hero-bottom-cta">
         <button className="btn primary" onClick={() => router.push("/signup")}>
-          {dict.heroSignup}
+          {t("landing.signupFree")}
         </button>
       </div>
 
       <div className="site-footer">
         <div className="row wrap" style={{ gap: 18, justifyContent: "center" }}>
-          <a href="#" className="footer-link">About</a>
-          <a href="#" className="footer-link">Contact</a>
-          <a href="#" className="footer-link">Privacy Policy</a>
+          <a href="#" className="footer-link">{t("footer.about")}</a>
+          <a href="#" className="footer-link">{t("footer.contact")}</a>
+          <a href="#" className="footer-link">{t("footer.privacy")}</a>
         </div>
         <p className="tiny" style={{ textAlign: "center", marginTop: 10 }}>© AOEhub</p>
       </div>
