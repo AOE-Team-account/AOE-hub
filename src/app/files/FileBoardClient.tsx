@@ -7,27 +7,29 @@ import { AuthorLink } from "@/components/ui/AuthorLink";
 import { ReportButton } from "@/components/ui/ReportButton";
 import { ClickableCard } from "@/components/ui/ClickableCard";
 import { Badge } from "@/components/ui/Badge";
+import { useLanguage } from "@/contexts/LanguageContext";
+import type { UiKey } from "@/lib/i18n/strings";
 import type { FilePost, FileSection, MediaType, User } from "@/lib/types";
 
-const SECTION_OPTIONS: { value: FileSection | "all"; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "curriculum", label: "Curriculum" },
-  { value: "games", label: "Games" },
-  { value: "books", label: "Books" },
-  { value: "cards", label: "Cards" },
-  { value: "songs", label: "Songs" },
-  { value: "art", label: "Art projects" },
-  { value: "printables", label: "Printables" },
-  { value: "apps", label: "Apps" },
+const SECTION_OPTION_KEYS: { value: FileSection | "all"; key: UiKey }[] = [
+  { value: "all", key: "files.section.all" },
+  { value: "curriculum", key: "files.section.curriculum" },
+  { value: "games", key: "files.section.games" },
+  { value: "books", key: "files.section.books" },
+  { value: "cards", key: "files.section.cards" },
+  { value: "songs", key: "files.section.songs" },
+  { value: "art", key: "files.section.art" },
+  { value: "printables", key: "files.section.printables" },
+  { value: "apps", key: "files.section.apps" },
 ];
 
-const MEDIA_TYPE_OPTIONS: { value: MediaType | "all"; label: string }[] = [
-  { value: "all", label: "All types" },
-  { value: "video", label: "Video" },
-  { value: "audio", label: "Audio" },
-  { value: "image", label: "Image" },
-  { value: "document", label: "Document" },
-  { value: "game", label: "Game / App" },
+const MEDIA_TYPE_OPTION_KEYS: { value: MediaType | "all"; key: UiKey }[] = [
+  { value: "all", key: "files.media.all" },
+  { value: "video", key: "files.media.video" },
+  { value: "audio", key: "files.media.audio" },
+  { value: "image", key: "files.media.image" },
+  { value: "document", key: "files.media.document" },
+  { value: "game", key: "files.media.game" },
 ];
 
 export function FileBoardClient({ files, authors }: { files: FilePost[]; authors: Record<string, User | undefined> }) {
@@ -39,6 +41,9 @@ export function FileBoardClient({ files, authors }: { files: FilePost[]; authors
 }
 
 function FileBoardContent({ files, authors }: { files: FilePost[]; authors: Record<string, User | undefined> }) {
+  const { t } = useLanguage();
+  const sectionOptions = SECTION_OPTION_KEYS.map((o) => ({ value: o.value, label: t(o.key) }));
+  const mediaTypeOptions = MEDIA_TYPE_OPTION_KEYS.map((o) => ({ value: o.value, label: t(o.key) }));
   const searchParams = useSearchParams();
   const query = searchParams.get("q") ?? "";
   const [section, setSection] = useState<FileSection | "all">("all");
@@ -63,24 +68,24 @@ function FileBoardContent({ files, authors }: { files: FilePost[]; authors: Reco
       {!query && (
         <div className="start-here">
           <div>
-            <p className="title" style={{ margin: "0 0 2px", fontSize: 14.5 }}>New here? Start with these</p>
-            <p className="tiny">A short, hand-picked path for families just getting started.</p>
+            <p className="title" style={{ margin: "0 0 2px", fontSize: 14.5 }}>{t("files.startHere")}</p>
+            <p className="tiny">{t("files.startHereBody")}</p>
           </div>
-          <button className="btn">Browse</button>
+          <button className="btn">{t("files.browse")}</button>
         </div>
       )}
 
-      <ChipRow options={SECTION_OPTIONS} value={section} onChange={setSection} />
+      <ChipRow options={sectionOptions} value={section} onChange={setSection} />
 
-      <p className="tiny" style={{ marginBottom: 6 }}>Filter by type</p>
-      <ChipRow options={MEDIA_TYPE_OPTIONS} value={mediaType} onChange={setMediaType} />
+      <p className="tiny" style={{ marginBottom: 6 }}>{t("files.filterByType")}</p>
+      <ChipRow options={mediaTypeOptions} value={mediaType} onChange={setMediaType} />
 
       <div className="row between" style={{ marginBottom: 12 }}>
-        <p className="title" style={{ margin: 0 }}>{query ? `Results for "${query}"` : "Recommended for you"}</p>
+        <p className="title" style={{ margin: 0 }}>{query ? t("files.resultsFor", { query }) : t("files.recommended")}</p>
         <select>
-          <option>Most relevant</option>
-          <option>Newest</option>
-          <option>Most discussed</option>
+          <option>{t("files.sort.relevant")}</option>
+          <option>{t("files.sort.newest")}</option>
+          <option>{t("files.sort.discussed")}</option>
         </select>
       </div>
 
@@ -94,17 +99,17 @@ function FileBoardContent({ files, authors }: { files: FilePost[]; authors: Reco
                 <circle cx="8.5" cy="8.5" r="1.5" />
                 <path d="M21 15l-5-5L5 21" />
               </svg>
-              preview
+              {t("files.previewLabel")}
             </div>
             <div className="body">
               <div className="row between">
                 <p className="title" style={{ margin: 0 }}>{file.title}</p>
-                <Badge>{file.authorship === "original" ? "original" : file.authorship === "remix" ? "remix" : "found"}</Badge>
+                <Badge>{t(file.authorship === "original" ? "files.badge.original" : file.authorship === "remix" ? "files.badge.remix" : "files.badge.found")}</Badge>
               </div>
               <p className="muted">{file.description}</p>
               <div className="row tiny wrap" style={{ gap: 12 }}>
                 {author && <AuthorLink userId={author.id} name={author.name} badges={author.badges} />}
-                <span>{file.views.toLocaleString()} views</span>
+                <span>{t("files.views", { n: file.views.toLocaleString() })}</span>
                 <ReportButton targetType="file" targetId={file.id} />
               </div>
             </div>
@@ -112,7 +117,7 @@ function FileBoardContent({ files, authors }: { files: FilePost[]; authors: Reco
         );
       })}
 
-      {filtered.length === 0 && <p className="muted">No files match those filters yet.</p>}
+      {filtered.length === 0 && <p className="muted">{t("files.none")}</p>}
     </>
   );
 }

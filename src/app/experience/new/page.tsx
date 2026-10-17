@@ -3,24 +3,27 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth, useRequireAuthPage } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
+import type { UiKey } from "@/lib/i18n/strings";
 import { friendlyWriteError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/client";
 import { BackLink } from "@/components/ui/BackLink";
 import { Button } from "@/components/ui/Button";
 import type { ExperienceCategory } from "@/lib/types";
 
-const CATEGORIES: { value: ExperienceCategory; label: string }[] = [
-  { value: "question", label: "Question — ask the community" },
-  { value: "starting-out", label: "Starting out" },
-  { value: "milestones", label: "Milestones" },
-  { value: "struggles", label: "Struggles & lessons" },
-  { value: "curriculum-reviews", label: "Curriculum reviews" },
-  { value: "philosophy", label: "Philosophy" },
-  { value: "reflections", label: "Reflections" },
-  { value: "just-sharing", label: "Just sharing" },
+const CATEGORIES: { value: ExperienceCategory; key: UiKey }[] = [
+  { value: "question", key: "xnew.cat.question" },
+  { value: "starting-out", key: "exp.cat.startingOut" },
+  { value: "milestones", key: "exp.cat.milestones" },
+  { value: "struggles", key: "exp.cat.struggles" },
+  { value: "curriculum-reviews", key: "exp.cat.curriculumReviews" },
+  { value: "philosophy", key: "exp.cat.philosophy" },
+  { value: "reflections", key: "exp.cat.reflections" },
+  { value: "just-sharing", key: "exp.cat.justSharing" },
 ];
 
 export default function NewExperiencePostPage() {
+  const { t } = useLanguage();
   const ready = useRequireAuthPage("/experience");
   const { user } = useAuth();
   const router = useRouter();
@@ -51,19 +54,19 @@ export default function NewExperiencePostPage() {
 
   return (
     <>
-      <BackLink href="/experience" label="Cancel" />
-      <p className="title" style={{ marginBottom: 14 }}>Share an experience</p>
+      <BackLink href="/experience" label={t("common.cancel")} />
+      <p className="title" style={{ marginBottom: 14 }}>{t("xnew.title")}</p>
 
-      <label className="field-label">What kind of post is this?</label>
+      <label className="field-label">{t("xnew.kind")}</label>
       <select value={category} onChange={(e) => setCategory(e.target.value as ExperienceCategory)}>
         {CATEGORIES.map((c) => (
-          <option key={c.value} value={c.value}>{c.label}</option>
+          <option key={c.value} value={c.value}>{t(c.key)}</option>
         ))}
       </select>
 
-      <label className="field-label">Your story</label>
+      <label className="field-label">{t("xnew.story")}</label>
       <textarea
-        placeholder="What happened, what did you try, what did you learn?"
+        placeholder={t("xnew.storyPlaceholder")}
         style={{ minHeight: 140 }}
         value={body}
         onChange={(e) => setBody(e.target.value)}
@@ -71,11 +74,10 @@ export default function NewExperiencePostPage() {
 
       <div className="card" style={{ background: "var(--bg)", borderStyle: "dashed", marginTop: 18 }}>
         <p className="muted" style={{ marginBottom: 10 }}>
-          What you share here is public and free to everyone — anyone can read it, quote it, and learn from it. Are
-          you aware of that?
+          {t("xnew.publicNotice")}
         </p>
         <Button onClick={() => setAcknowledged(true)} disabled={acknowledged}>
-          {acknowledged ? "✓ Acknowledged" : "I'm aware, continue"}
+          {acknowledged ? t("upload.acknowledged") : t("upload.aware")}
         </Button>
       </div>
 
@@ -91,7 +93,7 @@ export default function NewExperiencePostPage() {
         disabled={!acknowledged || !body.trim() || submitting}
         onClick={submit}
       >
-        {submitting ? "Posting…" : "Post to the Experience Board"}
+        {submitting ? t("discussion.posting") : t("xnew.post")}
       </Button>
     </>
   );

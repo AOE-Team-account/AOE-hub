@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useLanguage } from "@/contexts/LanguageContext";
+import type { UiKey } from "@/lib/i18n/strings";
 import { useAuth } from "@/contexts/AuthContext";
 import { friendlyWriteError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/client";
@@ -12,10 +14,10 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { NoticeBox } from "@/components/review/NoticeBox";
 
-const TYPE_LABEL: Record<CommentType, string> = {
-  question: "question",
-  suggestion: "suggestion",
-  sharing: "just sharing",
+const TYPE_LABEL_KEY: Record<CommentType, UiKey> = {
+  question: "discussion.type.question",
+  suggestion: "discussion.type.suggestion",
+  sharing: "discussion.type.sharing",
 };
 
 export function Discussion({
@@ -35,6 +37,7 @@ export function Discussion({
   postAuthorId?: string;
   notices?: Record<string, { tier: string; body: string }>;
 }) {
+  const { t } = useLanguage();
   const { requireAuth, user } = useAuth();
   const router = useRouter();
   const [comments, setComments] = useState(initialComments);
@@ -79,8 +82,8 @@ export function Discussion({
 
   return (
     <div className="card">
-      <p className="title" style={{ marginBottom: 12 }}>Discussion</p>
-      {comments.length === 0 && <p className="muted">No comments yet.</p>}
+      <p className="title" style={{ marginBottom: 12 }}>{t("discussion.title")}</p>
+      {comments.length === 0 && <p className="muted">{t("discussion.none")}</p>}
       {sortedComments.map((comment) => (
         <CommentRow key={comment.id} comment={comment} authors={authors} postAuthorId={postAuthorId} notices={notices} />
       ))}
@@ -90,18 +93,18 @@ export function Discussion({
       </Button>
       <div className={`compose-inline${composeOpen ? " open" : ""}`}>
         <select value={type} onChange={(e) => setType(e.target.value as CommentType)} style={{ marginBottom: 8 }}>
-          <option value="question">Question</option>
-          <option value="suggestion">Suggestion</option>
-          <option value="sharing">Just sharing</option>
+          <option value="question">{t("discussion.type.question")}</option>
+          <option value="suggestion">{t("discussion.type.suggestion")}</option>
+          <option value="sharing">{t("discussion.type.sharing")}</option>
         </select>
-        <textarea placeholder="Write something..." value={body} onChange={(e) => setBody(e.target.value)} />
+        <textarea placeholder={t("discussion.placeholder")} value={body} onChange={(e) => setBody(e.target.value)} />
         {error && (
           <p className="muted" style={{ color: "#b5471f", marginTop: 6 }}>
             {error}
           </p>
         )}
         <Button variant="primary" style={{ marginTop: 8 }} onClick={submit} disabled={submitting || !body.trim()}>
-          {submitting ? "Posting…" : "Post"}
+          {submitting ? t("discussion.posting") : t("discussion.post")}
         </Button>
       </div>
     </div>
@@ -119,6 +122,7 @@ function CommentRow({
   postAuthorId?: string;
   notices: Record<string, { tier: string; body: string }>;
 }) {
+  const { t } = useLanguage();
   const author = authors[comment.authorId];
   const pinned = author?.badges.includes("answerer");
   const verified = author?.badges.includes("verified");
@@ -132,8 +136,8 @@ function CommentRow({
       }}
     >
       <div className="row wrap" style={{ gap: 6, marginBottom: 4 }}>
-        {pinned && <Badge variant="neutral">Pinned</Badge>}
-        <Badge variant="neutral">{TYPE_LABEL[comment.type]}</Badge>
+        {pinned && <Badge variant="neutral">{t("discussion.pinned")}</Badge>}
+        <Badge variant="neutral">{t(TYPE_LABEL_KEY[comment.type])}</Badge>
         {author && <AuthorLink userId={author.id} name={author.name} badges={author.badges} />}
         <span className="tiny">{new Date(comment.createdAt).toLocaleDateString()}</span>
       </div>
@@ -145,7 +149,7 @@ function CommentRow({
           <div className="reply" key={reply.id}>
             <div className="row" style={{ gap: 6, marginBottom: 2 }}>
               <span style={{ fontSize: 12, fontWeight: 500 }}>{replyAuthor?.name}</span>
-              {reply.authorId === postAuthorId && <Badge style={{ fontSize: 10 }}>author</Badge>}
+              {reply.authorId === postAuthorId && <Badge style={{ fontSize: 10 }}>{t("discussion.author")}</Badge>}
             </div>
             <NoticeBox notice={notices[reply.id]} />
             <p className="muted" style={{ margin: 0, fontSize: 13 }}>

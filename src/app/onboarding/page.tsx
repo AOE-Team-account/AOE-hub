@@ -8,6 +8,8 @@ import { ChipRow } from "@/components/ui/ChipRow";
 import { AiKeyForm, type AiKeyFormHandle } from "@/components/ai/AiKeyForm";
 import { RegionPicker } from "@/components/ai/RegionPicker";
 import type { Region } from "@/lib/types";
+import { useLanguage } from "@/contexts/LanguageContext";
+import type { UiKey } from "@/lib/i18n/strings";
 
 // Q1 widened from a homeschooling-experience scale to a broader "what's your
 // situation" question, since the hub's stated audience is homeschool/
@@ -24,33 +26,37 @@ type Referral = "friend" | "web-search" | "social-media" | "youtube" | "other" |
 // wants exact wording decided together with the marketing page rewrite in
 // Phase 6, not invented in isolation here. Functionally correct and fine to
 // ship in the meantime; expect these strings to change.
-const Q1_OPTIONS: { value: Situation; label: string }[] = [
-  { value: "homeschooling", label: "Homeschooling" },
-  { value: "in-school", label: "In school" },
-  { value: "unschooling", label: "Unschooling" },
-  { value: "want-to-know-more", label: "Want to know more about education" },
-  { value: "new-way-of-learning", label: "Just want to see a new way of learning" },
+const Q1_KEYS: { value: Situation; label: UiKey }[] = [
+  { value: "homeschooling", label: "onboarding.q1.homeschooling" },
+  { value: "in-school", label: "onboarding.q1.inSchool" },
+  { value: "unschooling", label: "onboarding.q1.unschooling" },
+  { value: "want-to-know-more", label: "onboarding.q1.wantToKnow" },
+  { value: "new-way-of-learning", label: "onboarding.q1.newWay" },
 ];
 
-const Q2_OPTIONS: { value: Reason; label: string }[] = [
-  { value: "curriculum", label: "Curriculum ideas" },
-  { value: "community", label: "Community & support" },
-  { value: "philosophy", label: "Philosophy & the big picture" },
-  { value: "notsure", label: "Not sure yet" },
+const Q2_KEYS: { value: Reason; label: UiKey }[] = [
+  { value: "curriculum", label: "onboarding.q2.curriculum" },
+  { value: "community", label: "onboarding.q2.community" },
+  { value: "philosophy", label: "onboarding.q2.philosophy" },
+  { value: "notsure", label: "onboarding.q2.notSure" },
 ];
 
-const Q3_OPTIONS: { value: Referral; label: string }[] = [
-  { value: "friend", label: "A friend" },
-  { value: "web-search", label: "Web search" },
-  { value: "social-media", label: "Social media" },
-  { value: "youtube", label: "YouTube" },
-  { value: "other", label: "Somewhere else" },
-  { value: "unspecified", label: "Prefer not to say" },
+const Q3_KEYS: { value: Referral; label: UiKey }[] = [
+  { value: "friend", label: "onboarding.q3.friend" },
+  { value: "web-search", label: "onboarding.q3.webSearch" },
+  { value: "social-media", label: "onboarding.q3.socialMedia" },
+  { value: "youtube", label: "onboarding.q3.youtube" },
+  { value: "other", label: "onboarding.q3.other" },
+  { value: "unspecified", label: "onboarding.q3.unspecified" },
 ];
 
 export default function OnboardingPage() {
   const ready = useRequireAuthPage("/");
   const { user, consumePendingReturn } = useAuth();
+  const { t } = useLanguage();
+  const Q1_OPTIONS = Q1_KEYS.map((o) => ({ value: o.value, label: t(o.label) }));
+  const Q2_OPTIONS = Q2_KEYS.map((o) => ({ value: o.value, label: t(o.label) }));
+  const Q3_OPTIONS = Q3_KEYS.map((o) => ({ value: o.value, label: t(o.label) }));
   const router = useRouter();
   const [situation, setSituation] = useState<Situation>("want-to-know-more");
   const [reason, setReason] = useState<Reason>("notsure");
@@ -108,41 +114,28 @@ export default function OnboardingPage() {
 
   return (
     <>
-      <p className="title" style={{ marginBottom: 4 }}>
-        Welcome to AOEhub
-      </p>
-      <p className="muted" style={{ marginBottom: 20 }}>
-        One quick question is required; the rest are optional and just help us show you the right things first.
-      </p>
+      <p className="title" style={{ marginBottom: 4 }}>{t("onboarding.welcome")}</p>
+      <p className="muted" style={{ marginBottom: 20 }}>{t("onboarding.intro")}</p>
 
       <p className="field-label" style={{ marginTop: 0 }}>
-        Where are you using AOEhub from? <span className="tiny">(required)</span>
+        {t("onboarding.regionQuestion")} <span className="tiny">{t("common.required")}</span>
       </p>
       <RegionPicker value={region} onChange={(r) => { setRegion(r); setRegionError(false); }} />
-      <p className="tiny" style={{ marginTop: 6 }}>
-        This only decides which free AI services we suggest to you. You can change it any time in Settings. It is your
-        choice, so we don&apos;t check it.
-      </p>
-      {regionError && <p className="tiny" style={{ color: "#b5471f", marginTop: 6 }}>Please choose one of the two to continue.</p>}
+      <p className="tiny" style={{ marginTop: 6 }}>{t("onboarding.regionHint")}</p>
+      {regionError && <p className="tiny" style={{ color: "#b5471f", marginTop: 6 }}>{t("onboarding.regionError")}</p>}
 
-      <p className="field-label">
-        What&apos;s your situation?
-      </p>
+      <p className="field-label">{t("onboarding.q1")}</p>
       <ChipRow options={Q1_OPTIONS} value={situation} onChange={setSituation} />
 
-      <p className="field-label">What brought you here?</p>
+      <p className="field-label">{t("onboarding.q2")}</p>
       <ChipRow options={Q2_OPTIONS} value={reason} onChange={setReason} />
 
-      <p className="field-label">Where did you hear about us?</p>
+      <p className="field-label">{t("onboarding.q3")}</p>
       <ChipRow options={Q3_OPTIONS} value={referral} onChange={setReferral} />
 
       {/* Draft copy — final wording is decided in Phase 6 with the rest of the sign-up text. */}
-      <p className="field-label">Recommended: use your own AI API key</p>
-      <p className="tiny" style={{ marginBottom: 8 }}>
-        We recommend pasting your own AI key here — it gives you faster, better answers from the hub&apos;s assistant.
-        Don&apos;t have one, or don&apos;t want to? That&apos;s fine — you can use our built-in AI, but it will be slower and
-        not as good. You can add or change this any time in Settings.
-      </p>
+      <p className="field-label">{t("onboarding.aiTitle")}</p>
+      <p className="tiny" style={{ marginBottom: 8 }}>{t("onboarding.aiBody")}</p>
       <AiKeyForm ref={keyForm} standalone={false} region={region} />
 
       <button
@@ -151,10 +144,10 @@ export default function OnboardingPage() {
         disabled={saving}
         onClick={() => finish(true)}
       >
-        {saving ? "Saving…" : "Continue"}
+        {saving ? t("common.saving") : t("common.continue")}
       </button>
       <button className="btn" style={{ width: "100%", marginTop: 8 }} disabled={saving} onClick={() => finish(false)}>
-        Skip for now
+        {t("common.skipForNow")}
       </button>
     </>
   );

@@ -2,28 +2,29 @@
 
 import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { POINTS } from "@/lib/points";
 
 export function PointsInfoButton() {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   return (
     <>
       <button className="btn small" style={{ marginBottom: 16 }} onClick={() => setOpen(true)}>
-        ⓘ How points work
+        {t("points.button")}
       </button>
       <Modal open={open} onClose={() => setOpen(false)}>
-        <p className="title">How points work</p>
-        <p className="muted" style={{ marginBottom: 8 }}>Points come from real activity on the File Board and Experience Board:</p>
-        <p className="muted" style={{ marginBottom: 4 }}>• {POINTS.VIEW} point per view (counted once per person per day)</p>
-        <p className="muted" style={{ marginBottom: 4 }}>• {POINTS.DOWNLOAD} points per download</p>
-        <p className="muted" style={{ marginBottom: 4 }}>• {POINTS.COMMENT_RECEIVED} points per question or comment someone leaves on your post</p>
-        <p className="muted" style={{ marginBottom: 10 }}>• {POINTS.REMIX} points when someone remixes your file</p>
+        <p className="title">{t("points.title")}</p>
+        <p className="muted" style={{ marginBottom: 8 }}>{t("points.intro")}</p>
+        <p className="muted" style={{ marginBottom: 4 }}>• {t("points.view", { n: POINTS.VIEW })}</p>
+        <p className="muted" style={{ marginBottom: 4 }}>• {t("points.download", { n: POINTS.DOWNLOAD })}</p>
+        <p className="muted" style={{ marginBottom: 4 }}>• {t("points.comment", { n: POINTS.COMMENT_RECEIVED })}</p>
+        <p className="muted" style={{ marginBottom: 10 }}>• {t("points.remix", { n: POINTS.REMIX })}</p>
         <p className="tiny">
-          Search ranking uses a compressed version of these numbers, so one huge hit doesn&apos;t bury everything
-          else — but your profile total is always a simple, honest sum.
+          {t("points.note")}
         </p>
         <div className="row" style={{ gap: 8 }}>
-          <button className="btn primary" onClick={() => setOpen(false)}>Got it</button>
+          <button className="btn primary" onClick={() => setOpen(false)}>{t("common.gotIt")}</button>
         </div>
       </Modal>
     </>

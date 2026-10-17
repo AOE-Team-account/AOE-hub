@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 type Phase = "loading" | "off" | "enrolling" | "challenge" | "on";
 
@@ -10,6 +11,7 @@ type Phase = "loading" | "off" | "enrolling" | "challenge" | "on";
 // for the Creator and for Watchers/Deacons, as the first step into a panel.
 export function TwoStepPanel({ onVerified }: { onVerified?: () => void }) {
   const supabase = createClient();
+  const { t } = useLanguage();
   const [phase, setPhase] = useState<Phase>("loading");
   const [factorId, setFactorId] = useState<string | null>(null);
   const [qr, setQr] = useState<string | null>(null);
@@ -64,7 +66,7 @@ export function TwoStepPanel({ onVerified }: { onVerified?: () => void }) {
     }
     const { error: vErr } = await supabase.auth.mfa.verify({ factorId, challengeId: ch.id, code: code.trim() });
     setBusy(false);
-    if (vErr) return setError("That code is not right. Check the app and try again.");
+    if (vErr) return setError(t("twoStep.wrongCode"));
     setCode("");
     setQr(null);
     setSecret(null);
@@ -81,48 +83,45 @@ export function TwoStepPanel({ onVerified }: { onVerified?: () => void }) {
     await refresh();
   }
 
-  if (phase === "loading") return <p className="muted">Checking…</p>;
+  if (phase === "loading") return <p className="muted">{t("twoStep.checking")}</p>;
 
   return (
     <div>
       {phase === "off" && (
         <>
-          <p className="muted">
-            Two-step sign-in asks for a 6-digit code from an authenticator app (such as Google Authenticator, Microsoft
-            Authenticator or Authy) every time you sign in, so a stolen password alone is not enough.
-          </p>
-          <Button variant="primary" disabled={busy} onClick={startEnroll}>Turn on two-step sign-in</Button>
+          <p className="muted">{t("twoStep.intro")}</p>
+          <Button variant="primary" disabled={busy} onClick={startEnroll}>{t("twoStep.turnOn")}</Button>
         </>
       )}
       {phase === "enrolling" && (
         <>
-          <p className="muted">1. Open your authenticator app and scan this picture (or type the key by hand).</p>
+          <p className="muted">{t("twoStep.scan")}</p>
           {qr && (
             // The QR code is an SVG data URI produced by the auth service.
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={qr} alt="QR code for your authenticator app" width={180} height={180} style={{ background: "#fff", padding: 6, borderRadius: 8 }} />
+            <img src={qr} alt={t("twoStep.qrAlt")} width={180} height={180} style={{ background: "#fff", padding: 6, borderRadius: 8 }} />
           )}
-          {secret && <p className="tiny" style={{ wordBreak: "break-all" }}>Key: <code>{secret}</code></p>}
-          <p className="muted" style={{ marginTop: 8 }}>2. Type the 6-digit code the app shows now.</p>
+          {secret && <p className="tiny" style={{ wordBreak: "break-all" }}>{t("twoStep.key")} <code>{secret}</code></p>}
+          <p className="muted" style={{ marginTop: 8 }}>{t("twoStep.typeCode")}</p>
           <div className="row" style={{ gap: 8 }}>
             <input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} placeholder="123456" />
-            <Button variant="primary" disabled={busy || code.trim().length !== 6} onClick={submitCode}>Confirm</Button>
+            <Button variant="primary" disabled={busy || code.trim().length !== 6} onClick={submitCode}>{t("twoStep.confirm")}</Button>
           </div>
         </>
       )}
       {phase === "challenge" && (
         <>
-          <p className="muted">Enter the 6-digit code from your authenticator app to continue.</p>
+          <p className="muted">{t("twoStep.enterCode")}</p>
           <div className="row" style={{ gap: 8 }}>
             <input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === "Enter" && code.trim().length === 6 && submitCode()} placeholder="123456" />
-            <Button variant="primary" disabled={busy || code.trim().length !== 6} onClick={submitCode}>Continue</Button>
+            <Button variant="primary" disabled={busy || code.trim().length !== 6} onClick={submitCode}>{t("common.continue")}</Button>
           </div>
         </>
       )}
       {phase === "on" && (
         <>
-          <p className="muted">Two-step sign-in is on for this account, and this session has passed it.</p>
-          <Button variant="danger" size="small" disabled={busy} onClick={turnOff}>Turn off</Button>
+          <p className="muted">{t("twoStep.isOn")}</p>
+          <Button variant="danger" size="small" disabled={busy} onClick={turnOff}>{t("twoStep.turnOff")}</Button>
         </>
       )}
       {error && <p className="muted" style={{ color: "#b5471f", marginTop: 8 }}>{error}</p>}

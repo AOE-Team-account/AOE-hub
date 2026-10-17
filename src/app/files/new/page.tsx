@@ -3,36 +3,38 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useRequireAuthPage } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
+import type { UiKey } from "@/lib/i18n/strings";
 import { BackLink } from "@/components/ui/BackLink";
 import { Button } from "@/components/ui/Button";
 import { ChipRow } from "@/components/ui/ChipRow";
 import { Segmented } from "@/components/ui/Segmented";
 import type { Authorship, FileSection, MediaType } from "@/lib/types";
 
-const MEDIA_TYPES: { value: MediaType; label: string }[] = [
-  { value: "document", label: "Document" },
-  { value: "image", label: "Image" },
-  { value: "audio", label: "Audio" },
-  { value: "video", label: "Video" },
-  { value: "game", label: "Game" },
-  { value: "app", label: "App" },
+const MEDIA_TYPES: { value: MediaType; key: UiKey }[] = [
+  { value: "document", key: "files.media.document" },
+  { value: "image", key: "files.media.image" },
+  { value: "audio", key: "files.media.audio" },
+  { value: "video", key: "files.media.video" },
+  { value: "game", key: "files.media.gameOnly" },
+  { value: "app", key: "files.media.app" },
 ];
 
-const SECTIONS: { value: FileSection; label: string }[] = [
-  { value: "curriculum", label: "Curriculum" },
-  { value: "games", label: "Games" },
-  { value: "books", label: "Books" },
-  { value: "cards", label: "Cards" },
-  { value: "songs", label: "Songs" },
-  { value: "art", label: "Art projects" },
-  { value: "printables", label: "Printables" },
-  { value: "apps", label: "Apps" },
+const SECTIONS: { value: FileSection; key: UiKey }[] = [
+  { value: "curriculum", key: "files.section.curriculum" },
+  { value: "games", key: "files.section.games" },
+  { value: "books", key: "files.section.books" },
+  { value: "cards", key: "files.section.cards" },
+  { value: "songs", key: "files.section.songs" },
+  { value: "art", key: "files.section.art" },
+  { value: "printables", key: "files.section.printables" },
+  { value: "apps", key: "files.section.apps" },
 ];
 
-const AUTHORSHIP_OPTIONS: { value: Authorship; label: string }[] = [
-  { value: "original", label: "Original" },
-  { value: "remix", label: "Remix" },
-  { value: "notmine", label: "Not my work" },
+const AUTHORSHIP_OPTIONS: { value: Authorship; key: UiKey }[] = [
+  { value: "original", key: "upload.authorship.original" },
+  { value: "remix", key: "upload.authorship.remix" },
+  { value: "notmine", key: "upload.authorship.notmine" },
 ];
 
 interface FileRow {
@@ -41,6 +43,7 @@ interface FileRow {
 }
 
 export default function UploadFilePage() {
+  const { t } = useLanguage();
   const ready = useRequireAuthPage("/files");
   const router = useRouter();
 
@@ -70,7 +73,7 @@ export default function UploadFilePage() {
 
     setSubmitting(true);
     setError(null);
-    setStatusMessage("Scanning files for malware — this can take up to a minute per file…");
+    setStatusMessage(t("upload.scanning"));
 
     const formData = new FormData();
     formData.set("title", title.trim());
@@ -85,21 +88,19 @@ export default function UploadFilePage() {
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Upload failed.");
+        setError(data.error || t("upload.failed"));
         setSubmitting(false);
         setStatusMessage(null);
         return;
       }
       const flagged = (data.results as { label: string; scanStatus: string }[]).filter((r) => r.scanStatus === "flagged");
       if (flagged.length > 0) {
-        setStatusMessage(
-          `Posted, but ${flagged.map((f) => f.label).join(", ")} failed the malware scan and won't be downloadable.`
-        );
+        setStatusMessage(t("upload.flagged", { labels: flagged.map((f) => f.label).join(", ") }));
       }
       router.push(`/files/${data.postId}`);
       router.refresh();
     } catch {
-      setError("Something went wrong uploading. Please try again.");
+      setError(t("upload.wentWrong"));
       setSubmitting(false);
       setStatusMessage(null);
     }
@@ -107,47 +108,45 @@ export default function UploadFilePage() {
 
   return (
     <>
-      <BackLink href="/files" label="Cancel" />
-      <p className="title" style={{ marginBottom: 14 }}>Upload a file</p>
+      <BackLink href="/files" label={t("common.cancel")} />
+      <p className="title" style={{ marginBottom: 14 }}>{t("upload.title")}</p>
 
-      <label className="field-label">Title</label>
-      <input placeholder="e.g. Early reading phonics workbook" value={title} onChange={(e) => setTitle(e.target.value)} />
+      <label className="field-label">{t("upload.titleLabel")}</label>
+      <input placeholder={t("upload.titlePlaceholder")} value={title} onChange={(e) => setTitle(e.target.value)} />
 
-      <label className="field-label">Description</label>
+      <label className="field-label">{t("upload.description")}</label>
       <textarea
-        placeholder="What is this, and who is it for?"
+        placeholder={t("upload.descriptionPlaceholder")}
         value={description}
         onChange={(e) => setDescription(e.target.value)}
       />
 
-      <label className="field-label">Media type</label>
-      <ChipRow options={MEDIA_TYPES} value={mediaType} onChange={setMediaType} />
+      <label className="field-label">{t("upload.mediaType")}</label>
+      <ChipRow options={MEDIA_TYPES.map((o) => ({ value: o.value, label: t(o.key) }))} value={mediaType} onChange={setMediaType} />
 
-      <label className="field-label">Section</label>
+      <label className="field-label">{t("upload.section")}</label>
       <select value={section} onChange={(e) => setSection(e.target.value as FileSection)}>
         {SECTIONS.map((s) => (
-          <option key={s.value} value={s.value}>{s.label}</option>
+          <option key={s.value} value={s.value}>{t(s.key)}</option>
         ))}
       </select>
 
-      <label className="field-label">Is this your original work?</label>
-      <Segmented options={AUTHORSHIP_OPTIONS} value={authorship} onChange={setAuthorship} />
+      <label className="field-label">{t("upload.originalQ")}</label>
+      <Segmented options={AUTHORSHIP_OPTIONS.map((o) => ({ value: o.value, label: t(o.key) }))} value={authorship} onChange={setAuthorship} />
       {authorship === "remix" && (
         <div style={{ marginTop: 10 }}>
-          <input placeholder="Link or title of the original file being remixed" />
+          <input placeholder={t("upload.remixPlaceholder")} />
         </div>
       )}
 
-      <label className="field-label">Files</label>
+      <label className="field-label">{t("upload.files")}</label>
       <p className="tiny" style={{ marginBottom: 8 }}>
-        Add every file that belongs together in one post — different languages, different subjects, or a
-        chapter-by-chapter curriculum. Each one gets its own label and its own download button. Every file is
-        scanned for malware before it becomes downloadable.
+        {t("upload.filesHelp")}
       </p>
       {rows.map((row, i) => (
         <div className="row" style={{ gap: 8, marginBottom: 8 }} key={i}>
           <input
-            placeholder="Label, e.g. 'English version' or 'Chapter 3 - Fractions'"
+            placeholder={t("upload.labelPlaceholder")}
             style={{ flex: 1 }}
             value={row.label}
             onChange={(e) => updateRow(i, { label: e.target.value })}
@@ -161,21 +160,20 @@ export default function UploadFilePage() {
             onChange={(e) => updateRow(i, { file: e.target.files?.[0] ?? null })}
           />
           <button className="btn small" type="button" onClick={() => fileInputRefs.current[i]?.click()}>
-            {row.file ? row.file.name.slice(0, 20) : "Choose file"}
+            {row.file ? row.file.name.slice(0, 20) : t("upload.chooseFile")}
           </button>
         </div>
       ))}
       <button className="btn small" type="button" onClick={() => setRows((r) => [...r, { label: "", file: null }])}>
-        + Add another file
+        {t("upload.addAnother")}
       </button>
 
       <div className="card" style={{ background: "var(--bg)", borderStyle: "dashed", marginTop: 18 }}>
         <p className="muted" style={{ marginBottom: 10 }}>
-          Everything you post here is free, forever — anyone can view it, download it, and remix it. Are you aware of
-          that?
+          {t("upload.freeNotice")}
         </p>
         <Button onClick={() => setAcknowledged(true)} disabled={acknowledged}>
-          {acknowledged ? "✓ Acknowledged" : "I'm aware, continue"}
+          {acknowledged ? t("upload.acknowledged") : t("upload.aware")}
         </Button>
       </div>
 
@@ -191,7 +189,7 @@ export default function UploadFilePage() {
       )}
 
       <Button variant="primary" style={{ width: "100%", marginTop: 14 }} disabled={!canSubmit || submitting} onClick={submit}>
-        {submitting ? "Uploading…" : "Post to the File Board"}
+        {submitting ? t("upload.uploading") : t("upload.post")}
       </Button>
     </>
   );

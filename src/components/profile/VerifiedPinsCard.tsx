@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/Button";
 
 interface Option {
@@ -13,6 +14,7 @@ interface Option {
 // Verified members choose what appears in "From verified voices": one of their
 // own posts and one of their own files. Nothing is picked for them.
 export function VerifiedPinsCard() {
+  const { t } = useLanguage();
   const [posts, setPosts] = useState<Option[]>([]);
   const [files, setFiles] = useState<Option[]>([]);
   const [pinned, setPinned] = useState<{ post?: string; file?: string }>({});
@@ -66,16 +68,16 @@ export function VerifiedPinsCard() {
         <p className="tiny" style={{ marginBottom: 4 }}>{title}</p>
         {current ? (
           <div className="row between wrap" style={{ gap: 8 }}>
-            <span className="muted" style={{ margin: 0 }}>Pinned: {current.label}</span>
-            <Button size="small" onClick={() => unpin(board)}>Unpin</Button>
+            <span className="muted" style={{ margin: 0 }}>{t("pins.current", { label: current.label })}</span>
+            <Button size="small" onClick={() => unpin(board)}>{t("pins.unpin")}</Button>
           </div>
         ) : (
           <div className="row" style={{ gap: 8 }}>
             <select value={choice[board]} onChange={(e) => setChoice((c) => ({ ...c, [board]: e.target.value }))}>
-              <option value="">Choose one of yours…</option>
+              <option value="">{t("pins.choose")}</option>
               {options.filter((o) => !o.flagged).map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
             </select>
-            <Button size="small" variant="primary" disabled={!choice[board]} onClick={() => pin(board)}>Pin</Button>
+            <Button size="small" variant="primary" disabled={!choice[board]} onClick={() => pin(board)}>{t("pins.pin")}</Button>
           </div>
         )}
       </div>
@@ -84,13 +86,12 @@ export function VerifiedPinsCard() {
 
   return (
     <div className="card">
-      <p className="label" style={{ fontWeight: 500, margin: "0 0 4px" }}>From verified voices</p>
+      <p className="label" style={{ fontWeight: 500, margin: "0 0 4px" }}>{t("pins.title")}</p>
       <p className="tiny">
-        You can pin one of your posts and one of your files to the top of each board. It is only ever your own choice.
-        If a reviewer adds a notice or a warning to a pinned item, it is unpinned and stays unpinned until you pin it again.
+        {t("pins.intro")}
       </p>
-      {row("post", "Pinned post", posts)}
-      {row("file", "Pinned file", files)}
+      {row("post", t("pins.post"), posts)}
+      {row("file", t("pins.file"), files)}
       {message && <p className="tiny" style={{ color: "#b5471f", marginTop: 8 }}>{message}</p>}
     </div>
   );

@@ -2,10 +2,12 @@ import { notFound } from "next/navigation";
 import { getUserById } from "@/lib/data/users";
 import { listFilePosts } from "@/lib/data/files";
 import { listExperiencePosts } from "@/lib/data/experience";
+import { getServerT } from "@/lib/i18n/server";
 import { BackLink } from "@/components/ui/BackLink";
 import { FollowButton } from "@/components/profile/FollowButton";
 
 export default async function PublicProfilePage({ params }: PageProps<"/u/[userId]">) {
+  const { t, lang } = await getServerT();
   const { userId } = await params;
   const user = await getUserById(userId);
   if (!user) notFound();
@@ -16,7 +18,7 @@ export default async function PublicProfilePage({ params }: PageProps<"/u/[userI
 
   return (
     <>
-      <BackLink href="/experience" label="Back" />
+      <BackLink href="/experience" label={t("common.back")} />
       <div className="card row between">
         <div className="row" style={{ gap: 14 }}>
           <div
@@ -39,8 +41,11 @@ export default async function PublicProfilePage({ params }: PageProps<"/u/[userI
           <div>
             <p className="title" style={{ margin: 0 }}>{user.name}</p>
             <p className="tiny">
-              member since {new Date(user.memberSince).toLocaleDateString(undefined, { month: "long", year: "numeric" })} ·{" "}
-              {user.points.toLocaleString()} points · {user.followers.toLocaleString()} followers
+              {t("u.memberSince", {
+                date: new Date(user.memberSince).toLocaleDateString(lang, { month: "long", year: "numeric" }),
+                points: user.points.toLocaleString(),
+                followers: user.followers.toLocaleString(),
+              })}
             </p>
           </div>
         </div>
@@ -49,11 +54,11 @@ export default async function PublicProfilePage({ params }: PageProps<"/u/[userI
 
       {userFiles.length > 0 && (
         <>
-          <p className="label" style={{ fontWeight: 500, margin: "18px 0 8px" }}>Files</p>
+          <p className="label" style={{ fontWeight: 500, margin: "18px 0 8px" }}>{t("u.files")}</p>
           {userFiles.map((f) => (
             <div className="card" key={f.id}>
               <p style={{ fontWeight: 500, fontSize: 14, margin: "0 0 2px" }}>{f.title}</p>
-              <p className="tiny">File board · {f.views.toLocaleString()} views</p>
+              <p className="tiny">{t("u.fileBoard", { n: f.views.toLocaleString() })}</p>
             </div>
           ))}
         </>
@@ -61,11 +66,11 @@ export default async function PublicProfilePage({ params }: PageProps<"/u/[userI
 
       {userPosts.length > 0 && (
         <>
-          <p className="label" style={{ fontWeight: 500, margin: "18px 0 8px" }}>Recent posts</p>
+          <p className="label" style={{ fontWeight: 500, margin: "18px 0 8px" }}>{t("u.recentPosts")}</p>
           {userPosts.map((p) => (
             <div className="card" key={p.id}>
               <p style={{ fontWeight: 500, fontSize: 14, margin: "0 0 2px" }}>{p.title ?? p.body.slice(0, 60)}</p>
-              <p className="tiny">Experience board · {p.replyCount} replies</p>
+              <p className="tiny">{t("u.expBoard", { n: p.replyCount })}</p>
             </div>
           ))}
         </>

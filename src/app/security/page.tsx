@@ -5,9 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useRequireAuthPage } from "@/contexts/AuthContext";
 import { TwoStepPanel } from "@/components/security/TwoStepPanel";
 import { BackLink } from "@/components/ui/BackLink";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 function SecurityContent() {
   const router = useRouter();
+  const { t } = useLanguage();
   const params = useSearchParams();
   const ready = useRequireAuthPage("/experience");
   const next = params.get("next");
@@ -16,8 +18,8 @@ function SecurityContent() {
   if (!ready) return null;
   return (
     <>
-      <BackLink href="/settings" label="Back to settings" />
-      <p className="title" style={{ marginBottom: 6 }}>Two-step sign-in</p>
+      <BackLink href="/settings" label={t("twoStep.back")} />
+      <p className="title" style={{ marginBottom: 6 }}>{t("twoStep.title")}</p>
       <div className="card">
         <TwoStepPanel onVerified={() => safeNext && router.replace(safeNext)} />
       </div>

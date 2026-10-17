@@ -7,11 +7,14 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { friendlyWriteError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/client";
+import type { UiKey } from "@/lib/i18n/strings";
 
 interface ChatMessage {
   id: number;
   from: "ai" | "user";
   text: string;
+  // When set, the text is a fixed phrase shown in the member's current language.
+  key?: UiKey;
   sources?: AISource[];
   postHref?: string;
   // The question the AI could not answer, offered as a post on the Experience Board.
@@ -22,7 +25,7 @@ interface ChatMessage {
 const clamp = (val: number, min: number, max: number) => Math.max(min, Math.min(max, val));
 
 export function AiFab() {
-  const { lang } = useLanguage();
+  const { lang, t } = useLanguage();
   const { user, openSignInModal } = useAuth();
   const fabRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -35,7 +38,7 @@ export function AiFab() {
   });
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { id: 0, from: "ai", text: "Hi! I can help you find files, point you to a philosophy idea, or explain how something on the hub works. What are you looking for?" },
+    { id: 0, from: "ai", text: "", key: "ai.greeting" },
   ]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
@@ -102,7 +105,7 @@ export function AiFab() {
   async function sendChat() {
     const text = input.trim();
     if (!text || thinking) return;
-    const history = messages.filter((m) => !m.isError).map((m) => ({ from: m.from, text: m.text }));
+    const history = messages.filter((m) => !m.isError && !m.key).map((m) => ({ from: m.from, text: m.text }));
     setMessages((m) => [...m, { id: Date.now(), from: "user", text }]);
     setInput("");
     setThinking(true);
@@ -121,7 +124,7 @@ export function AiFab() {
     } catch (err) {
       setMessages((m) => [
         ...m,
-        { id: Date.now() + 1, from: "ai", text: err instanceof Error ? err.message : "Something went wrong.", isError: true },
+        { id: Date.now() + 1, from: "ai", text: err instanceof Error ? err.message : t("ai.error"), isError: true },
       ]);
     } finally {
       setThinking(false);
@@ -149,7 +152,7 @@ export function AiFab() {
         from: "ai" as const,
         text: error
           ? friendlyWriteError(error)
-          : "Posted on the Experience Board under your name. Members who can help have been told, and you'll get a notification for each answer.",
+          : t("ai.posted"),
         isError: !!error,
         postHref: data ? `/experience/${data.id}` : undefined,
       },
@@ -165,7 +168,7 @@ export function AiFab() {
       <button
         id="ai-fab-btn"
         ref={btnRef}
-        aria-label="Ask the hub AI"
+        aria-label={t("ai.title")}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
@@ -185,18 +188,18 @@ export function AiFab() {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="chat-header">
-          <span>Ask the hub AI</span>
-          <button aria-label="Close" onClick={() => setOpen(false)}>
+          <span>{t("ai.title")}</span>
+          <button aria-label={t("ai.close")} onClick={() => setOpen(false)}>
             ×
           </button>
         </div>
         <div className="chat-messages">
           {messages.map((m) => (
             <div key={m.id} className={`chat-msg ${m.from}`}>
-              {m.text}
+              {m.key ? t(m.key) : m.text}
               {m.sources && m.sources.length > 0 && (
                 <div className="tiny" style={{ marginTop: 6 }}>
-                  From:{" "}
+                  {t("ai.from")}{" "}
                   {m.sources.map((src, i) => (
                     <span key={i}>
                       {i > 0 && ", "}
@@ -207,27 +210,27 @@ export function AiFab() {
               )}
               {m.escalateQuestion && (
                 <button className="btn small" style={{ marginTop: 8 }} onClick={() => postQuestion(m.id, m.escalateQuestion!)}>
-                  {user ? "Yes, post my question" : "Sign in to post my question"}
+                  {user ? t("ai.postYes") : t("ai.postSignIn")}
                 </button>
               )}
               {m.postHref && (
                 <div className="tiny" style={{ marginTop: 6 }}>
-                  <Link href={m.postHref} style={{ color: "var(--accent)" }}>See your question</Link>
+                  <Link href={m.postHref} style={{ color: "var(--accent)" }}>{t("ai.seeQuestion")}</Link>
                 </div>
               )}
             </div>
           ))}
-          {thinking && <div className="chat-msg ai">Thinking…</div>}
+          {thinking && <div className="chat-msg ai">{t("ai.thinking")}</div>}
         </div>
         <div className="chat-input-row">
           <input
-            placeholder="Ask a question..."
+            placeholder={t("ai.placeholder")}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && sendChat()}
           />
           <button className="btn primary small" onClick={sendChat}>
-            Send
+            {t("ai.send")}
           </button>
         </div>
       </div>

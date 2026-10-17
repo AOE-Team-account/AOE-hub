@@ -1,25 +1,28 @@
 "use client";
 
 import { useState } from "react";
+import { useLanguage } from "@/contexts/LanguageContext";
+import type { UiKey } from "@/lib/i18n/strings";
 
 // The only role markers anyone can ever see: A (Answerer) and V (Verified).
 // Watchers, Deacons and the Creator have no badge at all (anonymity rule).
-const BADGES: Record<string, { letter: string; label: string; tint: string; text: string }> = {
+const BADGES: Record<string, { letter: string; label: UiKey; tint: string; text: string }> = {
   answerer: {
     letter: "A",
-    label: "Answerer — their answers are carefully chosen, and their posts and comments are pinned to the top.",
+    label: "role.answerer",
     tint: "#DDEFD9",
     text: "#2E6B2A",
   },
   verified: {
     letter: "V",
-    label: "Verified — the hub's Creator agrees with this person's ideas. Their comments are highlighted.",
+    label: "role.verified",
     tint: "#FBEBC4",
     text: "#7A5A0E",
   },
 };
 
 export function RoleBadges({ roles }: { roles?: string[] }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState<string | null>(null);
   const shown = (roles ?? []).filter((r) => BADGES[r]);
   if (shown.length === 0) return null;
@@ -29,8 +32,8 @@ export function RoleBadges({ roles }: { roles?: string[] }) {
         <button
           key={r}
           type="button"
-          aria-label={BADGES[r].label}
-          title={BADGES[r].label}
+          aria-label={t(BADGES[r].label)}
+          title={t(BADGES[r].label)}
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -46,7 +49,7 @@ export function RoleBadges({ roles }: { roles?: string[] }) {
       ))}
       {open && (
         <span className="tiny" style={{ marginLeft: 6, background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, padding: "4px 8px" }}>
-          {BADGES[open].label}
+          {t(BADGES[open].label)}
         </span>
       )}
     </span>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getBadgeMap } from "@/lib/data/badges";
+import { getServerT } from "@/lib/i18n/server";
 import { RoleBadges } from "@/components/ui/RoleBadges";
 
 const CAP = 3;
@@ -10,6 +11,7 @@ const CAP = 3;
 // nobody qualifies. Items that are deleted, hidden or carry a notice drop out
 // because the pin is cleared (or the row is no longer visible).
 export async function VerifiedVoices({ board }: { board: "file" | "post" }) {
+  const { t } = await getServerT();
   const supabase = await createClient();
   const { data: pins } = await supabase
     .from("verified_pins")
@@ -42,7 +44,7 @@ export async function VerifiedVoices({ board }: { board: "file" | "post" }) {
 
   return (
     <div className="card" style={{ background: "var(--pin-bg)", borderColor: "var(--pin-border)" }}>
-      <p className="label" style={{ fontWeight: 500, margin: "0 0 8px" }}>From verified voices</p>
+      <p className="label" style={{ fontWeight: 500, margin: "0 0 8px" }}>{t("pins.title")}</p>
       {shown.map((i) => {
         const href = board === "file" ? `/files/${i.id}` : `/experience/${i.id}`;
         const text = board === "file" ? (i.title as string) : ((i.title as string) || (i.body as string) || "").slice(0, 90);
@@ -50,7 +52,7 @@ export async function VerifiedVoices({ board }: { board: "file" | "post" }) {
         return (
           <div key={i.id as string} className="row wrap" style={{ gap: 8, padding: "4px 0" }}>
             <Link href={href} style={{ fontWeight: 500, fontSize: 14 }}>{text}</Link>
-            <span className="tiny">by {names.get(authorId) ?? "a member"}</span>
+            <span className="tiny">{t("verified.by", { name: names.get(authorId) ?? t("verified.aMember") })}</span>
             <RoleBadges roles={badges[authorId]} />
           </div>
         );

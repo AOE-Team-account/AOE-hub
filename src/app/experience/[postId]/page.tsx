@@ -11,6 +11,7 @@ import { AuthorLink } from "@/components/ui/AuthorLink";
 import { TranslatableText } from "@/components/ui/TranslateButton";
 import { Discussion } from "@/components/discussion/Discussion";
 import { NoticeBox } from "@/components/review/NoticeBox";
+import { getServerT } from "@/lib/i18n/server";
 import { getNotices, flattenCommentIds } from "@/lib/data/notices";
 
 function collectAuthorIds(comments: Awaited<ReturnType<typeof listExperienceComments>>): string[] {
@@ -23,6 +24,7 @@ function collectAuthorIds(comments: Awaited<ReturnType<typeof listExperienceComm
 }
 
 export default async function ExperiencePostPage({ params }: PageProps<"/experience/[postId]">) {
+  const { t, lang } = await getServerT();
   const { postId } = await params;
   const post = await getExperiencePostById(postId);
   if (!post) notFound();
@@ -57,14 +59,14 @@ export default async function ExperiencePostPage({ params }: PageProps<"/experie
 
   return (
     <>
-      <BackLink href="/experience" label="Back to Experience Board" />
+      <BackLink href="/experience" label={t("exp.back")} />
       <NoticeBox notice={postNotices[post.id]} />
       <div className="card">
         <div className="row wrap" style={{ gap: 8, marginBottom: 8 }}>
           {/* Hub announcements read as coming from AOEhub, never from a person. */}
           {post.isAnnouncement ? <span style={{ fontWeight: 500 }}>AOEhub</span> : author && <AuthorLink userId={author.id} name={author.name} badges={author.badges} />}
           <span className="tiny">
-            {new Date(post.createdAt).toLocaleDateString()} · {post.views} views
+            {new Date(post.createdAt).toLocaleDateString(lang)} · {t("files.views", { n: post.views })}
           </span>
         </div>
         <TranslatableText text={post.body} as="p" className="muted" />
@@ -75,7 +77,7 @@ export default async function ExperiencePostPage({ params }: PageProps<"/experie
         parentId={post.id}
         initialComments={comments}
         authors={authors}
-        composeLabel="Add a comment"
+        composeLabel={t("discussion.addComment")}
         postAuthorId={post.authorId}
         notices={commentNotices}
       />

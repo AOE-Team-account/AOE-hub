@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuth, useRequireAuthPage } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { createClient } from "@/lib/supabase/client";
 import { PointsInfoButton } from "@/components/profile/PointsInfoButton";
 import { VerifiedPinsCard } from "@/components/profile/VerifiedPinsCard";
@@ -10,6 +11,7 @@ import { Button } from "@/components/ui/Button";
 import type { ExperiencePost, FilePost } from "@/lib/types";
 
 export default function ProfilePage() {
+  const { t, lang } = useLanguage();
   const { user, refreshProfile } = useAuth();
   useRequireAuthPage("/");
   const [editing, setEditing] = useState(false);
@@ -94,14 +96,14 @@ export default function ProfilePage() {
   }
 
   async function deleteFile(id: string) {
-    if (!confirm("Delete this file? This cannot be undone.")) return;
+    if (!confirm(t("profile.confirmDeleteFile"))) return;
     const supabase = createClient();
     await supabase.from("file_posts").delete().eq("id", id);
     setMyFiles((files) => files.filter((f) => f.id !== id));
   }
 
   async function deletePost(id: string) {
-    if (!confirm("Delete this post? This cannot be undone.")) return;
+    if (!confirm(t("profile.confirmDeletePost"))) return;
     const supabase = createClient();
     await supabase.from("experience_posts").delete().eq("id", id);
     setMyPosts((posts) => posts.filter((p) => p.id !== id));
@@ -131,26 +133,26 @@ export default function ProfilePage() {
           <div>
             <p className="title" style={{ margin: 0 }}>{user.name}</p>
             <p className="tiny">
-              member since {new Date(user.memberSince).toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+              {t("profile.memberSince", { date: new Date(user.memberSince).toLocaleDateString(lang, { month: "long", year: "numeric" }) })}
             </p>
           </div>
         </div>
-        <Button size="small" onClick={() => setEditing((e) => !e)}>Edit profile</Button>
+        <Button size="small" onClick={() => setEditing((e) => !e)}>{t("profile.edit")}</Button>
       </div>
 
       <div className={`compose-inline${editing ? " open" : ""}`}>
-        <label className="field-label" style={{ marginTop: 0 }}>Profile picture</label>
-        <button className="btn small">Choose new picture</button>
-        <label className="field-label">Name</label>
+        <label className="field-label" style={{ marginTop: 0 }}>{t("profile.picture")}</label>
+        <button className="btn small">{t("profile.choosePicture")}</button>
+        <label className="field-label">{t("profile.name")}</label>
         <input value={name} onChange={(e) => setName(e.target.value)} />
-        <label className="field-label">Display name</label>
+        <label className="field-label">{t("profile.displayName")}</label>
         <input
-          placeholder="How you'd like to appear on posts, e.g. 'Sarah's Homeschool'"
+          placeholder={t("profile.displayNamePlaceholder")}
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
         />
         <Button variant="primary" size="small" style={{ marginTop: 12 }} disabled={saving} onClick={saveProfile}>
-          {saving ? "Saving…" : "Save"}
+          {saving ? t("common.saving") : t("common.save")}
         </Button>
       </div>
 
@@ -158,10 +160,10 @@ export default function ProfilePage() {
         <div className="card row wrap" style={{ gap: 8 }}>
           {/* Only the person themselves ever sees these; the panel pages
               re-check the role on the server for every request. */}
-          {user.roles.includes("creator") && <Link href="/creator" className="btn small">Open Creator panel</Link>}
-          {user.roles.includes("watcher") && <Link href="/mod" className="btn small">Open Watcher panel</Link>}
+          {user.roles.includes("creator") && <Link href="/creator" className="btn small">{t("profile.openCreator")}</Link>}
+          {user.roles.includes("watcher") && <Link href="/mod" className="btn small">{t("profile.openWatcher")}</Link>}
           {!user.roles.includes("watcher") && user.roles.includes("deacon") && (
-            <Link href="/mod" className="btn small">Open Deacon panel</Link>
+            <Link href="/mod" className="btn small">{t("profile.openDeacon")}</Link>
           )}
         </div>
       )}
@@ -169,42 +171,42 @@ export default function ProfilePage() {
       {user.badges.includes("verified") && <VerifiedPinsCard />}
 
       <div className="card row wrap" style={{ gap: 18 }}>
-        <Stat label="points" value={user.points.toLocaleString()} />
-        <Stat label="files" value={String(myFiles.length)} />
-        <Stat label="followers" value={user.followers.toLocaleString()} />
-        <Stat label="following" value={user.following.toLocaleString()} />
+        <Stat label={t("profile.points")} value={user.points.toLocaleString()} />
+        <Stat label={t("profile.files")} value={String(myFiles.length)} />
+        <Stat label={t("profile.followers")} value={user.followers.toLocaleString()} />
+        <Stat label={t("profile.following")} value={user.following.toLocaleString()} />
       </div>
       <PointsInfoButton />
 
-      <p className="label" style={{ fontWeight: 500, margin: "0 0 8px" }}>My files</p>
-      {myFiles.length === 0 && <p className="muted">No files yet.</p>}
+      <p className="label" style={{ fontWeight: 500, margin: "0 0 8px" }}>{t("profile.myFiles")}</p>
+      {myFiles.length === 0 && <p className="muted">{t("profile.noFiles")}</p>}
       {myFiles.map((f) => (
         <div className="card row between" key={f.id}>
           <div>
             <p style={{ fontWeight: 500, fontSize: 14, margin: "0 0 2px" }}>{f.title}</p>
-            <p className="tiny">{f.views.toLocaleString()} views</p>
+            <p className="tiny">{t("files.views", { n: f.views.toLocaleString() })}</p>
           </div>
           <div className="row" style={{ gap: 6 }}>
-            <Button size="small">Update</Button>
+            <Button size="small">{t("profile.update")}</Button>
             <Button size="small" variant="danger" onClick={() => deleteFile(f.id)}>
-              Delete
+              {t("common.delete")}
             </Button>
           </div>
         </div>
       ))}
 
-      <p className="label" style={{ fontWeight: 500, margin: "18px 0 8px" }}>My posts</p>
-      {myPosts.length === 0 && <p className="muted">No posts yet.</p>}
+      <p className="label" style={{ fontWeight: 500, margin: "18px 0 8px" }}>{t("profile.myPosts")}</p>
+      {myPosts.length === 0 && <p className="muted">{t("profile.noPosts")}</p>}
       {myPosts.map((p) => (
         <div className="card row between" key={p.id}>
           <div>
             <p style={{ fontWeight: 500, fontSize: 14, margin: "0 0 2px" }}>{p.title ?? p.body.slice(0, 60)}</p>
-            <p className="tiny">{p.views.toLocaleString()} views · {p.replyCount} replies</p>
+            <p className="tiny">{t("exp.viewsReplies", { views: p.views.toLocaleString(), replies: p.replyCount })}</p>
           </div>
           <div className="row" style={{ gap: 6 }}>
-            <Button size="small">Update</Button>
+            <Button size="small">{t("profile.update")}</Button>
             <Button size="small" variant="danger" onClick={() => deletePost(p.id)}>
-              Delete
+              {t("common.delete")}
             </Button>
           </div>
         </div>

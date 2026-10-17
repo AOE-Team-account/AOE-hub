@@ -12,6 +12,7 @@ import { TranslatableText } from "@/components/ui/TranslateButton";
 import { Badge } from "@/components/ui/Badge";
 import { Discussion } from "@/components/discussion/Discussion";
 import { NoticeBox } from "@/components/review/NoticeBox";
+import { getServerT } from "@/lib/i18n/server";
 import { getNotices, flattenCommentIds } from "@/lib/data/notices";
 import { DownloadButton, RemixButton } from "@/components/files/FileDetailActions";
 
@@ -25,6 +26,7 @@ function collectAuthorIds(comments: Awaited<ReturnType<typeof listFileComments>>
 }
 
 export default async function FileDetailPage({ params }: PageProps<"/files/[fileId]">) {
+  const { t } = await getServerT();
   const { fileId } = await params;
   const file = await getFilePostById(fileId);
   if (!file) notFound();
@@ -59,7 +61,7 @@ export default async function FileDetailPage({ params }: PageProps<"/files/[file
 
   return (
     <>
-      <BackLink href="/files" label="Back to File Board" />
+      <BackLink href="/files" label={t("file.back")} />
       <NoticeBox notice={fileNotices[file.id]} />
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
         <div className="preview-img large">
@@ -68,36 +70,35 @@ export default async function FileDetailPage({ params }: PageProps<"/files/[file
             <circle cx="8.5" cy="8.5" r="1.5" />
             <path d="M21 15l-5-5L5 21" />
           </svg>
-          preview
+          {t("files.previewLabel")}
         </div>
         <div style={{ padding: "1rem 1.1rem" }}>
           <div className="row wrap" style={{ gap: 8, marginBottom: 8 }}>
-            <Badge>{file.authorship === "original" ? "original" : file.authorship === "remix" ? "remix" : "found"}</Badge>
-            <span className="tiny">posted by</span>
+            <Badge>{t(file.authorship === "original" ? "files.badge.original" : file.authorship === "remix" ? "files.badge.remix" : "files.badge.found")}</Badge>
+            <span className="tiny">{t("file.postedBy")}</span>
             {author && <AuthorLink userId={author.id} name={author.name} badges={author.badges} />}
           </div>
           <p className="title" style={{ margin: "0 0 8px" }}>{file.title}</p>
           <TranslatableText text={file.description} as="p" className="muted" />
           <div className="row tiny wrap" style={{ gap: 16, marginBottom: 6 }}>
-            <span>{file.views.toLocaleString()} views</span>
+            <span>{t("files.views", { n: file.views.toLocaleString() })}</span>
           </div>
         </div>
       </div>
 
       <div className="card">
-        <p className="title" style={{ marginBottom: 4 }}>Files in this post</p>
+        <p className="title" style={{ marginBottom: 4 }}>{t("file.filesInPost")}</p>
         <p className="tiny" style={{ marginBottom: 10 }}>
-          Titles and descriptions are translated automatically. The files themselves are shown exactly as uploaded —
-          the hub can&apos;t translate what&apos;s inside them.
+          {t("file.translatedNote")}
         </p>
         {file.assets.map((asset) => (
           <div className="row between" key={asset.id} style={{ padding: "8px 0", borderTop: "1px solid var(--border)" }}>
             <div>
               <p style={{ fontWeight: 500, fontSize: 14, margin: 0 }}>{asset.label}</p>
               <p className="tiny">
-                {asset.downloads} downloads
-                {asset.scanStatus === "pending" && " · still being checked for malware"}
-                {asset.scanStatus === "flagged" && " · failed the malware scan, unavailable"}
+                {t("file.downloads", { n: asset.downloads })}
+                {asset.scanStatus === "pending" && t("file.pendingNote")}
+                {asset.scanStatus === "flagged" && t("file.flaggedNote")}
               </p>
             </div>
             <DownloadButton assetId={asset.id} scanStatus={asset.scanStatus} />
@@ -111,7 +112,7 @@ export default async function FileDetailPage({ params }: PageProps<"/files/[file
         parentId={file.id}
         initialComments={comments}
         authors={authors}
-        composeLabel="Ask a question"
+        composeLabel={t("discussion.askQuestion")}
         postAuthorId={file.authorId}
         notices={commentNotices}
       />

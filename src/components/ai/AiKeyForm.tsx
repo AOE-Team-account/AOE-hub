@@ -3,6 +3,8 @@
 import { useEffect, useImperativeHandle, useState, type Ref } from "react";
 import { BYO_PROVIDERS, providersForRegion, type ByoProviderId } from "@/lib/ai/byo-providers";
 import { createClient } from "@/lib/supabase/client";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { rich } from "@/lib/i18n/rich";
 import type { Region } from "@/lib/types";
 
 export interface AiKeyFormHandle {
@@ -29,6 +31,7 @@ interface HelpRow {
 // standalone={false} and saves through the page's Continue button instead.
 // `region` picks which free-key help is shown (the text is editable data).
 export function AiKeyForm({ ref, standalone = true, region = null }: { ref?: Ref<AiKeyFormHandle>; standalone?: boolean; region?: Region | null }) {
+  const { t } = useLanguage();
   const [saved, setSaved] = useState<Saved | null>(null);
   // What the member picked; until they pick, the first service for their region is suggested.
   const [providerChoice, setProviderChoice] = useState<ByoProviderId | null>(null);
@@ -74,15 +77,15 @@ export function AiKeyForm({ ref, standalone = true, region = null }: { ref?: Ref
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data?.error || "Could not save the key.");
+        setError(data?.error || t("aiKey.errorSave"));
         return false;
       }
       setSaved(data);
       setKey("");
-      setNote("Saved. The assistant will use your key from now on.");
+      setNote(t("aiKey.saved"));
       return true;
     } catch {
-      setError("Could not reach the server. Try again.");
+      setError(t("aiKey.errorServer"));
       return false;
     } finally {
       setBusy(false);
@@ -97,9 +100,9 @@ export function AiKeyForm({ ref, standalone = true, region = null }: { ref?: Ref
     setBusy(false);
     if (res?.ok) {
       setSaved({ hasKey: false, provider: null, model: null });
-      setNote("Removed. The assistant is back to the hub's default.");
+      setNote(t("aiKey.removed"));
     } else {
-      setError("Could not remove the key.");
+      setError(t("aiKey.errorRemove"));
     }
   }
 
@@ -113,7 +116,7 @@ export function AiKeyForm({ ref, standalone = true, region = null }: { ref?: Ref
     <div>
       {saved?.hasKey && saved.provider && (
         <p className="tiny" style={{ marginBottom: 10 }}>
-          Using your own key: <strong>{BYO_PROVIDERS[saved.provider].label}</strong> · {saved.model}
+          {rich(t("aiKey.usingYours", { service: `<b>${BYO_PROVIDERS[saved.provider].label}</b>`, model: saved.model ?? "" }), { b: (c) => <strong>{c}</strong> })}
         </p>
       )}
       <select value={provider} onChange={(e) => pickProvider(e.target.value as ByoProviderId)} style={{ maxWidth: 320 }}>
@@ -125,30 +128,29 @@ export function AiKeyForm({ ref, standalone = true, region = null }: { ref?: Ref
         type="password"
         autoComplete="off"
         spellCheck={false}
-        placeholder={saved?.hasKey ? "Paste a new key to replace the saved one" : "Paste your API key"}
+        placeholder={saved?.hasKey ? t("aiKey.replacePlaceholder") : t("aiKey.pastePlaceholder")}
         value={key}
         onChange={(e) => setKey(e.target.value)}
         style={{ marginTop: 8 }}
       />
       <input
-        placeholder="Model"
+        placeholder={t("aiKey.modelPlaceholder")}
         value={model}
         onChange={(e) => setModelChoice(e.target.value)}
         style={{ marginTop: 8 }}
         aria-label="Model name"
       />
       <p className="tiny" style={{ marginTop: 6 }}>
-        Your key is checked once, then stored encrypted and used only to answer your questions.
+        {t("aiKey.checkedOnce")}
       </p>
       {!region ? (
-        <p className="tiny" style={{ marginTop: 6 }}>Choose where you are above to see which free AI services we suggest.</p>
+        <p className="tiny" style={{ marginTop: 6 }}>{t("aiKey.chooseRegion")}</p>
       ) : (
         <div className="tiny" style={{ marginTop: 8 }}>
-          We sincerely recommend using your own API instead of the hub&apos;s default AI. If you use the hub&apos;s default AI,
-          it may be very slow. Don&apos;t have one? You can get a free one from the services below.
+          {t("aiKey.recommend")}
           <div style={{ marginTop: 8 }}>
             <button type="button" className="btn small" onClick={() => setShowHelp((v) => !v)}>
-              Get free API instructions
+              {t("aiKey.howTo")}
             </button>
           </div>
           {showHelp &&
@@ -161,25 +163,25 @@ export function AiKeyForm({ ref, standalone = true, region = null }: { ref?: Ref
                     {h.steps.map((s, i) => <li key={i} style={{ marginBottom: 3 }}>{s}</li>)}
                   </ol>
                   {h.note && <span>{h.note} </span>}
-                  {h.link_url && <a href={h.link_url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>Open the site ↗</a>}
+                  {h.link_url && <a href={h.link_url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>{t("aiKey.openSite")}</a>}
                 </div>
               ))}
-          {showHelp && help.filter((h) => h.region === region).length === 0 && <p style={{ marginTop: 8 }}>No instructions are available yet.</p>}
+          {showHelp && help.filter((h) => h.region === region).length === 0 && <p style={{ marginTop: 8 }}>{t("aiKey.noInstructions")}</p>}
         </div>
       )}
       <p className="tiny" style={{ marginTop: 6 }}>
-        Already have a key? Choose its service in the list above and paste it.{" "}
+        {t("aiKey.alreadyHave")}{" "}
         <a href={info.keyHelpUrl} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>{info.label.replace(" (free key available)", "").replace(" (free plan available)", "")} ↗</a>
       </p>
       <div className="row" style={{ gap: 8, marginTop: 8 }}>
         {standalone && (
           <button className="btn primary small" disabled={busy || !key.trim()} onClick={save}>
-            {busy ? "Checking…" : "Save key"}
+            {busy ? t("aiKey.checking") : t("aiKey.saveKey")}
           </button>
         )}
         {standalone && saved?.hasKey && (
           <button className="btn small" disabled={busy} onClick={remove}>
-            Remove my key
+            {t("aiKey.removeKey")}
           </button>
         )}
       </div>
