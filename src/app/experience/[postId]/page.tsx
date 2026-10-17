@@ -8,7 +8,7 @@ import { getBadgeMap } from "@/lib/data/badges";
 import type { User } from "@/lib/types";
 import { BackLink } from "@/components/ui/BackLink";
 import { AuthorLink } from "@/components/ui/AuthorLink";
-import { TranslatableText } from "@/components/ui/TranslateButton";
+import { Translated } from "@/components/ui/Translated";
 import { Discussion } from "@/components/discussion/Discussion";
 import { NoticeBox } from "@/components/review/NoticeBox";
 import { getServerT } from "@/lib/i18n/server";
@@ -60,7 +60,7 @@ export default async function ExperiencePostPage({ params }: PageProps<"/experie
   return (
     <>
       <BackLink href="/experience" label={t("exp.back")} />
-      <NoticeBox notice={postNotices[post.id]} />
+      <NoticeBox notice={postNotices[post.id]} itemKey={`post:${post.id}`} />
       <div className="card">
         <div className="row wrap" style={{ gap: 8, marginBottom: 8 }}>
           {/* Hub announcements read as coming from AOEhub, never from a person. */}
@@ -69,7 +69,7 @@ export default async function ExperiencePostPage({ params }: PageProps<"/experie
             {new Date(post.createdAt).toLocaleDateString(lang)} · {t("files.views", { n: post.views })}
           </span>
         </div>
-        <TranslatableText text={post.body} as="p" className="muted" />
+        <Translated type="experience-post" id={post.id} field="body" text={post.body} className="muted" note noteWhenPaused />
       </div>
 
       <Discussion

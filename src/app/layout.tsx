@@ -7,6 +7,8 @@ import { LanguageProvider } from "@/contexts/LanguageContext";
 import { ReportProvider } from "@/contexts/ReportContext";
 import { AppShell } from "@/components/layout/AppShell";
 import { getRequestLanguage } from "@/lib/i18n/server";
+import { isStaticLanguage, textDirection } from "@/lib/i18n/strings";
+import { getUiStrings } from "@/lib/translate/ui-languages";
 
 export const metadata: Metadata = {
   title: "AOEhub — Alpha Omega Education",
@@ -18,11 +20,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // The visitor's language is decided on the server (saved choice, else their
   // browser's), so the first page they see is already in it.
   const { lang } = await getRequestLanguage();
+  const initialStrings = isStaticLanguage(lang) ? null : await getUiStrings(lang).catch(() => null);
   return (
-    <html lang={lang} className={allFontVariables}>
+    <html lang={lang} dir={textDirection(lang)} className={allFontVariables}>
       <body>
         <ThemeProvider>
-          <LanguageProvider initialLang={lang}>
+          <LanguageProvider initialLang={lang} initialStrings={initialStrings}>
             <AuthProvider>
               <ReportProvider>
                 <AppShell>{children}</AppShell>

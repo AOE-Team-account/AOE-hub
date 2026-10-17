@@ -8,7 +8,7 @@ import { getBadgeMap } from "@/lib/data/badges";
 import type { User } from "@/lib/types";
 import { BackLink } from "@/components/ui/BackLink";
 import { AuthorLink } from "@/components/ui/AuthorLink";
-import { TranslatableText } from "@/components/ui/TranslateButton";
+import { Translated } from "@/components/ui/Translated";
 import { Badge } from "@/components/ui/Badge";
 import { Discussion } from "@/components/discussion/Discussion";
 import { NoticeBox } from "@/components/review/NoticeBox";
@@ -62,7 +62,7 @@ export default async function FileDetailPage({ params }: PageProps<"/files/[file
   return (
     <>
       <BackLink href="/files" label={t("file.back")} />
-      <NoticeBox notice={fileNotices[file.id]} />
+      <NoticeBox notice={fileNotices[file.id]} itemKey={`file:${file.id}`} />
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
         <div className="preview-img large">
           <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
@@ -78,8 +78,8 @@ export default async function FileDetailPage({ params }: PageProps<"/files/[file
             <span className="tiny">{t("file.postedBy")}</span>
             {author && <AuthorLink userId={author.id} name={author.name} badges={author.badges} />}
           </div>
-          <p className="title" style={{ margin: "0 0 8px" }}>{file.title}</p>
-          <TranslatableText text={file.description} as="p" className="muted" />
+          <Translated type="file" id={file.id} field="title" text={file.title} className="title" style={{ margin: "0 0 8px" }} />
+          <Translated type="file" id={file.id} field="description" text={file.description} className="muted" note noteWhenPaused />
           <div className="row tiny wrap" style={{ gap: 16, marginBottom: 6 }}>
             <span>{t("files.views", { n: file.views.toLocaleString() })}</span>
           </div>

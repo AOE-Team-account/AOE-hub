@@ -367,5 +367,17 @@
   "u.files": "文件",
   "u.recentPosts": "最近的帖子",
   "u.fileBoard": "资源板 · {n} 次浏览",
-  "u.expBoard": "经验分享板 · {n} 条回复"
+  "u.expBoard": "经验分享板 · {n} 条回复",
+  "translate.from": "译自{language}",
+  "translate.showOriginal": "查看原文",
+  "translate.showTranslation": "查看译文",
+  "translate.paused": "今天的翻译额度已用完，因此这里显示原文。",
+  "lang.add": "+ 添加其他语言……",
+  "lang.addTitle": "添加语言",
+  "lang.addHelp": "输入语言的名称，写法不限。本站的文字将由 AI 翻译，可能会有错误。大约需要一分钟。",
+  "lang.addPlaceholder": "例如：Español、日本語、Tagalog",
+  "lang.addGo": "添加此语言",
+  "lang.working": "正在把本站翻译成{name}……{pct}%",
+  "lang.retrying": "翻译服务繁忙，稍后会自动重试……",
+  "lang.failed": "耗时过长，请稍后再试。"
 }

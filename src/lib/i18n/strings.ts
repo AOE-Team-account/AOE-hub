@@ -61,3 +61,10 @@ export function matchStaticLanguage(browserTag: string): StaticLanguage | null {
   if (tag.startsWith("en")) return "en";
   return null;
 }
+
+const RTL = new Set(["ar", "he", "fa", "ur", "ps", "sd", "yi", "dv", "ug"]);
+
+/** Languages written right to left. */
+export function textDirection(code: string): "rtl" | "ltr" {
+  return RTL.has(code.toLowerCase().split("-")[0]) ? "rtl" : "ltr";
+}

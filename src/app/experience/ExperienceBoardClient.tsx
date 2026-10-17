@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { ChipRow } from "@/components/ui/ChipRow";
 import { AuthorLink } from "@/components/ui/AuthorLink";
 import { ReportButton } from "@/components/ui/ReportButton";
-import { TranslatableText } from "@/components/ui/TranslateButton";
+import { Translated } from "@/components/ui/Translated";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { ClickableCard } from "@/components/ui/ClickableCard";
@@ -99,8 +99,8 @@ export function ExperienceBoardClient({
             <span style={{ fontSize: 12, fontWeight: 500 }}>{t("exp.pinnedAnnouncement")}</span>
             <Badge>AOEhub</Badge>
           </div>
-          <p className="title" style={{ margin: "0 0 4px" }}>{pinned.title}</p>
-          <p className="muted">{pinned.body}</p>
+          {pinned.title && <Translated type="experience-post" id={pinned.id} field="title" text={pinned.title} className="title" style={{ margin: "0 0 4px" }} />}
+          <Translated type="experience-post" id={pinned.id} field="body" text={pinned.body} className="muted" note />
         </div>
       )}
 
@@ -130,8 +130,8 @@ export function ExperienceBoardClient({
               <span className="tiny">{timeAgo(post.createdAt, t)}</span>
               <ReportButton targetType="experience-post" targetId={post.id} />
             </div>
-            {post.title && <p className="title" style={{ margin: "0 0 4px" }}>{post.title}</p>}
-            <TranslatableText text={post.body} as="p" className="muted" />
+            {post.title && <Translated type="experience-post" id={post.id} field="title" text={post.title} className="title" style={{ margin: "0 0 4px" }} />}
+            <Translated type="experience-post" id={post.id} field="body" text={post.body} className="muted" note />
             <p className="tiny">{t("exp.viewsReplies", { views: post.views, replies: post.replyCount })}</p>
           </ClickableCard>
         );

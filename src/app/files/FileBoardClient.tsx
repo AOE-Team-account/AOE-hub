@@ -7,6 +7,7 @@ import { AuthorLink } from "@/components/ui/AuthorLink";
 import { ReportButton } from "@/components/ui/ReportButton";
 import { ClickableCard } from "@/components/ui/ClickableCard";
 import { Badge } from "@/components/ui/Badge";
+import { Translated } from "@/components/ui/Translated";
 import { useLanguage } from "@/contexts/LanguageContext";
 import type { UiKey } from "@/lib/i18n/strings";
 import type { FilePost, FileSection, MediaType, User } from "@/lib/types";
@@ -103,10 +104,10 @@ function FileBoardContent({ files, authors }: { files: FilePost[]; authors: Reco
             </div>
             <div className="body">
               <div className="row between">
-                <p className="title" style={{ margin: 0 }}>{file.title}</p>
+                <Translated type="file" id={file.id} field="title" text={file.title} className="title" style={{ margin: 0 }} />
                 <Badge>{t(file.authorship === "original" ? "files.badge.original" : file.authorship === "remix" ? "files.badge.remix" : "files.badge.found")}</Badge>
               </div>
-              <p className="muted">{file.description}</p>
+              <Translated type="file" id={file.id} field="description" text={file.description} className="muted" note />
               <div className="row tiny wrap" style={{ gap: 12 }}>
                 {author && <AuthorLink userId={author.id} name={author.name} badges={author.badges} />}
                 <span>{t("files.views", { n: file.views.toLocaleString() })}</span>

@@ -9,7 +9,7 @@ import { friendlyWriteError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/client";
 import type { Comment, CommentType, User } from "@/lib/types";
 import { AuthorLink } from "@/components/ui/AuthorLink";
-import { TranslatableText } from "@/components/ui/TranslateButton";
+import { Translated } from "@/components/ui/Translated";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { NoticeBox } from "@/components/review/NoticeBox";
@@ -141,8 +141,8 @@ function CommentRow({
         {author && <AuthorLink userId={author.id} name={author.name} badges={author.badges} />}
         <span className="tiny">{new Date(comment.createdAt).toLocaleDateString()}</span>
       </div>
-      <NoticeBox notice={notices[comment.id]} />
-      <TranslatableText text={comment.body} as="p" className="muted" />
+      <NoticeBox notice={notices[comment.id]} itemKey={`comment:${comment.id}`} />
+      <Translated type="comment" id={comment.id} field="body" text={comment.body} className="muted" note />
       {comment.replies?.map((reply) => {
         const replyAuthor = authors[reply.authorId];
         return (
@@ -151,10 +151,8 @@ function CommentRow({
               <span style={{ fontSize: 12, fontWeight: 500 }}>{replyAuthor?.name}</span>
               {reply.authorId === postAuthorId && <Badge style={{ fontSize: 10 }}>{t("discussion.author")}</Badge>}
             </div>
-            <NoticeBox notice={notices[reply.id]} />
-            <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-              {reply.body}
-            </p>
+            <NoticeBox notice={notices[reply.id]} itemKey={`comment:${reply.id}`} />
+            <Translated type="comment" id={reply.id} field="body" text={reply.body} className="muted" style={{ margin: 0, fontSize: 13 }} note />
           </div>
         );
       })}

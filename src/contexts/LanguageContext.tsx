@@ -6,6 +6,7 @@ import {
   STATIC_LANGUAGES,
   STATIC_TABLES,
   isStaticLanguage,
+  textDirection,
   translateKey,
   type TParams,
   type UiKey,
@@ -24,6 +25,8 @@ interface LanguageContextValue {
   /** Interface text in the current language (English where a string is not available yet). */
   t: (key: UiKey, params?: TParams) => string;
   languages: LanguageOption[];
+  /** Re-reads the list of languages the AI has added (after one is finished). */
+  refreshLanguages: () => Promise<void>;
   /** True when the current language is machine-translated, not written by a person. */
   machineTranslated: boolean;
 }
@@ -35,28 +38,42 @@ const COOKIE = "aoehub.lang";
 
 const STATIC_OPTIONS: LanguageOption[] = STATIC_LANGUAGES.map((code) => ({ code, label: LANGUAGE_NAMES[code], source: "reviewed" }));
 
-export function LanguageProvider({ children, initialLang }: { children: ReactNode; initialLang: string }) {
+export function LanguageProvider({
+  children,
+  initialLang,
+  initialStrings,
+}: {
+  children: ReactNode;
+  initialLang: string;
+  /** The strings of an AI-added initial language, loaded on the server so the first paint is already in it. */
+  initialStrings?: Record<string, string> | null;
+}) {
   const [lang, setLangState] = useState<string>(initialLang);
   const [extra, setExtra] = useState<LanguageOption[]>([]);
-  const [aiTables, setAiTables] = useState<Record<string, Partial<Record<UiKey, string>>>>({});
+  const [aiTables, setAiTables] = useState<Record<string, Partial<Record<UiKey, string>>>>(
+    initialStrings && !isStaticLanguage(initialLang) ? { [initialLang]: initialStrings as Partial<Record<UiKey, string>> } : {}
+  );
 
   // Languages added by AI, and (when the current one is such a language) its
   // strings. Both come from the server; English shows until they arrive.
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/i18n/languages")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (!cancelled && d?.languages) setExtra((d.languages as LanguageOption[]).filter((l) => !isStaticLanguage(l.code)));
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
+  const refreshLanguages = useCallback(async () => {
+    try {
+      const r = await fetch("/api/i18n/languages", { cache: "no-store" });
+      const d = r.ok ? await r.json() : null;
+      if (d?.languages) setExtra((d.languages as LanguageOption[]).filter((l) => !isStaticLanguage(l.code)));
+    } catch {
+      /* the list just stays as it was */
+    }
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    refreshLanguages();
+  }, [refreshLanguages]);
+
+  useEffect(() => {
     document.documentElement.lang = lang;
+    document.documentElement.dir = textDirection(lang);
     if (isStaticLanguage(lang) || aiTables[lang]) return;
     let cancelled = false;
     fetch(`/api/i18n/strings?lang=${encodeURIComponent(lang)}`)
@@ -89,9 +106,10 @@ export function LanguageProvider({ children, initialLang }: { children: ReactNod
       setLang,
       t: (key, params) => translateKey(table, key, params),
       languages,
+      refreshLanguages,
       machineTranslated: !isStaticLanguage(lang),
     };
-  }, [lang, setLang, aiTables, languages]);
+  }, [lang, setLang, aiTables, languages, refreshLanguages]);
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }

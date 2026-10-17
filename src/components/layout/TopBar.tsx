@@ -5,6 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { LanguageSelect } from "@/components/ui/LanguageSelect";
+import { Translated } from "@/components/ui/Translated";
 import { createClient } from "@/lib/supabase/client";
 import type { NotificationItem } from "@/lib/types";
 
@@ -12,7 +14,7 @@ type DropdownId = "plus" | "notif" | "avatar" | null;
 
 export function TopBar() {
   const { status, user, signOut } = useAuth();
-  const { lang, setLang, t, languages } = useLanguage();
+  const { t } = useLanguage();
   const router = useRouter();
   // The reviewer panels are review-only: no create menu inside them.
   const pathname = usePathname();
@@ -134,7 +136,7 @@ export function TopBar() {
                   {notifications.length === 0 && <div className="notif-item">{t("nav.noNotifications")}</div>}
                   {notifications.map((n, i) => (
                     <div key={n.id}>
-                      <div className="notif-item">{n.body}</div>
+                      <div className="notif-item"><Translated type="notification" id={n.id} field="body" text={n.body} as="span" /></div>
                       {i < notifications.length - 1 && <hr />}
                     </div>
                   ))}
@@ -165,18 +167,7 @@ export function TopBar() {
             </>
           ) : (
             <div className="loggedout-actions">
-              <select
-                value={lang}
-                onChange={(e) => setLang(e.target.value)}
-                style={{ width: "auto", padding: "8px 10px", fontSize: 13 }}
-                aria-label={t("common.language")}
-              >
-                {languages.map((l) => (
-                  <option key={l.code} value={l.code}>
-                    {l.label}
-                  </option>
-                ))}
-              </select>
+              <LanguageSelect style={{ width: "auto", padding: "8px 10px", fontSize: 13 }} />
               <button className="btn" onClick={() => router.push("/login")}>
                 {t("common.logIn")}
               </button>

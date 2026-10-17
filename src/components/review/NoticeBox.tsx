@@ -1,6 +1,7 @@
 "use client";
 
 import { useLanguage } from "@/contexts/LanguageContext";
+import { Translated } from "@/components/ui/Translated";
 import type { UiKey } from "@/lib/i18n/strings";
 
 // A reviewer's notice shown above a post, file or comment. It names the tier
@@ -11,12 +12,13 @@ const TIER: Record<string, UiKey> = {
   creator: "notice.tier.creator",
 };
 
-export function NoticeBox({ notice }: { notice: { tier: string; body: string } | null | undefined }) {
+export function NoticeBox({ notice, itemKey }: { notice: { tier: string; body: string } | null | undefined; itemKey?: string }) {
   const { t } = useLanguage();
   if (!notice) return null;
   return (
     <div className="banner-box" role="note" style={{ margin: "0 0 10px", display: "block" }}>
-      <strong>{t("notice.from", { tier: t(TIER[notice.tier] ?? "notice.tier.reviewer") })}</strong> {notice.body}
+      <strong>{t("notice.from", { tier: t(TIER[notice.tier] ?? "notice.tier.reviewer") })}</strong>{" "}
+      {itemKey ? <Translated type="notice" id={itemKey} field="body" text={notice.body} as="span" /> : notice.body}
     </div>
   );
 }

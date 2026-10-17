@@ -367,5 +367,17 @@
   "u.files": "檔案",
   "u.recentPosts": "最近的帖子",
   "u.fileBoard": "資源板 · {n} 次瀏覽",
-  "u.expBoard": "經驗分享板 · {n} 條回覆"
+  "u.expBoard": "經驗分享板 · {n} 條回覆",
+  "translate.from": "譯自{language}",
+  "translate.showOriginal": "檢視原文",
+  "translate.showTranslation": "檢視譯文",
+  "translate.paused": "今天的翻譯額度已用完，因此這裡顯示原文。",
+  "lang.add": "+ 新增其他語言……",
+  "lang.addTitle": "新增語言",
+  "lang.addHelp": "輸入語言的名稱，寫法不限。本站的文字將由 AI 翻譯，可能會有錯誤。大約需要一分鐘。",
+  "lang.addPlaceholder": "例如：Español、日本語、Tagalog",
+  "lang.addGo": "新增此語言",
+  "lang.working": "正在把本站翻譯成{name}……{pct}%",
+  "lang.retrying": "翻譯服務繁忙，稍後會自動重試……",
+  "lang.failed": "耗時過長，請稍後再試。"
 }

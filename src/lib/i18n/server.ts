@@ -1,5 +1,6 @@
 import "server-only";
 import { cookies, headers } from "next/headers";
+import { getUiStrings } from "@/lib/translate/ui-languages";
 import { STATIC_TABLES, isStaticLanguage, matchStaticLanguage, translateKey, type StaticLanguage, type TParams, type UiKey } from "./strings";
 
 export const LANG_COOKIE = "aoehub.lang";
@@ -23,9 +24,11 @@ export async function getRequestLanguage(): Promise<{ lang: string; fromBrowser:
   return { lang: "en", fromBrowser: true, browserTag: tags[0] ?? null };
 }
 
-/** For server components: returns a t() in the request's language (English for AI-added languages until they load). */
+/** For server components: returns a t() in the request's language (English where an AI-added language lacks a string). */
 export async function getServerT() {
   const { lang } = await getRequestLanguage();
-  const table = isStaticLanguage(lang) ? STATIC_TABLES[lang as StaticLanguage] : undefined;
+  const table = isStaticLanguage(lang)
+    ? STATIC_TABLES[lang as StaticLanguage]
+    : ((await getUiStrings(lang).catch(() => null)) as Partial<Record<UiKey, string>> | null) ?? undefined;
   return { lang, t: (key: UiKey, params?: TParams) => translateKey(table, key, params) };
 }

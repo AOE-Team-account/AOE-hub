@@ -367,5 +367,17 @@
   "u.files": "Files",
   "u.recentPosts": "Recent posts",
   "u.fileBoard": "File board · {n} views",
-  "u.expBoard": "Experience board · {n} replies"
+  "u.expBoard": "Experience board · {n} replies",
+  "translate.from": "Translated from {language}",
+  "translate.showOriginal": "Show original",
+  "translate.showTranslation": "Show translation",
+  "translate.paused": "Translation is paused for today, so this is shown in its original language.",
+  "lang.add": "+ Add another language…",
+  "lang.addTitle": "Add a language",
+  "lang.addHelp": "Type the name of a language, in any spelling. The hub's text will be translated by AI, which can make mistakes. It takes about a minute.",
+  "lang.addPlaceholder": "e.g. Español, 日本語, Tagalog",
+  "lang.addGo": "Add this language",
+  "lang.working": "Translating the hub into {name}… {pct}%",
+  "lang.retrying": "The translation service is busy. Trying again in a moment…",
+  "lang.failed": "This took too long. Please try again later."
 }

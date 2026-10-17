@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { Translated } from "@/components/ui/Translated";
 import { ChipRow } from "@/components/ui/ChipRow";
 import type { ReviewData, ReviewItem, ReviewReport, Summary } from "@/lib/data/review";
 
@@ -116,7 +117,17 @@ export function ReviewPanel({ data, isCreator, canSuspend }: { data: ReviewData;
     return (
       <>
         <p style={{ fontWeight: 500, margin: "0 0 2px" }}>{item.title}</p>
-        {item.excerpt && <p className="muted" style={{ margin: "0 0 6px" }}>{item.excerpt}</p>}
+        {item.excerpt && (
+          <Translated
+            type={item.kind === "file" ? "file" : item.kind === "post" ? "experience-post" : "comment"}
+            id={item.id}
+            field={item.kind === "file" ? "description" : "body"}
+            text={item.excerpt}
+            className="muted"
+            style={{ margin: "0 0 6px" }}
+            note
+          />
+        )}
         <p className="tiny" style={{ margin: "0 0 6px" }}>
           By {item.authorName} · <strong>{recordText(summary)}</strong>
           {summary && summary.status !== "active" ? ` · ${summary.status}` : ""}

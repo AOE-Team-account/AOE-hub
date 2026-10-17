@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/contexts/ThemeContext";
+import { LanguageSelect } from "@/components/ui/LanguageSelect";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { THEME_SWATCH_ORDER, TEXT_ZOOM_OPTIONS, type TextZoom } from "@/lib/theme-presets";
 import { rich } from "@/lib/i18n/rich";
@@ -21,7 +22,7 @@ const ZOOM_FONT_SIZE: Record<TextZoom, number> = { 0.9: 12, 1: 15, 1.15: 18, 1.3
 
 export default function SettingsPage() {
   const { themeKey, setThemeKey, dark, setDark, textZoom, setTextZoom } = useTheme();
-  const { lang, setLang, t, languages, machineTranslated } = useLanguage();
+  const { t, machineTranslated } = useLanguage();
   const [notifyOn, setNotifyOn] = useState(true);
   const { status, signOut, user } = useAuth();
   const router = useRouter();
@@ -89,11 +90,7 @@ export default function SettingsPage() {
 
       <section className="settings-block">
         <p className="label">{t("common.language")}</p>
-        <select value={lang} onChange={(e) => setLang(e.target.value)} style={{ width: "auto", maxWidth: 260 }}>
-          {languages.map((l) => (
-            <option key={l.code} value={l.code}>{l.label}{l.source === "ai" ? " (AI)" : ""}</option>
-          ))}
-        </select>
+        <LanguageSelect style={{ width: "auto", maxWidth: 260 }} />
         <p className="tiny" style={{ marginTop: 6 }}>{t("settings.languageHint")}</p>
         {machineTranslated && <p className="tiny" style={{ marginTop: 4 }}>{t("common.machineTranslated")}</p>}
       </section>

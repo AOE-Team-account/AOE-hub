@@ -1767,6 +1767,98 @@ create table if not exists public.ai_provider_state (
 );
 alter table public.ai_provider_state enable row level security;
 
+-- ============================================================================
+-- Translation (Step 6a). Three written languages (English, Simplified and
+-- Traditional Chinese) live in the app's files. Every other language is added
+-- by AI and kept here; posts, comments and notices are translated on demand
+-- and remembered so the same text is never translated twice.
+-- All of these are reached only by the server (service role).
+-- ============================================================================
+
+create table if not exists public.ui_languages (
+  code text primary key check (code ~ '^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$'),
+  english_name text not null,
+  native_name text not null,
+  status text not null default 'building' check (status in ('building', 'ready', 'failed')),
+  done_keys integer not null default 0,
+  total_keys integer not null default 0,
+  created_at timestamptz not null default now(),
+  created_by uuid
+);
+alter table public.ui_languages enable row level security;
+
+create table if not exists public.ui_strings (
+  lang text not null references public.ui_languages (code) on delete cascade,
+  key text not null,
+  value text not null,
+  primary key (lang, key)
+);
+alter table public.ui_strings enable row level security;
+
+-- One row per translated field of a post, comment, notice or notification.
+-- source_hash changes when the author edits the text, which makes the row
+-- stale. translated is NULL when the text is already in the target language.
+create table if not exists public.content_translations (
+  item_type text not null check (item_type in ('experience-post', 'file', 'comment', 'notice', 'notification')),
+  item_id text not null,
+  field text not null,
+  target_lang text not null,
+  source_hash text not null,
+  source_lang text,
+  translated text,
+  method text not null check (method in ('opencc', 'ai', 'same')),
+  created_at timestamptz not null default now(),
+  primary key (item_type, item_id, field, target_lang)
+);
+alter table public.content_translations enable row level security;
+
+-- Daily counters behind the translation caps. kind: 'content' (posts etc.),
+-- 'ui' (interface strings of a new language), 'language' (languages added).
+create table if not exists public.translation_usage (
+  day date not null,
+  kind text not null,
+  used integer not null default 0,
+  primary key (day, kind)
+);
+alter table public.translation_usage enable row level security;
+
+-- Takes p_n units from today's allowance for p_kind. Returns false (and takes
+-- nothing) if that would go over p_cap. Atomic, so parallel requests cannot
+-- jointly overspend.
+create or replace function public.take_translation_budget(p_kind text, p_n integer, p_cap integer)
+returns boolean
+language plpgsql
+volatile
+set search_path = public
+as $$
+declare
+  v_used integer;
+begin
+  insert into public.translation_usage (day, kind, used) values (current_date, p_kind, 0)
+  on conflict (day, kind) do nothing;
+  update public.translation_usage set used = used + p_n
+   where day = current_date and kind = p_kind and used + p_n <= p_cap
+  returning used into v_used;
+  return v_used is not null;
+end;
+$$;
+
+-- Gives back unused units (a request that failed after taking them).
+create or replace function public.refund_translation_budget(p_kind text, p_n integer)
+returns void
+language sql
+volatile
+set search_path = public
+as $$
+  update public.translation_usage set used = greatest(0, used - p_n) where day = current_date and kind = p_kind;
+$$;
+
+insert into public.hub_settings (key, value) values
+  ('translation_daily_cap', '2000'::jsonb),
+  ('new_language_daily_cap', '3'::jsonb),
+  ('max_ai_languages', '30'::jsonb)
+on conflict (key) do nothing;
+
 -- ---- Questions: "I don't know" posts a question to the Experience Board ----
 -- (Replaces the admin inbox, chat5/6.) A question is an ordinary Experience
 -- Board post in the "question" category. Current Verified members and
@@ -3468,6 +3560,7 @@ alter default privileges in schema public revoke insert, update, delete, truncat
 revoke all on public.kb_documents, public.kb_chunks, public.post_views from anon, authenticated;
 revoke all on public.warnings, public.account_referrals from anon, authenticated;
 revoke all on public.kb_document_models, public.ai_provider_state from anon, authenticated;
+revoke all on public.ui_languages, public.ui_strings, public.content_translations, public.translation_usage from anon, authenticated;
 revoke insert, update, delete, truncate on public.ai_key_help from anon, authenticated;
 revoke all on public.hub_settings, public.creator_access, public.creator_sessions, public.creator_recovery_keys, public.creator_security_events from anon, authenticated;
 revoke all on public.restrictions from anon;
