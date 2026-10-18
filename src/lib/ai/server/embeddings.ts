@@ -91,7 +91,9 @@ async function embedGemini(model: string, texts: string[], kind: EmbedKind): Pro
         break;
       } catch (err) {
         if (err instanceof AIProviderError && err.status === 429) {
-          keyRestUntil.set(k.id, Date.now() + (err.retryAfterSec ?? 60) * 1000);
+          // Google's daily-limit message can say "retry in 24 hours", but the limit resets at
+        // midnight Pacific: rest at most 30 minutes so a key is tried again soon after the reset.
+        keyRestUntil.set(k.id, Date.now() + Math.min(err.retryAfterSec ?? 60, 1800) * 1000);
           lastLimit = err;
           continue;
         }
