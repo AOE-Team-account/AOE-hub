@@ -74,7 +74,20 @@ export async function cleanupEmbeddingModels(): Promise<number> {
   const keep = [await getLiveEmbeddingModel()];
   const next = await getNextEmbeddingModel();
   if (next) keep.push(next);
-  const { data, error } = await createServiceRoleClient().rpc("kb_cleanup_models", { p_keep: keep });
-  if (error) throw new Error(error.message);
-  return data as number;
+  const db = createServiceRoleClient();
+  const others = `(${keep.map((m) => `"${m}"`).join(",")})`;
+  // The vectors are large, so deleting thousands in one statement runs past the
+  // database's time limit: remove them a couple of hundred at a time.
+  let removed = 0;
+  for (;;) {
+    const { data, error } = await db.from("kb_chunks").select("id").or(`embedding_model.is.null,embedding_model.not.in.${others}`).limit(200);
+    if (error) throw new Error(error.message);
+    if (!data || data.length === 0) break;
+    const del = await db.from("kb_chunks").delete().in("id", data.map((r) => r.id as string));
+    if (del.error) throw new Error(del.error.message);
+    removed += data.length;
+  }
+  const { error: modelsError } = await db.from("kb_document_models").delete().not("model", "in", others);
+  if (modelsError) throw new Error(modelsError.message);
+  return removed;
 }

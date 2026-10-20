@@ -269,3 +269,58 @@ Once you answer 1 to 8, I can build Steps 7 and 8 without redoing anything when 
 - **Content rules:** Clara supplied a short "Strictly banned / Allowed & supported" list (replaces the list from the first round as the public summary). Allowed includes traditional measured parental discipline, including Biblical corporal correction.
 
 **Still open:** the largest SINGLE file in the big packs (scanner limits, see reply); how strictly each content rule is enforced (permanent ban vs warning ladder vs notice); the reviewer test for "LGBTQ+ ideas, gender theories or sexual orientation topics"; how the hub AI should behave on these topics; whether the long list becomes the reviewers' detailed guide; Clara's location (governing law); the official email address; whether to leave the postal address out at launch.
+
+---
+
+## 14. What each policy page must say, from Clara's answers (2026-10-20) [new]
+
+**Content rules, final structure (Clara, 2026-10-20):**
+1. **Permanent ban and removal:** child abuse, cruelty, neglect or emotional terror; graphic, sexual or adult content; hate speech, violence or dehumanization (race, origin, sex); cultic recruitment, high-control groups, psychological manipulation; religious extremism, calls to violence, spiritual abuse; **scams** (educational scams, MLM, fake "miracle" cures); selling or promoting hazardous supplements or unverified medical practices.
+2. **Removal plus the warning ladder:** teaching or promoting LGBTQ+ ideas, gender theories or sexual-orientation ideas as right or welcome (especially to children); undermining parental authority or encouraging secrets from parents; **scams** (also here, for lesser cases).
+3. **Notice only (no removal, no ban):** "twaddle" (shallow busywork, vulgar content, mindless screen reliance) and high-stress cramming / public shaming.
+- **The LGBTQ+ line, in Clara's words:** *not* any mention. A member saying these ideas are wrong, or telling parents how to avoid them, **stays**. A parent asking how to answer a child's question **stays**. A faith statement **stays**. What goes is content that **teaches these ideas as right and to be welcomed, or promotes them to children.** This is the part where the hub helps new parents.
+- **Allowed and supported:** traditional, measured parental discipline (including Biblical corporal correction); traditional faith, prayer, scripture study, creationism and religious values; high-quality classical materials and rich literature; discussion of the soul, spiritual growth and moral character; open inquiry into natural mysteries and unexplained phenomena. *(Open advice to Clara, not yet answered: a lawyer should read the corporal-correction wording; more than 60 countries ban physical punishment even at home, and no step-by-step instructions is the safer line.)*
+- **The long list** (the detailed first-round guidelines) is posted by Clara's own account as a "thought" post on the Experience Board and is also the reviewers' detailed guide (Rules for reviewers); the short list above is the public summary in the Content Policy.
+- **The hub AI on these topics:** it answers only from its books and approved community answers (the RAG data). If it cannot answer, it offers to post the question on the Experience Board so other members answer and Verified members and Answerers can confirm. (Already how it works.) The AI also carries the reminder: **do not put private information into the hub AI.**
+
+**Terms of Service:** operator = **"AOE Team"** (Clara's real name only where a law or registration needs a human name; lawyer); governing law and courts = those of Clara's place (**location still needed**; covers disputes between the hub and a member; does not cover a suit by an outsider such as a copyright holder; a member's own consumer-protection rights may still apply; LAWYER); the **upload acknowledgement** (files can be downloaded, remixed with or without credit and used by others; credit is tried but cannot be guaranteed; some remixes may not carry the label or link to the original) plus "I have the right to share it"; the **optional** "Made with AI" label; permission to host, show, translate, index and back up what members post; the three content tiers; warnings, notices, restrictions, suspension; **appeals** (decided by a reviewer other than the one involved; Creator decisions only to the Creator); deletion = disabled at once, erased after **30 days**, Creator can restore until then; the AI can be wrong and members must **not put private information into the hub AI**; the **official policy text is English and Chinese**; other languages are unofficial AI translations; daily upload limits exist and may change.
+
+**Privacy Policy:** who runs it ("AOE Team") and the contact address; the AI free plan: member questions go to **Google** (on the free plan Google may use them and people may read them) and **Groq**, and the member cannot tell which one answered; text to be translated, and the name of a language a visitor asks for, also goes to Google/Groq; **retention table:** self-deleted and Creator-deleted accounts are both kept **30 days**, then the member's data, **warnings and the activity log about them are erased**; backups keep older copies up to a year (or shorten the weekly backups); files on the Internet Archive are public and permanent; **profile pictures are visible to anyone who can open the profile** (advise: do not use a photo of a child); cookies: sign-in and language cookie only, no trackers, **an information notice** (a lawyer decides if consent is legally required); rights: see, correct, delete, object, and **download my data**; postal address only if a US copyright agent is registered (a P.O. box is safer).
+
+**Content Policy:** the three tiers and the allowed list above; profile pictures follow "No graphic, sexual, or adult content"; the reviewer test for the LGBTQ+ line above.
+
+**Safety Policy:** the **urgent report** (goes to the top of every reviewer's list); how reports are handled; the **profile-picture report** (a reviewer looks first; only if it breaks the rule is the picture removed and the member asked to change it; otherwise dismissed); reviewers never handle reports about their own accounts; child-safety reporting where the law requires it (LAWYER); how evidence is kept (30 days).
+
+**Community Policy, About, Contact, DMCA:** Community Policy = the short friendly version (welcome, the allowed list, the three tiers in plain words); About = "AOE Team" (how much more is still Clara's open decision, 11.11); Contact = the official email, with separate role addresses if she wants them (general, safety, copyright, privacy, appeals); DMCA = the **takedown form** (also usable by people without an account), a counter-notice step, a repeat-infringer rule, and, only if a US copyright agent is registered, the agent's real name and a (P.O. box) postal address (public).
+
+**Footer / sign-up:** links to all policies; sign-up agreement; the cookie notice; each policy shows its **version** and date.
+
+---
+
+## 15. Build list: things still to be built because of these decisions [new]
+
+**Step 7 (scanner, hosting, link-outs):**
+1. ClamAV scanner (Cloud Run or small server); nothing downloadable until clean. Limits: ClamAV cannot scan a single file over about 4 GB; VirusTotal about 650 MB. **Clara to say the largest single file in her packs.**
+2. **Upload limits as data:** default 100 files and 1 GB per member per day, changeable up or down by the Creator in the Creator panel without a code change, easy to reach, **per-member override**, the Creator's own account not capped (Clara is uploading large packs while testing).
+3. **Big uploads:** direct-to-storage, resumable uploads (today the server rejects over 200 MB), and a **Creator bulk-import tool** run from Clara's computer from a folder.
+4. Games/apps up to 50 MB hosted; larger as **link-outs** to approved sites only: GitHub, itch.io, Steam, the member's own site, Unity Play (list stored as editable data; a "you are leaving AOEhub" notice).
+5. Upload form: the **acknowledgement checkbox** (wording above), the **optional "Made with AI"** checkbox on the upload and post forms, shown on the item.
+6. **Reports:** a **takedown** form (public too), an **urgent report** (top of the reviewers' list), a **report-profile-picture** option in the report-user menu; routing by file or post to Creator/Watchers/Deacons as today.
+7. **Appeals:** a member contests a warning, restriction or suspension from where they see it; the appeal goes to a reviewer other than the one who decided (Creator decisions to the Creator only).
+
+**Step 8 (profile, password):**
+8. **Profile pictures:** upload, re-save and scan, visible to anyone who can open the profile, reportable; on a confirmed violation the picture goes back to initials and the member gets the notice "please change your profile picture; it violated the hub content policy: No graphic, sexual, or adult content"; if the report is dismissed nothing is sent.
+9. **Password reset** and security emails (needs a sending service, the hub's email address and DNS records).
+10. **"Download my data"** (in Settings, made on the spot, nothing stored).
+
+**Retention and housekeeping:**
+11. **Evidence retention job:** both self-deleted and Creator-deleted accounts erased after 30 days, including the member's warnings and the activity log about them; needs the scheduler (the cron endpoints are not wired yet).
+12. Remove translations when text is deleted (done), clean up old data (done).
+
+**Step 6b (last):**
+13. **Policy page shell and pages:** official English and Chinese (Simplified written by Clara; **Traditional converted automatically** and labelled so); a visitor in any other language sees English with a **"Translate into my language" button** (AI, labelled unofficial, English/Chinese counts); version and date on each page.
+14. **Cookie information notice** (no third-party tool); footer and sign-up links; policy agreement at sign-up.
+15. **Three welcome cards:** Exploring, In school, and one shared Homeschooling + Unschooling; each welcomes the member and says what the hub has (Experience Board, File Board, hub AI).
+16. A visible **"don't put private information in the hub AI"** line in the AI chat box; AI-written message translations for system notifications (already translated by the content engine).
+
+**Open items from Clara still needed:** official email address; Clara's location (governing law); largest single file; whether to keep corporal-correction wording as is (lawyer read recommended); About-page detail (11.11).
