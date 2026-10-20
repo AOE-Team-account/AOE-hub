@@ -259,7 +259,7 @@ export function CreatorClient({ data }: { data: CreatorData }) {
               <p className="title" style={{ marginBottom: 4 }}>Upload limit for {limitFor.person.name}</p>
               <p className="tiny" style={{ marginBottom: 8 }}>
                 {limitFor.limitFiles === null ? "No limit (Creator account)." : `Now: ${limitFor.limitFiles.toLocaleString()} files and ${formatBytes(limitFor.limitBytes ?? 0)} a day.`}{" "}
-                Used today: {limitFor.usedFiles.toLocaleString()} files, {formatBytes(limitFor.usedBytes)}. Leave a box empty to use the hub's normal limit for it.
+                Used today: {limitFor.usedFiles.toLocaleString()} files, {formatBytes(limitFor.usedBytes)}. Leave a box empty to use the hub&apos;s normal limit for it.
               </p>
               <div className="row wrap" style={{ gap: 8 }}>
                 <input style={{ width: 150 }} inputMode="numeric" placeholder="Files per day" value={limitFor.files} onChange={(e) => setLimitFor({ ...limitFor, files: e.target.value.replace(/[^0-9]/g, "") })} />
