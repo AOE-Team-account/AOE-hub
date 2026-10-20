@@ -255,3 +255,17 @@ Once you answer 1 to 8, I can build Steps 7 and 8 without redoing anything when 
 8. **Official Chinese policy:** Simplified only (Traditional converted automatically) or two written versions?
 9. **Profile pictures:** report them? (reasons given to Clara)
 10. **About page (11.11):** Clara is thinking about it.
+
+### Second round of answers, 2026-10-20 (later the same day)
+**Settled:**
+- **Public name (11.1 / 12.6):** "AOE Team" is the public Creator/operator label; Clara's real name is used only where a law or registration truly needs a human name (for example the US copyright agent registration). Postal address: undecided (little real mail arrives; see reply); can be left out at launch.
+- **Governing law:** understood (the law and courts named in the Terms settle disputes between the hub and a member). Clara's location still needed.
+- **"Download my data":** yes, if it costs no storage (it is built on the spot and not stored). Built at the end.
+- **Profile pictures:** a "Report profile picture" option in the report-user menu (three dots). The report goes to Creator/Watchers/Deacons, who LOOK at the picture first. Only if it breaks "No graphic, sexual, or adult content" is the picture removed (back to initials) and the member sent a notice asking them to change it. If it is fine, the report is dismissed and nothing is sent. Reviewers never handle reports about their own account (already how the panels work: they can see that a report exists and why, but another reviewer decides).
+- **Upload limits:** default 100 files and 1 GB per member per day, **changeable up or down in the Creator panel without a code change**, easy to reach, with a per-member override; the Creator account itself is not capped. Clara will upload very large packs while testing (a few MB up to tens of GB per pack, made of several files).
+- **Appeals:** an appeal (and any report about a Watcher's or Deacon's own account) is decided by a reviewer other than the person whose decision or account is involved. Anything decided by the Creator can only be appealed to the Creator.
+- **Chinese policies:** Simplified written by Clara; Traditional converted automatically by the free converter.
+- **Evidence retention:** **30 days for both** self-deleted and Creator-deleted accounts (disabled at once; personal data, warnings and the activity log about that member erased on day 30; the Creator can restore until then). Backups keep older copies up to a year, so the Privacy Policy must say so (or the weekly backups get shortened).
+- **Content rules:** Clara supplied a short "Strictly banned / Allowed & supported" list (replaces the list from the first round as the public summary). Allowed includes traditional measured parental discipline, including Biblical corporal correction.
+
+**Still open:** the largest SINGLE file in the big packs (scanner limits, see reply); how strictly each content rule is enforced (permanent ban vs warning ladder vs notice); the reviewer test for "LGBTQ+ ideas, gender theories or sexual orientation topics"; how the hub AI should behave on these topics; whether the long list becomes the reviewers' detailed guide; Clara's location (governing law); the official email address; whether to leave the postal address out at launch.
