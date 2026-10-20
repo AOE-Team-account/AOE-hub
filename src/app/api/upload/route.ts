@@ -55,6 +55,24 @@ export async function POST(request: Request) {
     }
   }
 
+  // The daily allowance (set by the Creator; the Creator's own account has none).
+  // Taken before anything is stored, and given back for files that fail.
+  const totalBytes = files.reduce((n, f) => n + f.size, 0);
+  const allowance = await createServiceRoleClient().rpc("take_upload_allowance", { p_user: user.id, p_files: files.length, p_bytes: totalBytes });
+  if (allowance.error) {
+    console.error("Upload allowance check failed:", allowance.error.message);
+    return NextResponse.json({ error: "Could not check your upload allowance. Please try again." }, { status: 500 });
+  }
+  const allow = allowance.data as { ok: boolean; files_left: number | null; bytes_left: number | null };
+  if (!allow.ok) {
+    return NextResponse.json(
+      { error: "Daily upload limit reached.", code: "daily-limit", filesLeft: allow.files_left, bytesLeft: allow.bytes_left },
+      { status: 429 }
+    );
+  }
+  let refundFiles = 0;
+  let refundBytes = 0;
+
   const { data: post, error: postError } = await supabase
     .from("file_posts")
     .insert({
@@ -70,6 +88,7 @@ export async function POST(request: Request) {
     .single();
 
   if (postError || !post) {
+    await createServiceRoleClient().rpc("refund_upload_allowance", { p_user: user.id, p_files: files.length, p_bytes: totalBytes });
     return NextResponse.json({ error: postError ? friendlyWriteError(postError) : "Could not create the post." }, { status: 500 });
   }
 
@@ -94,6 +113,8 @@ export async function POST(request: Request) {
     } catch (err) {
       console.error(`Storage upload failed for ${file.name}:`, err);
       results.push({ label, scanStatus: "pending" });
+      refundFiles++;
+      refundBytes += buffer.length;
       continue; // don't record an asset row for a file that never made it to storage
     }
 
@@ -138,5 +159,8 @@ export async function POST(request: Request) {
     results.push({ label, scanStatus });
   }
 
+  if (refundFiles > 0) {
+    await createServiceRoleClient().rpc("refund_upload_allowance", { p_user: user.id, p_files: refundFiles, p_bytes: refundBytes });
+  }
   return NextResponse.json({ postId: post.id, results });
 }

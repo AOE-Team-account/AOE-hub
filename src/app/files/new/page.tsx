@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useRequireAuthPage } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { formatBytes } from "@/lib/format";
 import type { UiKey } from "@/lib/i18n/strings";
 import { BackLink } from "@/components/ui/BackLink";
 import { Button } from "@/components/ui/Button";
@@ -88,7 +89,15 @@ export default function UploadFilePage() {
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || t("upload.failed"));
+        if (data.code === "daily-limit") {
+          setError(
+            data.filesLeft > 0 && data.bytesLeft > 0
+              ? t("upload.limitReached", { files: data.filesLeft, size: formatBytes(data.bytesLeft) })
+              : t("upload.limitNone")
+          );
+        } else {
+          setError(data.error || t("upload.failed"));
+        }
         setSubmitting(false);
         setStatusMessage(null);
         return;

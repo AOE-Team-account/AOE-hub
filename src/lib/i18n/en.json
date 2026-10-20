@@ -379,5 +379,7 @@
   "lang.addGo": "Add this language",
   "lang.working": "Translating the hub into {name}… {pct}%",
   "lang.retrying": "The translation service is busy. Trying again in a moment…",
-  "lang.failed": "This took too long. Please try again later."
+  "lang.failed": "This took too long. Please try again later.",
+  "upload.limitReached": "You've reached today's upload limit. You can still upload {files} files ({size}) today. The limit starts again at midnight UTC.",
+  "upload.limitNone": "You've reached today's upload limit. The limit starts again at midnight UTC."
 }

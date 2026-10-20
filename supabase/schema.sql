@@ -3453,11 +3453,172 @@ set search_path = public
 as $$
 begin
   if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
-  if p_key not in ('require_2fa_staff') then raise exception 'Unknown setting.'; end if;
+  if p_key = 'require_2fa_staff' then
+    if jsonb_typeof(p_value) <> 'boolean' then raise exception 'That setting is on or off.'; end if;
+  elsif p_key = 'upload_daily_files' then
+    if jsonb_typeof(p_value) <> 'number' or (p_value)::numeric < 0 or (p_value)::numeric > 1000000 or (p_value)::numeric <> trunc((p_value)::numeric) then
+      raise exception 'Use a whole number of files between 0 and 1,000,000.';
+    end if;
+  elsif p_key = 'upload_daily_bytes' then
+    if jsonb_typeof(p_value) <> 'number' or (p_value)::numeric < 0 or (p_value)::numeric > 10000000000000 or (p_value)::numeric <> trunc((p_value)::numeric) then
+      raise exception 'Use a size between 0 and 10 TB.';
+    end if;
+  else
+    raise exception 'Unknown setting.';
+  end if;
   insert into public.hub_settings (key, value, updated_by) values (p_key, p_value, auth.uid())
   on conflict (key) do update set value = excluded.value, updated_at = now(), updated_by = excluded.updated_by;
   perform private.log_activity(auth.uid(), 'setting-changed', null, null, null, null,
                                jsonb_build_object('key', p_key, 'value', p_value));
+end;
+$$;
+
+-- ============================================================================
+-- Daily upload allowance (Step 7). One default for everyone (hub_settings:
+-- upload_daily_files, upload_daily_bytes) that the Creator can raise or lower
+-- in the Creator panel at any time, plus an optional override for one member.
+-- The Creator account itself is never limited. The day is the UTC day.
+-- ============================================================================
+create table if not exists public.upload_usage (
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  day date not null,
+  files integer not null default 0,
+  bytes bigint not null default 0,
+  primary key (user_id, day)
+);
+alter table public.upload_usage enable row level security;
+
+create table if not exists public.member_upload_limits (
+  user_id uuid primary key references public.profiles (id) on delete cascade,
+  files_per_day integer check (files_per_day is null or files_per_day >= 0),
+  bytes_per_day bigint check (bytes_per_day is null or bytes_per_day >= 0),
+  updated_at timestamptz not null default now()
+);
+alter table public.member_upload_limits enable row level security;
+
+insert into public.hub_settings (key, value) values
+  ('upload_daily_files', '100'::jsonb),
+  ('upload_daily_bytes', '1073741824'::jsonb)
+on conflict (key) do nothing;
+
+-- What this member may upload per day: their own override, else the hub default.
+-- Returns nulls (= no limit) for the Creator.
+create or replace function private.upload_limits(p_user uuid, out o_files bigint, out o_bytes bigint)
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+declare
+  v_ov public.member_upload_limits;
+begin
+  if private.has_role(p_user, 'creator') then
+    o_files := null; o_bytes := null; return;
+  end if;
+  select * into v_ov from public.member_upload_limits where user_id = p_user;
+  o_files := coalesce(v_ov.files_per_day,
+    (select case when jsonb_typeof(value) = 'number' then (value)::numeric::bigint end from public.hub_settings where key = 'upload_daily_files'), 100);
+  o_bytes := coalesce(v_ov.bytes_per_day,
+    (select case when jsonb_typeof(value) = 'number' then (value)::numeric::bigint end from public.hub_settings where key = 'upload_daily_bytes'), 1073741824);
+end;
+$$;
+
+-- Server only. Takes p_files / p_bytes from today's allowance if they fit;
+-- atomic, so two uploads at once cannot overspend. Always answers with the
+-- numbers the member needs for a clear message.
+create or replace function public.take_upload_allowance(p_user uuid, p_files integer, p_bytes bigint)
+returns jsonb
+language plpgsql
+volatile
+set search_path = public
+as $$
+declare
+  v_lf bigint;
+  v_lb bigint;
+  v_files integer;
+  v_bytes bigint;
+  v_ok boolean := false;
+begin
+  select o_files, o_bytes into v_lf, v_lb from private.upload_limits(p_user);
+  insert into public.upload_usage (user_id, day) values (p_user, (now() at time zone 'utc')::date)
+  on conflict (user_id, day) do nothing;
+  update public.upload_usage
+     set files = files + p_files, bytes = bytes + p_bytes
+   where user_id = p_user and day = (now() at time zone 'utc')::date
+     and (v_lf is null or files + p_files <= v_lf)
+     and (v_lb is null or bytes + p_bytes <= v_lb)
+  returning files, bytes into v_files, v_bytes;
+  v_ok := v_files is not null;
+  if not v_ok then
+    select files, bytes into v_files, v_bytes from public.upload_usage where user_id = p_user and day = (now() at time zone 'utc')::date;
+  end if;
+  return jsonb_build_object(
+    'ok', v_ok,
+    'limit_files', v_lf, 'limit_bytes', v_lb,
+    'files_left', case when v_lf is null then null else greatest(0, v_lf - v_files) end,
+    'bytes_left', case when v_lb is null then null else greatest(0, v_lb - v_bytes) end);
+end;
+$$;
+
+-- Server only: gives back files that did not make it into storage.
+create or replace function public.refund_upload_allowance(p_user uuid, p_files integer, p_bytes bigint)
+returns void
+language sql
+volatile
+set search_path = public
+as $$
+  update public.upload_usage
+     set files = greatest(0, files - p_files), bytes = greatest(0, bytes - p_bytes)
+   where user_id = p_user and day = (now() at time zone 'utc')::date;
+$$;
+
+-- Creator panel: one member's override and today's use.
+create or replace function public.member_upload_limit(p_user_id uuid)
+returns jsonb
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+declare
+  v_ov public.member_upload_limits;
+  v_use public.upload_usage;
+  v_lf bigint;
+  v_lb bigint;
+begin
+  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
+  select * into v_ov from public.member_upload_limits where user_id = p_user_id;
+  select * into v_use from public.upload_usage where user_id = p_user_id and day = (now() at time zone 'utc')::date;
+  select o_files, o_bytes into v_lf, v_lb from private.upload_limits(p_user_id);
+  return jsonb_build_object(
+    'override_files', v_ov.files_per_day, 'override_bytes', v_ov.bytes_per_day,
+    'limit_files', v_lf, 'limit_bytes', v_lb,
+    'used_files', coalesce(v_use.files, 0), 'used_bytes', coalesce(v_use.bytes, 0));
+end;
+$$;
+
+-- Creator panel: set (or, with both null, clear) one member's override.
+create or replace function public.set_member_upload_limit(p_user_id uuid, p_files integer, p_bytes bigint)
+returns void
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+begin
+  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
+  if not exists (select 1 from public.profiles where id = p_user_id) then raise exception 'No such member.'; end if;
+  if (p_files is not null and (p_files < 0 or p_files > 1000000)) or (p_bytes is not null and (p_bytes < 0 or p_bytes > 10000000000000)) then
+    raise exception 'That limit is out of range.';
+  end if;
+  if p_files is null and p_bytes is null then
+    delete from public.member_upload_limits where user_id = p_user_id;
+  else
+    insert into public.member_upload_limits (user_id, files_per_day, bytes_per_day) values (p_user_id, p_files, p_bytes)
+    on conflict (user_id) do update set files_per_day = excluded.files_per_day, bytes_per_day = excluded.bytes_per_day, updated_at = now();
+  end if;
+  perform private.log_activity(auth.uid(), 'setting-changed', 'user', p_user_id, p_user_id, null,
+                               jsonb_build_object('key', 'upload_limit', 'files', p_files, 'bytes', p_bytes));
 end;
 $$;
 
@@ -3609,6 +3770,7 @@ revoke all on public.kb_documents, public.kb_chunks, public.post_views from anon
 revoke all on public.warnings, public.account_referrals from anon, authenticated;
 revoke all on public.kb_document_models, public.ai_provider_state from anon, authenticated;
 revoke all on public.ui_languages, public.ui_strings, public.content_translations, public.translation_usage from anon, authenticated;
+revoke all on public.upload_usage, public.member_upload_limits from anon, authenticated;
 revoke insert, update, delete, truncate on public.ai_key_help from anon, authenticated;
 revoke all on public.hub_settings, public.creator_access, public.creator_sessions, public.creator_recovery_keys, public.creator_security_events from anon, authenticated;
 revoke all on public.restrictions from anon;
@@ -3693,6 +3855,8 @@ grant execute on function public.lock_creator_panel() to authenticated;
 grant execute on function public.creator_security_events_list() to authenticated;
 grant execute on function public.get_hub_settings() to authenticated;
 grant execute on function public.set_hub_setting(text, jsonb) to authenticated;
+grant execute on function public.member_upload_limit(uuid) to authenticated;
+grant execute on function public.set_member_upload_limit(uuid, integer, bigint) to authenticated;
 grant execute on function public.my_two_step_status() to authenticated;
 grant execute on function public.set_ai_key_help(text, text[], text, boolean) to authenticated;
 grant execute on function public.list_ai_key_help() to authenticated;

@@ -379,5 +379,7 @@
   "lang.addGo": "添加此语言",
   "lang.working": "正在把本站翻译成{name}……{pct}%",
   "lang.retrying": "翻译服务繁忙，稍后会自动重试……",
-  "lang.failed": "耗时过长，请稍后再试。"
+  "lang.failed": "耗时过长，请稍后再试。",
+  "upload.limitReached": "您已达到今天的上传上限。今天还可以上传 {files} 个文件（{size}）。上限会在世界协调时（UTC）午夜重新计算。",
+  "upload.limitNone": "您已达到今天的上传上限。上限会在世界协调时（UTC）午夜重新计算。"
 }

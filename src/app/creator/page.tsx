@@ -56,6 +56,10 @@ export default async function CreatorPage() {
     log,
     names,
     keyHelp: (keyHelpRes.data ?? []) as KeyHelpRow[],
+    uploads: {
+      files: Number((settingsRes.data as Record<string, unknown> | null)?.upload_daily_files ?? 100),
+      bytes: Number((settingsRes.data as Record<string, unknown> | null)?.upload_daily_bytes ?? 1073741824),
+    },
     security: {
       requireTwoStepForStaff: (settingsRes.data as Record<string, unknown> | null)?.require_2fa_staff !== false,
       events: (eventsRes.data ?? []) as { at: string; kind: string }[],

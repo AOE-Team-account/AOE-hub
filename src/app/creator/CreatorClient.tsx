@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { ChipRow } from "@/components/ui/ChipRow";
+import { formatBytes } from "@/lib/format";
 import { Modal } from "@/components/ui/Modal";
 import { BackLink } from "@/components/ui/BackLink";
 import { ReviewPanel } from "@/components/review/ReviewPanel";
@@ -32,6 +33,7 @@ export interface CreatorData {
   }[];
   names: Record<string, string>;
   keyHelp: KeyHelpRow[];
+  uploads: { files: number; bytes: number };
   security: { requireTwoStepForStaff: boolean; events: { at: string; kind: string }[]; keysLeft: number };
 }
 
@@ -98,6 +100,10 @@ export function CreatorClient({ data }: { data: CreatorData }) {
   const [newKeys, setNewKeys] = useState<string[] | null>(null);
   const [curCode, setCurCode] = useState("");
   const [newCode, setNewCode] = useState("");
+  const GB = 1024 * 1024 * 1024;
+  const [upFiles, setUpFiles] = useState(String(data.uploads.files));
+  const [upGb, setUpGb] = useState(String(Math.round((data.uploads.bytes / GB) * 100) / 100));
+  const [limitFor, setLimitFor] = useState<null | { person: Person; usedFiles: number; usedBytes: number; limitFiles: number | null; limitBytes: number | null; files: string; gb: string }>(null);
   const [annTitle, setAnnTitle] = useState("");
   const [annBody, setAnnBody] = useState("");
 
@@ -206,7 +212,20 @@ export function CreatorClient({ data }: { data: CreatorData }) {
                   <p style={{ fontWeight: 500, margin: 0 }}>{p.name}</p>
                   <p className="tiny" style={{ margin: 0 }}>{p.email} · {p.account_status} · {p.record}</p>
                 </div>
-                <Button size="small" onClick={() => setSelected(p)}>Change roles</Button>
+                <div className="row wrap" style={{ gap: 6 }}>
+                  <Button size="small" onClick={() => setSelected(p)}>Change roles</Button>
+                  <Button size="small" disabled={busy} onClick={async () => {
+                    setError(null);
+                    const { data: r, error: e } = await supabase.rpc("member_upload_limit", { p_user_id: p.id });
+                    if (e) return setError(e.message);
+                    const x = r as { override_files: number | null; override_bytes: number | null; limit_files: number | null; limit_bytes: number | null; used_files: number; used_bytes: number };
+                    setLimitFor({
+                      person: p, usedFiles: x.used_files, usedBytes: x.used_bytes, limitFiles: x.limit_files, limitBytes: x.limit_bytes,
+                      files: x.override_files == null ? "" : String(x.override_files),
+                      gb: x.override_bytes == null ? "" : String(Math.round((x.override_bytes / GB) * 100) / 100),
+                    });
+                  }}>Upload limit</Button>
+                </div>
               </div>
               {selected?.id === p.id && (
                 <div style={{ marginTop: 12 }}>
@@ -234,6 +253,33 @@ export function CreatorClient({ data }: { data: CreatorData }) {
               )}
             </div>
           ))}
+
+          {limitFor && (
+            <div className="card" style={{ marginTop: 10 }}>
+              <p className="title" style={{ marginBottom: 4 }}>Upload limit for {limitFor.person.name}</p>
+              <p className="tiny" style={{ marginBottom: 8 }}>
+                {limitFor.limitFiles === null ? "No limit (Creator account)." : `Now: ${limitFor.limitFiles.toLocaleString()} files and ${formatBytes(limitFor.limitBytes ?? 0)} a day.`}{" "}
+                Used today: {limitFor.usedFiles.toLocaleString()} files, {formatBytes(limitFor.usedBytes)}. Leave a box empty to use the hub's normal limit for it.
+              </p>
+              <div className="row wrap" style={{ gap: 8 }}>
+                <input style={{ width: 150 }} inputMode="numeric" placeholder="Files per day" value={limitFor.files} onChange={(e) => setLimitFor({ ...limitFor, files: e.target.value.replace(/[^0-9]/g, "") })} />
+                <input style={{ width: 150 }} inputMode="decimal" placeholder="GB per day" value={limitFor.gb} onChange={(e) => setLimitFor({ ...limitFor, gb: e.target.value.replace(/[^0-9.]/g, "") })} />
+                <Button variant="primary" size="small" disabled={busy} onClick={async () => {
+                  const ok = await perform(() => supabase.rpc("set_member_upload_limit", {
+                    p_user_id: limitFor.person.id,
+                    p_files: limitFor.files === "" ? null : Number(limitFor.files),
+                    p_bytes: limitFor.gb === "" ? null : Math.round(Number(limitFor.gb) * GB),
+                  }), "Upload limit saved.");
+                  if (ok) setLimitFor(null);
+                }}>Save</Button>
+                <Button size="small" disabled={busy} onClick={async () => {
+                  const ok = await perform(() => supabase.rpc("set_member_upload_limit", { p_user_id: limitFor.person.id, p_files: null, p_bytes: null }), "Back to the hub's normal limit.");
+                  if (ok) setLimitFor(null);
+                }}>Use the normal limit</Button>
+                <Button size="small" onClick={() => setLimitFor(null)}>Close</Button>
+              </div>
+            </div>
+          )}
 
           <p className="label" style={{ fontWeight: 500, margin: "20px 0 8px" }}>Who has a role right now</p>
           {holderGroups.size === 0 && <p className="muted">No one holds a role yet.</p>}
@@ -409,6 +455,23 @@ export function CreatorClient({ data }: { data: CreatorData }) {
               }}>
               Post announcement
             </Button>
+          </div>
+          <div className="card">
+            <p className="title" style={{ marginBottom: 4 }}>Daily upload limit</p>
+            <p className="muted" style={{ marginBottom: 10 }}>
+              How much one member may upload each day (the day starts at midnight UTC). Change it up or down any time; it takes effect at once.
+              Your own account is never limited. To give one member more or less, use <strong>People &amp; roles → Find a person → Upload limit</strong>.
+            </p>
+            <div className="row wrap" style={{ gap: 8 }}>
+              <input style={{ width: 150 }} inputMode="numeric" value={upFiles} onChange={(e) => setUpFiles(e.target.value.replace(/[^0-9]/g, ""))} aria-label="Files per member per day" />
+              <span className="tiny">files and</span>
+              <input style={{ width: 150 }} inputMode="decimal" value={upGb} onChange={(e) => setUpGb(e.target.value.replace(/[^0-9.]/g, ""))} aria-label="Gigabytes per member per day" />
+              <span className="tiny">GB per member per day</span>
+              <Button variant="primary" size="small" disabled={busy || upFiles === "" || upGb === "" || isNaN(Number(upGb))} onClick={async () => {
+                const ok1 = await perform(() => supabase.rpc("set_hub_setting", { p_key: "upload_daily_files", p_value: Number(upFiles) }), "Upload limit saved.");
+                if (ok1) await perform(() => supabase.rpc("set_hub_setting", { p_key: "upload_daily_bytes", p_value: Math.round(Number(upGb) * GB) }), "Upload limit saved.");
+              }}>Save</Button>
+            </div>
           </div>
           <KeyHelpEditor rows={data.keyHelp} />
           <div className="card">
