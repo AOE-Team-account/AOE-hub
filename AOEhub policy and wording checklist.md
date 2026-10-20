@@ -226,3 +226,32 @@ Everything else in this file is words, and the words can be finished last. These
 
 Once you answer 1 to 8, I can build Steps 7 and 8 without redoing anything when the policy text arrives.
 
+
+---
+
+## 13. Clara's answers, 2026-10-20 (sections 11 and 12) and what is still open
+
+### Settled (I will build / write it this way)
+- **Upload acknowledgement (11.2 / 12.1):** members tick "I understand that the file I upload here can be downloaded, remixed (with or without credit) and used by other people. The hub tries to give credit, but it cannot track every copy, so some remixes may not carry the remix label or link back to my original." Remixes made with the hub's Remix button link to the original automatically. *Suggested addition (Clara to confirm):* "…and I have the right to share it."
+- **AI-made label (11.9 / 12.2):** an **optional** "Made with AI" checkbox on the upload and post forms. Never required.
+- **Link-out sites (12.3):** GitHub, itch.io, Steam, the member's own site, Unity's own game hosting (Unity Play). Stored as editable data.
+- **Forms (11.6 / 12.4):** takedown, appeals and urgent report: **yes to all**, plus **urgent reports sit at the very top** of the reviewers' list. Reports go to Creator / Watchers / Deacons according to the existing file-or-post rules.
+- **Google plan (11.13):** free plan at launch; paid only when there is money or it is unavoidable. Privacy Policy must match (Google may use free-plan data; human reviewers may read it). **The Terms, the Privacy Policy and the AI chat box must tell members not to put private information into the hub AI.**
+- **Google/Groq age terms (11.3):** not a concern for Clara (members are adults).
+- **Welcome cards (11.12):** three cards — **Exploring**, **In school**, **Homeschooling + Unschooling (one shared card)**. Every card welcomes the member and says what the hub has (Experience Board, File Board, the hub AI).
+- **Policy languages (11.14):** the official policy pages are in **English and Chinese**. A member whose language is English sees English; Chinese sees Chinese; any other language sees the English page with a "Translate into my language" button (AI, labelled unofficial; the English/Chinese text is the one that counts).
+- **Cookie notice (11.15):** yes, if it needs no third-party tool and costs nothing: a simple information notice, no tracking tools. (Lawyer to say whether a consent banner is legally needed for the sign-in and language cookies.)
+- **Contact (11.8 / 12.5):** Clara will give the official email.
+- **Profile pictures (12.8):** visible to anyone who can see the profile (see open question about reporting).
+
+### Still open — answers needed before Steps 7 and 8
+1. **Operator (11.1 / 12.6):** name + email is fine to start; what name is shown publicly, and is a postal address needed (a P.O. box is possible)? Conflicts with Creator anonymity?
+2. **Governing law (11.10):** which country/state does Clara live in? (It is the law and court that settle a dispute between the hub and a member.)
+3. **Daily upload limit (12.3):** proposal 100 files and 1 GB per member per day, adjustable by the Creator.
+4. **Appeals:** who receives them (recommended: Creator only)?
+5. **"Download my data" (11.7):** explained to Clara; yes or no?
+6. **Evidence retention (11.5 / 12.7):** Clara's rule (self-deleted: wiped at once; Creator-deleted: kept 1 month) conflicts with the 30-day restore and lets a warned member erase their record by deleting their account. Options sent to Clara.
+7. **Content rules (11.4):** Clara supplied the Platform Content Guidelines list. Questions: how strictly reviewers apply it (remove at once vs the warning ladder), a reviewer test for the LGBTQ+ and spanking lines, whether quality rules ("twaddle", over-stimulation) are bans or guidance, how the hub AI should behave, and a lawyer read of the child-discipline and protected-group sections.
+8. **Official Chinese policy:** Simplified only (Traditional converted automatically) or two written versions?
+9. **Profile pictures:** report them? (reasons given to Clara)
+10. **About page (11.11):** Clara is thinking about it.
