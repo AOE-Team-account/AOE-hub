@@ -24,6 +24,7 @@ export function ReportModal() {
   const { t } = useLanguage();
   const [reason, setReason] = useState<ReportReason>("scam");
   const [details, setDetails] = useState("");
+  const [urgent, setUrgent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,6 +32,7 @@ export function ReportModal() {
 
   function reset() {
     setDetails("");
+    setUrgent(false);
     setReason("scam");
     setError(null);
   }
@@ -48,6 +50,7 @@ export function ReportModal() {
       reason: isPicture ? "inappropriate" : reason,
       details: details.trim() || null,
       reported_by: user.id,
+      urgent,
     });
     setBusy(false);
     if (insertError) {
@@ -79,6 +82,16 @@ export function ReportModal() {
         value={details}
         onChange={(e) => setDetails(e.target.value)}
       />
+      {!isPicture && reason === "copyright" && (
+        <p className="tiny" style={{ marginTop: 6 }}>
+          <a href={`/takedown?url=${encodeURIComponent(typeof window !== "undefined" ? window.location.href : "")}`} style={{ color: "var(--accent)" }}>{t("report.copyrightOwner")}</a>
+        </p>
+      )}
+      <label className="check-item" style={{ alignItems: "flex-start", marginTop: 8 }}>
+        <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} style={{ width: "auto", marginTop: 3 }} />
+        <span>{t("report.urgent")}</span>
+      </label>
+      {urgent && <p className="tiny" style={{ marginTop: 2 }}>{t("report.urgentNote")}</p>}
       {error && <p className="tiny" style={{ color: "#b5471f", marginTop: 6 }}>{error}</p>}
       <div className="row" style={{ gap: 8 }}>
         <button className="btn primary" disabled={busy} onClick={submit}>

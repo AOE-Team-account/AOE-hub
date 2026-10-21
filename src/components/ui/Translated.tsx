@@ -27,7 +27,7 @@ function languageLabel(code: string, ui: string): string {
 export function Translated({
   type, id, field, text, as: Tag = "p", className, style, note = false, noteWhenPaused = false,
 }: {
-  type: "experience-post" | "file" | "comment" | "notice" | "notification";
+  type: "experience-post" | "file" | "comment" | "notice" | "notification" | "appeal";
   id: string;
   field: string;
   text: string;

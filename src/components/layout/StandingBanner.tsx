@@ -2,6 +2,7 @@
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import Link from "next/link";
 import { contactSentence } from "@/lib/site";
 
 // Tells a signed-in person plainly when their account is restricted or
@@ -25,6 +26,7 @@ export function StandingBanner() {
     <div className="banner-wrap">
       <div className="banner-box" role="status">
         <span>{text}</span>
+        {user.accountStatus !== "suspended" && <Link href="/appeal" className="btn small">{t("appeal.this")}</Link>}
       </div>
     </div>
   );

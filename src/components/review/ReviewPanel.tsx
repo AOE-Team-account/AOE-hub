@@ -45,7 +45,9 @@ export function recordText(t: (key: UiKey, params?: TParams) => string, s: Summa
 export function ReviewPanel({ data, isCreator, canSuspend }: { data: ReviewData; isCreator: boolean; canSuspend: boolean }) {
   const router = useRouter();
   const { t, lang } = useLanguage();
-  const [tab, setTab] = useState<"reports" | "browse">("reports");
+  const [tab, setTab] = useState<"reports" | "browse" | "appeals">("reports");
+  const [appealAction, setAppealAction] = useState<{ id: string; decision: "uphold" | "recommend" | "overturn" } | null>(null);
+  const [appealNote, setAppealNote] = useState("");
   const [pending, setPending] = useState<Pending | null>(null);
   const [reason, setReason] = useState("");
   const [text, setText] = useState("");
@@ -112,6 +114,15 @@ export function ReviewPanel({ data, isCreator, canSuspend }: { data: ReviewData;
     if (!res.ok) return setFlash(d?.error ?? t("creator.didNotWork"));
     setFlash(t("staff.done.pictureRemoved"));
     router.refresh();
+  }
+
+  async function decideAppeal() {
+    if (!appealAction) return;
+    const supabase = createClient();
+    const { id, decision } = appealAction;
+    const done = decision === "uphold" ? t("staff.done.appealUphold") : decision === "recommend" ? t("staff.done.appealRecommend") : t("staff.done.appealOverturn");
+    const ok = await run(() => supabase.rpc("decide_appeal", { p_id: id, p_decision: decision, p_note: appealNote }), done);
+    if (ok) { setAppealAction(null); setAppealNote(""); }
   }
 
   async function removeNotice(item: ReviewItem) {
@@ -203,6 +214,7 @@ export function ReviewPanel({ data, isCreator, canSuspend }: { data: ReviewData;
         options={[
           { value: "reports", label: t("staff.tabReports", { n: list.length }) },
           { value: "browse", label: t("staff.tabBrowse") },
+          { value: "appeals", label: t("staff.tabAppeals", { n: data.appeals.length }) },
         ]}
         value={tab}
         onChange={setTab}
@@ -215,12 +227,24 @@ export function ReviewPanel({ data, isCreator, canSuspend }: { data: ReviewData;
             <div className="card" key={r.id}>
               <div className="row between wrap" style={{ gap: 8, marginBottom: 6 }}>
                 <span className="row" style={{ gap: 6 }}>
+                  {r.urgent && <Badge variant="warn">{t("staff.urgent")}</Badge>}
+                  {r.takedown && <Badge variant="warn">{t("staff.takedownBadge")}</Badge>}
                   <Badge variant="neutral">{t(KIND_KEY[r.item?.kind ?? (r.targetType === "profile-picture" ? "picture" : "user")])}</Badge>
                   <Badge variant="warn">{reasonText(t, r.reason)}</Badge>
                 </span>
                 <span className="tiny">{new Date(r.createdAt).toLocaleString(lang)}</span>
               </div>
-              {r.details && <p className="muted" style={{ marginBottom: 8 }}>“{r.details}”</p>}
+              {r.takedown && (
+                <div className="banner-box" style={{ display: "block", margin: "0 0 8px" }}>
+                  <p style={{ margin: "0 0 4px", fontWeight: 500 }}>{t("staff.takedownTitle")}</p>
+                  <p className="tiny" style={{ margin: 0 }}>{t("staff.takedownFrom", { name: r.takedown.name, email: r.takedown.email })}</p>
+                  {r.takedown.rightsHolder && <p className="tiny" style={{ margin: 0 }}>{t("staff.takedownOwner", { owner: r.takedown.rightsHolder })}</p>}
+                  {r.takedown.address && <p className="tiny" style={{ margin: 0 }}>{r.takedown.address}</p>}
+                  <p className="tiny" style={{ margin: "4px 0 0" }}>{t("staff.takedownOriginal")} {r.takedown.original}</p>
+                  <p className="tiny" style={{ margin: "4px 0 0" }}>{t("staff.takedownSigned", { name: r.takedown.signature })}</p>
+                </div>
+              )}
+              {r.details && !r.takedown && <p className="muted" style={{ marginBottom: 8 }}>“{r.details}”</p>}
               {r.item ? (
                 <ItemBody item={r.item} />
               ) : r.targetType === "profile-picture" ? (
@@ -254,6 +278,55 @@ export function ReviewPanel({ data, isCreator, canSuspend }: { data: ReviewData;
               </div>
             </div>
           ))}
+        </>
+      )}
+
+      {tab === "appeals" && (
+        <>
+          {data.appeals.length === 0 && <p className="muted">{t("staff.noAppeals")}</p>}
+          {data.appeals.map((a) => (
+            <div className="card" key={a.id}>
+              <div className="row between wrap" style={{ gap: 8, marginBottom: 6 }}>
+                <span className="row" style={{ gap: 6 }}>
+                  <Badge variant="neutral">{t(`staff.appealKind.${a.kind}` as UiKey)}</Badge>
+                  {a.status === "recommend-overturn" && <Badge variant="warn">{t("staff.appealRecommended")}</Badge>}
+                </span>
+                <span className="tiny">{new Date(a.createdAt).toLocaleString(lang)}</span>
+              </div>
+              <p className="tiny" style={{ margin: "0 0 4px" }}>{t("staff.appealFrom", { name: a.appellant || t("staff.member") })}</p>
+              {a.kind === "warning" && (
+                <p style={{ margin: "0 0 4px", fontWeight: 500 }}>
+                  {a.reasonCode ? reasonText(t, a.reasonCode) : ""}{a.level ? ` — ${t(`staff.level.${a.level}` as UiKey)}` : ""}
+                  {a.itemTitle ? <span className="tiny"> · {a.itemTitle}</span> : null}
+                </p>
+              )}
+              {a.kind === "restriction" && a.endsAt && <p style={{ margin: "0 0 4px", fontWeight: 500 }}>{t("staff.appealRestrictionUntil", { date: new Date(a.endsAt).toLocaleDateString(lang) })}</p>}
+              <Translated type="appeal" id={a.id} field="message" text={a.message} className="muted" style={{ margin: "0 0 8px" }} note />
+              <div className="row wrap" style={{ gap: 6 }}>
+                <Button size="small" onClick={() => { setAppealAction({ id: a.id, decision: "uphold" }); setAppealNote(""); setError(null); }}>{t("staff.appealUphold")}</Button>
+                {!isCreator && a.kind !== "other" && a.status === "open" && (
+                  <Button size="small" onClick={() => { setAppealAction({ id: a.id, decision: "recommend" }); setAppealNote(""); setError(null); }}>{t("staff.appealRecommend")}</Button>
+                )}
+                {isCreator && a.kind !== "other" && (
+                  <Button size="small" variant="danger" onClick={() => { setAppealAction({ id: a.id, decision: "overturn" }); setAppealNote(""); setError(null); }}>{t("staff.appealOverturn")}</Button>
+                )}
+              </div>
+            </div>
+          ))}
+          <Modal open={appealAction !== null} onClose={() => setAppealAction(null)}>
+            {appealAction && (
+              <>
+                <p className="title">{t(`staff.appealTitle.${appealAction.decision}` as UiKey)}</p>
+                <p className="muted">{t("staff.appealNoteHelp")}</p>
+                <textarea value={appealNote} onChange={(e) => setAppealNote(e.target.value)} maxLength={500} />
+                {error && <p className="muted" style={{ color: "#b5471f", marginTop: 8 }}>{error}</p>}
+                <div className="row" style={{ gap: 8 }}>
+                  <Button variant={appealAction.decision === "overturn" ? "danger" : "primary"} disabled={busy} onClick={decideAppeal}>{busy ? t("staff.working") : t("staff.confirm")}</Button>
+                  <Button onClick={() => setAppealAction(null)}>{t("common.cancel")}</Button>
+                </div>
+              </>
+            )}
+          </Modal>
         </>
       )}
 

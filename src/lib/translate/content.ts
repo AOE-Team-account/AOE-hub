@@ -15,7 +15,7 @@ import { englishNameOf } from "./languages";
 // something they are not allowed to see. Each result is remembered, so a text
 // is translated at most once per language, for everyone.
 
-export type ItemType = "experience-post" | "file" | "comment" | "notice" | "notification";
+export type ItemType = "experience-post" | "file" | "comment" | "notice" | "notification" | "appeal";
 
 export interface ItemRequest {
   type: ItemType;
@@ -37,6 +37,7 @@ const FIELDS: Record<ItemType, string[]> = {
   comment: ["body"],
   notice: ["body"],
   notification: ["body"],
+  appeal: ["message"],
 };
 
 export const MAX_ITEMS_PER_REQUEST = 60;
@@ -80,6 +81,7 @@ async function loadSources(viewer: SupabaseClient, reqs: ItemRequest[]): Promise
     ["file", "file_posts", "id, title, description"],
     ["comment", "comments", "id, body"],
     ["notification", "notifications", "id, body"],
+    ["appeal", "appeals", "id, message"],
   ];
   await Promise.all(
     simple.map(async ([type, table, cols]) => {

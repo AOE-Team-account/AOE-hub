@@ -371,6 +371,275 @@ $$;
 revoke execute on function public.list_expired_storage(integer) from public, anon, authenticated;
 grant execute on function public.list_expired_storage(integer) to service_role;
 
+-- ============================================================================
+-- Urgent reports, copyright takedown notices and appeals (Step 7)
+-- ============================================================================
+
+-- Urgent report: a serious safety concern. Shown first to every reviewer, and
+-- the Creator is told at once.
+alter table public.reports add column if not exists urgent boolean not null default false;
+alter table public.reports add column if not exists takedown_id uuid;
+-- A formal copyright notice can come from someone with no account.
+alter table public.reports alter column reported_by drop not null;
+create index if not exists reports_urgent_idx on public.reports (urgent) where status = 'open';
+
+create or replace function private.notify_urgent_report()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.notifications (user_id, body, kind, data)
+  select r.user_id, 'An urgent report needs attention. Open the Creator panel to see it.', 'urgent-report', jsonb_build_object('report_id', new.id)
+    from public.user_roles r where r.role = 'creator';
+  return new;
+end;
+$$;
+drop trigger if exists reports_urgent_notify on public.reports;
+create trigger reports_urgent_notify after insert on public.reports
+  for each row when (new.urgent) execute function private.notify_urgent_report();
+
+-- A formal copyright takedown notice (anyone may send one, account or not).
+-- Written only by the server; read by the reviewers who can see the linked report.
+create table if not exists public.takedown_notices (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  claimant_name text not null check (char_length(claimant_name) between 2 and 200),
+  claimant_email text not null check (char_length(claimant_email) between 5 and 200),
+  claimant_address text check (claimant_address is null or char_length(claimant_address) <= 500),
+  rights_holder text check (rights_holder is null or char_length(rights_holder) <= 200),
+  original_work text not null check (char_length(original_work) between 10 and 2000),
+  infringing_url text not null check (char_length(infringing_url) between 5 and 500),
+  target_type text check (target_type in ('file', 'experience-post', 'comment')),
+  target_id uuid,
+  good_faith boolean not null,
+  accuracy_statement boolean not null,
+  signature text not null check (char_length(signature) between 2 and 200),
+  status text not null default 'open' check (status in ('open', 'removed', 'rejected')),
+  report_id uuid
+);
+alter table public.takedown_notices enable row level security;
+drop policy if exists "reviewers read takedown notices of reports they can see" on public.takedown_notices;
+create policy "reviewers read takedown notices of reports they can see" on public.takedown_notices
+  for select using (
+    private.creator_unlocked(false)
+    or (report_id is not null and exists (select 1 from public.reports r where r.id = report_id))
+  );
+
+-- Appeals: a member contests a warning or a restriction (or asks about another decision).
+create table if not exists public.appeals (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  kind text not null check (kind in ('warning', 'restriction', 'other')),
+  subject_id uuid,
+  message text not null check (char_length(message) between 10 and 1500),
+  status text not null default 'open' check (status in ('open', 'upheld', 'recommend-overturn', 'overturned')),
+  decided_by uuid,
+  decided_role text,
+  decided_at timestamptz,
+  decision_note text check (decision_note is null or char_length(decision_note) <= 500),
+  created_at timestamptz not null default now()
+);
+create unique index if not exists appeals_one_open on public.appeals (user_id, kind, subject_id)
+  where status in ('open', 'recommend-overturn') and subject_id is not null;
+alter table public.appeals enable row level security;
+drop policy if exists "members read their own appeals" on public.appeals;
+create policy "members read their own appeals" on public.appeals for select using (auth.uid() = user_id);
+
+-- Appeal messages are translated for the reviewer who reads them (and the
+-- translation is removed with the appeal).
+alter table public.content_translations drop constraint if exists content_translations_item_type_check;
+alter table public.content_translations add constraint content_translations_item_type_check
+  check (item_type in ('experience-post', 'file', 'comment', 'notice', 'notification', 'appeal'));
+drop trigger if exists drop_translations_appeal on public.appeals;
+create trigger drop_translations_appeal after delete on public.appeals
+  for each row execute function private.drop_translations('appeal');
+
+-- What a member can appeal, and what they already did.
+create or replace function public.my_standing()
+returns jsonb
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+begin
+  if v_uid is null then raise exception 'Sign in required.'; end if;
+  return jsonb_build_object(
+    'warnings', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', w.id, 'reason', w.reason_code, 'level', w.level, 'created_at', w.created_at, 'item_kind', w.item_kind,
+               'title', coalesce(nullif(w.snapshot ->> 'title', ''), left(coalesce(w.snapshot ->> 'body', w.snapshot ->> 'description', ''), 80)))
+             order by w.created_at desc)
+        from public.warnings w
+       where w.user_id = v_uid and w.undone_at is null and w.created_at > now() - interval '180 days'), '[]'::jsonb),
+    'restriction', (
+      select jsonb_build_object('id', x.id, 'ends_at', x.ends_at)
+        from public.restrictions x where x.user_id = v_uid and x.lifted_at is null and x.ends_at > now()
+       order by x.ends_at desc limit 1),
+    'appeals', coalesce((
+      select jsonb_agg(jsonb_build_object('id', a.id, 'kind', a.kind, 'subject_id', a.subject_id, 'status', a.status,
+                                          'decision_note', a.decision_note, 'created_at', a.created_at, 'message', a.message)
+             order by a.created_at desc)
+        from public.appeals a where a.user_id = v_uid), '[]'::jsonb)
+  );
+end;
+$$;
+
+create or replace function public.file_appeal(p_kind text, p_subject uuid, p_message text)
+returns uuid
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_id uuid;
+begin
+  if v_uid is null then raise exception 'Sign in required.'; end if;
+  if p_kind not in ('warning', 'restriction', 'other') then raise exception 'Unknown kind of appeal.'; end if;
+  if p_message is null or char_length(btrim(p_message)) not between 10 and 1500 then raise exception 'Please explain in 10 to 1,500 characters.'; end if;
+  if (select count(*) from public.appeals where user_id = v_uid and created_at > now() - interval '1 day') >= 3 then
+    raise exception 'You have sent several appeals today. Please wait a day.';
+  end if;
+  if p_kind = 'warning' and not exists (select 1 from public.warnings where id = p_subject and user_id = v_uid and undone_at is null) then
+    raise exception 'That warning is not on your record.';
+  end if;
+  if p_kind = 'restriction' and not exists (select 1 from public.restrictions where id = p_subject and user_id = v_uid and lifted_at is null and ends_at > now()) then
+    raise exception 'That restriction is not in force.';
+  end if;
+  if p_kind = 'other' then p_subject := null; end if;
+  begin
+    insert into public.appeals (user_id, kind, subject_id, message) values (v_uid, p_kind, p_subject, btrim(p_message)) returning id into v_id;
+  exception when unique_violation then
+    raise exception 'You already have an appeal open for this.';
+  end;
+  return v_id;
+end;
+$$;
+
+-- May this reviewer handle this appeal? Never the appellant; never the reviewer
+-- who made the decision; a Creator decision can only be handled by the Creator.
+create or replace function private.can_handle_appeal(p_viewer uuid, p_kind text, p_user uuid, p_subject uuid)
+returns boolean
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+declare
+  v_by uuid;
+  v_role text;
+  v_item text;
+begin
+  if p_viewer is null or p_viewer = p_user then return false; end if;
+  if p_kind = 'warning' then
+    select issued_by, issued_role, item_kind into v_by, v_role, v_item from public.warnings where id = p_subject;
+  elsif p_kind = 'restriction' then
+    select set_by into v_by from public.restrictions where id = p_subject;
+    v_role := private.top_reviewer_role(v_by);
+  end if;
+  if private.creator_unlocked(false) then return true; end if;
+  if p_kind = 'other' or v_role = 'creator' then return false; end if;
+  if v_by is not null and p_viewer = v_by then return false; end if;
+  if private.has_role(p_viewer, 'watcher') and private.reviewer_can(p_viewer, 'comment', 'view') then return true; end if;
+  if private.has_role(p_viewer, 'deacon') and p_kind = 'warning' and v_item in ('post', 'comment') and private.reviewer_can(p_viewer, 'comment', 'view') then return true; end if;
+  return false;
+end;
+$$;
+
+create or replace function public.list_appeals()
+returns table (id uuid, user_id uuid, appellant text, kind text, subject_id uuid, message text, status text, created_at timestamptz,
+               reason_code text, level text, item_kind text, item_title text, ends_at timestamptz, i_am_creator boolean)
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+begin
+  if v_uid is null or not private.is_reviewer(v_uid) then raise exception 'Not allowed.'; end if;
+  return query
+    select a.id, a.user_id, coalesce(nullif(p.display_name, ''), p.name), a.kind, a.subject_id, a.message, a.status, a.created_at,
+           w.reason_code, w.level, w.item_kind,
+           coalesce(nullif(w.snapshot ->> 'title', ''), left(coalesce(w.snapshot ->> 'body', w.snapshot ->> 'description', ''), 100)),
+           x.ends_at, private.creator_unlocked(false)
+      from public.appeals a
+      join public.profiles p on p.id = a.user_id
+      left join public.warnings w on a.kind = 'warning' and w.id = a.subject_id
+      left join public.restrictions x on a.kind = 'restriction' and x.id = a.subject_id
+     where a.status in ('open', 'recommend-overturn')
+       and private.can_handle_appeal(v_uid, a.kind, a.user_id, a.subject_id)
+       and (a.status = 'open' or private.creator_unlocked(false))
+     order by a.created_at;
+end;
+$$;
+
+create or replace function public.decide_appeal(p_id uuid, p_decision text, p_note text)
+returns void
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_a public.appeals;
+  v_log bigint;
+  v_creator boolean := false;
+  v_note text := nullif(btrim(coalesce(p_note, '')), '');
+begin
+  if v_uid is null or not private.is_reviewer(v_uid) then raise exception 'Not allowed.'; end if;
+  if p_decision not in ('uphold', 'recommend', 'overturn') then raise exception 'Unknown decision.'; end if;
+  if v_note is not null and char_length(v_note) > 500 then raise exception 'Keep the note under 500 characters.'; end if;
+  select * into v_a from public.appeals where id = p_id and status in ('open', 'recommend-overturn') for update;
+  if not found then raise exception 'That appeal is already decided.'; end if;
+  if not private.can_handle_appeal(v_uid, v_a.kind, v_a.user_id, v_a.subject_id) then raise exception 'You cannot handle this appeal.'; end if;
+  v_creator := private.creator_unlocked(true);
+
+  if p_decision = 'recommend' then
+    if v_creator then raise exception 'The Creator decides directly.'; end if;
+    if v_a.kind = 'other' then raise exception 'Only the Creator handles this kind of appeal.'; end if;
+    update public.appeals set status = 'recommend-overturn', decided_by = v_uid, decided_role = private.top_reviewer_role(v_uid), decided_at = now(), decision_note = v_note where id = p_id;
+    perform private.log_activity(v_uid, 'appeal-decided', 'user', v_a.user_id, v_a.user_id, null, jsonb_build_object('appeal_id', p_id, 'decision', 'recommend'));
+    return;
+  end if;
+
+  if p_decision = 'overturn' then
+    if not v_creator then raise exception 'Only the Creator can overturn a decision.'; end if;
+    if v_a.kind = 'warning' then
+      select l.id into v_log from public.activity_log l
+       where l.action = 'warn' and (l.details ->> 'warning_id') = v_a.subject_id::text
+         and not exists (select 1 from public.activity_log u where u.undoes = l.id)
+       order by l.id desc limit 1;
+      if v_log is null then raise exception 'That warning was already undone.'; end if;
+      perform public.undo_activity(v_log);
+    elsif v_a.kind = 'restriction' then
+      update public.restrictions set lifted_at = now(), lifted_reason = 'Appeal accepted by the Creator' where id = v_a.subject_id and lifted_at is null;
+      insert into public.notifications (user_id, body, kind, data) values (v_a.user_id, 'Your restriction was lifted.', 'restriction-lifted', '{}'::jsonb);
+    end if;
+  elsif not (v_creator or private.is_reviewer(v_uid)) then
+    raise exception 'Not allowed.';
+  end if;
+
+  update public.appeals
+     set status = case p_decision when 'overturn' then 'overturned' else 'upheld' end,
+         decided_by = v_uid, decided_role = private.top_reviewer_role(v_uid), decided_at = now(), decision_note = v_note
+   where id = p_id;
+  insert into public.notifications (user_id, body, kind, data)
+  values (v_a.user_id,
+          case p_decision when 'overturn' then 'Your appeal was accepted.' else 'Your appeal was reviewed and the decision stands.' end
+            || coalesce(' ' || v_note, ''),
+          'appeal-decided', jsonb_build_object('appeal_id', p_id, 'decision', p_decision));
+  perform private.log_activity(v_uid, 'appeal-decided', 'user', v_a.user_id, v_a.user_id, null, jsonb_build_object('appeal_id', p_id, 'decision', p_decision));
+end;
+$$;
+
 -- Whether the signed-in member has turned on two-step sign-in.
 create or replace function public.my_two_step_status()
 returns jsonb
@@ -521,6 +790,7 @@ revoke all on public.kb_document_models, public.ai_provider_state from anon, aut
 revoke all on public.ui_languages, public.ui_strings, public.content_translations, public.translation_usage from anon, authenticated;
 revoke all on public.upload_usage, public.member_upload_limits from anon, authenticated;
 revoke all on public.hub_ai_keys from anon, authenticated;
+revoke insert, update, delete on public.takedown_notices, public.appeals from anon, authenticated;
 revoke insert, update, delete on public.post_media from anon, authenticated;
 revoke insert, update, delete, truncate on public.ai_key_help from anon, authenticated;
 revoke all on public.hub_settings, public.creator_access, public.creator_sessions, public.creator_recovery_keys, public.creator_security_events from anon, authenticated;
@@ -550,7 +820,7 @@ grant delete on public.experience_posts to authenticated;
 grant insert (parent_type, parent_id, parent_comment_id, author_id, type, body) on public.comments to authenticated;
 grant delete on public.comments to authenticated;
 
-grant insert (target_type, target_id, reason, details, reported_by) on public.reports to authenticated;
+grant insert (target_type, target_id, reason, details, reported_by, urgent) on public.reports to authenticated;
 
 grant update (read) on public.notifications to authenticated;
 
@@ -608,6 +878,10 @@ grant execute on function public.creator_security_events_list() to authenticated
 grant execute on function public.get_hub_settings() to authenticated;
 grant execute on function public.set_hub_setting(text, jsonb) to authenticated;
 grant execute on function public.member_upload_limit(uuid) to authenticated;
+grant execute on function public.my_standing() to authenticated;
+grant execute on function public.file_appeal(text, uuid, text) to authenticated;
+grant execute on function public.list_appeals() to authenticated;
+grant execute on function public.decide_appeal(uuid, text, text) to authenticated;
 grant execute on function public.remove_profile_picture(uuid, uuid) to authenticated;
 grant execute on function public.add_link_host(text, text) to authenticated;
 grant execute on function public.remove_link_host(text) to authenticated;

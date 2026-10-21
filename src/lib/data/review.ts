@@ -29,8 +29,11 @@ export interface ReviewReport {
   reason: string;
   details: string | null;
   createdAt: string;
+  urgent: boolean;
   item: ReviewItem | null;
   userName?: string;
+  /** The formal copyright notice behind this report, when there is one. */
+  takedown?: { name: string; email: string; address: string | null; rightsHolder: string | null; original: string; url: string; signature: string };
 }
 
 export interface Summary {
@@ -48,8 +51,22 @@ export interface Reason {
   appliesTo: string[];
 }
 
+export interface AppealRow {
+  id: string;
+  appellant: string;
+  kind: "warning" | "restriction" | "other";
+  message: string;
+  status: string;
+  createdAt: string;
+  reasonCode: string | null;
+  level: string | null;
+  itemTitle: string | null;
+  endsAt: string | null;
+}
+
 export interface ReviewData {
   viewerId: string;
+  appeals: AppealRow[];
   kinds: ItemKind[];
   reports: ReviewReport[];
   browse: ReviewItem[];
@@ -65,8 +82,9 @@ type Row = Record<string, unknown>;
 export async function loadReviewData(supabase: SupabaseClient, viewerId: string, kinds: ItemKind[]): Promise<ReviewData> {
   const { data: reportRows } = await supabase
     .from("reports")
-    .select("id, target_type, target_id, reason, details, created_at")
+    .select("id, target_type, target_id, reason, details, created_at, urgent, takedown_id")
     .eq("status", "open")
+    .order("urgent", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(100);
   const reports = (reportRows ?? []) as Row[];
@@ -181,6 +199,21 @@ export async function loadReviewData(supabase: SupabaseClient, viewerId: string,
 
   const kindOfType = (t: string): ItemKind | null => (t === "file" ? "file" : t === "experience-post" ? "post" : t === "comment" ? "comment" : null);
 
+  const takedownIds = reports.map((r) => r.takedown_id as string | null).filter((x): x is string => Boolean(x));
+  const takedowns = new Map<string, ReviewReport["takedown"]>();
+  if (takedownIds.length) {
+    const { data: td } = await supabase
+      .from("takedown_notices")
+      .select("id, claimant_name, claimant_email, claimant_address, rights_holder, original_work, infringing_url, signature")
+      .in("id", takedownIds);
+    for (const t of (td ?? []) as Row[]) {
+      takedowns.set(t.id as string, {
+        name: t.claimant_name as string, email: t.claimant_email as string, address: (t.claimant_address as string | null) ?? null,
+        rightsHolder: (t.rights_holder as string | null) ?? null, original: t.original_work as string, url: t.infringing_url as string, signature: t.signature as string,
+      });
+    }
+  }
+
   const reportList: ReviewReport[] = reports.map((r) => {
     const k = kindOfType(r.target_type as string);
     return {
@@ -190,6 +223,8 @@ export async function loadReviewData(supabase: SupabaseClient, viewerId: string,
       reason: r.reason as string,
       details: (r.details as string | null) ?? null,
       createdAt: r.created_at as string,
+      urgent: Boolean(r.urgent),
+      takedown: r.takedown_id ? takedowns.get(r.takedown_id as string) : undefined,
       item: k ? byKey.get(`${k}:${r.target_id}`) ?? null : null,
       userName: r.target_type === "user" || r.target_type === "profile-picture" ? names.get(r.target_id as string) : undefined,
     };
@@ -229,5 +264,12 @@ export async function loadReviewData(supabase: SupabaseClient, viewerId: string,
     appliesTo: (r.applies_to as string[]) ?? [],
   }));
 
-  return { viewerId, kinds, reports: reportList, browse, summaries, reasons };
+  const { data: appealRows } = await supabase.rpc("list_appeals");
+  const appeals: AppealRow[] = ((appealRows ?? []) as Row[]).map((a) => ({
+    id: a.id as string, appellant: (a.appellant as string) ?? "", kind: a.kind as AppealRow["kind"], message: a.message as string, status: a.status as string,
+    createdAt: a.created_at as string, reasonCode: (a.reason_code as string | null) ?? null, level: (a.level as string | null) ?? null,
+    itemTitle: (a.item_title as string | null) ?? null, endsAt: (a.ends_at as string | null) ?? null,
+  }));
+
+  return { viewerId, appeals, kinds, reports: reportList, browse, summaries, reasons };
 }

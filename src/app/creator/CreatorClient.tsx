@@ -72,6 +72,8 @@ const ACTION_KEY: Record<string, UiKey> = {
   "two-step-requested": "creator.action.twoStepRequested",
   "recovery-key-used": "creator.action.recoveryKeyUsed",
   "setting-changed": "creator.action.settingChanged",
+  "appeal-decided": "creator.action.appealDecided",
+  "picture-removed": "creator.action.pictureRemoved",
 };
 const KIND_KEY: Record<string, UiKey> = { file: "creator.kindWord.file", post: "creator.kindWord.post", comment: "creator.kindWord.comment", user: "creator.kindWord.user", report: "creator.kindWord.report" };
 const UNDOABLE = new Set(["delete", "warn", "notice-set", "notice-removed", "dismiss-report", "suspend", "restrict", "delete-account"]);
