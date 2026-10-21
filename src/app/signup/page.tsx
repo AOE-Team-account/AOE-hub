@@ -29,7 +29,9 @@ export default function SignupPage() {
       password,
       // Recorded by the database when the account is created: the 13+ age
       // attestation and acceptance of the current terms and policies.
-      options: { data: { name, age_attested_min: 13, accepted_terms: true } },
+      // The link in the confirmation email signs the person in and opens the first-time questions
+      // on whichever address this page is on (test or real).
+      options: { data: { name, age_attested_min: 13, accepted_terms: true }, emailRedirectTo: `${window.location.origin}/auth/confirm?next=/onboarding` },
     });
     setLoading(false);
     if (signUpError) {
