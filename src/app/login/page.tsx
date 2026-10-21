@@ -62,6 +62,9 @@ export default function LoginPage() {
         </Button>
       </form>
       <p className="tiny" style={{ marginTop: 14 }}>
+        <Link href="/forgot-password" style={{ color: "var(--accent)" }}>{t("login.forgot")}</Link>
+      </p>
+      <p className="tiny" style={{ marginTop: 6 }}>
         {t("login.newHere")}{" "}
         <Link href="/signup" style={{ color: "var(--accent)" }}>
           {t("common.signUpFree")}
