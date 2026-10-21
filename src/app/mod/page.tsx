@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { BackLink } from "@/components/ui/BackLink";
 import { requireStaff } from "@/lib/auth/staff";
+import { getServerT } from "@/lib/i18n/server";
+import { LanguageSelect } from "@/components/ui/LanguageSelect";
 import { loadReviewData, type ItemKind } from "@/lib/data/review";
 import { ReviewPanel } from "@/components/review/ReviewPanel";
 import { RulesButton } from "@/components/review/RulesModal";
@@ -12,6 +14,7 @@ export const dynamic = "force-dynamic";
 
 export default async function ModPanelPage() {
   const { supabase, userId, roles } = await requireStaff(["watcher", "deacon"]);
+  const { t } = await getServerT();
   // Watchers and Deacons must have passed two-step sign-in (a hub setting the
   // Creator can switch off). The database enforces the same rule per action.
   const { data: twoStep } = await supabase.rpc("my_two_step_status");
@@ -24,17 +27,15 @@ export default async function ModPanelPage() {
 
   return (
     <>
-      <BackLink href="/profile" label="Back to my profile" />
-      <p className="title" style={{ margin: "0 0 2px" }}>{isWatcher ? "Watcher panel" : "Deacon panel"}</p>
+      <BackLink href="/profile" label={t("staff.backToProfile")} />
+      <div className="row between wrap" style={{ gap: 8, margin: "0 0 2px" }}>
+        <p className="title" style={{ margin: 0 }}>{isWatcher ? t("staff.watcherPanel") : t("staff.deaconPanel")}</p>
+        <LanguageSelect style={{ width: "auto", padding: "6px 10px", fontSize: 13 }} />
+      </div>
       <p className="tiny" style={{ marginBottom: 8 }}>
-        {isWatcher
-          ? "You can see every post, comment and file, and every report. Add a notice, warn, delete, or dismiss."
-          : "You can see every post and comment, and the reports on them (never files). Add a notice, warn, delete, or dismiss."}
+        {isWatcher ? t("staff.watcherIntro") : t("staff.deaconIntro")}
       </p>
-      <p className="tiny" style={{ marginBottom: 8 }}>
-        This panel is for reviewing only. You can&apos;t post, upload files, or list items for sale from here. To do those,
-        leave the panel and use the hub as yourself, like any other member.
-      </p>
+      <p className="tiny" style={{ marginBottom: 8 }}>{t("staff.reviewOnly")}</p>
       <div style={{ marginBottom: 12 }}><RulesButton /></div>
       <ReviewPanel data={data} isCreator={false} canSuspend={isWatcher} />
     </>

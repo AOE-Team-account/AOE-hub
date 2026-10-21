@@ -10,7 +10,9 @@ export type ItemKind = "file" | "post" | "comment";
 export interface ReviewItem {
   kind: ItemKind;
   id: string;
+  /** The item's own title; empty when it has none (the panel then names its kind). */
   title: string;
+  titleKind: "file" | "announcement" | "post" | "comment";
   excerpt: string;
   authorId: string;
   authorName: string;
@@ -113,7 +115,7 @@ export async function loadReviewData(supabase: SupabaseClient, viewerId: string,
   const { data: people } = personIds.size
     ? await supabase.from("profiles").select("id, name, display_name").in("id", [...personIds])
     : { data: [] as Row[] };
-  const names = new Map<string, string>(((people ?? []) as Row[]).map((p) => [p.id as string, ((p.display_name as string) || (p.name as string)) ?? "Member"]));
+  const names = new Map<string, string>(((people ?? []) as Row[]).map((p) => [p.id as string, ((p.display_name as string) || (p.name as string)) ?? ""]));
 
   const noticeRows: Row[] = [];
   for (const [kind, list] of [["file", files], ["post", posts], ["comment", comments]] as const) {
@@ -130,18 +132,21 @@ export async function loadReviewData(supabase: SupabaseClient, viewerId: string,
   const build = (kind: ItemKind, r: Row): ReviewItem => {
     const authorId = r.author_id as string;
     let title = "";
+    let titleKind: ReviewItem["titleKind"] = "comment";
     let excerpt = "";
     let href = "/";
     if (kind === "file") {
-      title = (r.title as string) || "File";
+      title = (r.title as string) || "";
+      titleKind = "file";
       excerpt = cut(r.description as string);
       href = `/files/${r.id}`;
     } else if (kind === "post") {
-      title = (r.title as string) || (r.is_announcement ? "Announcement" : "Experience post");
+      title = (r.title as string) || "";
+      titleKind = r.is_announcement ? "announcement" : "post";
       excerpt = cut(r.body as string);
       href = `/experience/${r.id}`;
     } else {
-      title = "Comment";
+      titleKind = "comment";
       excerpt = cut(r.body as string);
       href = r.parent_type === "file" ? `/files/${r.parent_id}` : `/experience/${r.parent_id}`;
     }
@@ -149,9 +154,10 @@ export async function loadReviewData(supabase: SupabaseClient, viewerId: string,
       kind,
       id: r.id as string,
       title,
+      titleKind,
       excerpt,
       authorId,
-      authorName: names.get(authorId) ?? "Member",
+      authorName: names.get(authorId) ?? "",
       createdAt: r.created_at as string,
       href,
       notice: notices.get(`${kind}:${r.id}`) ?? null,

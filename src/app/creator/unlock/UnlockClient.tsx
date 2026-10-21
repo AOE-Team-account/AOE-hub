@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { LanguageSelect } from "@/components/ui/LanguageSelect";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
 import { TwoStepPanel } from "@/components/security/TwoStepPanel";
@@ -20,6 +22,7 @@ interface Status {
 
 export function UnlockClient() {
   const router = useRouter();
+  const { t, lang } = useLanguage();
   const supabase = createClient();
   const [status, setStatus] = useState<Status | null>(null);
   const [code, setCode] = useState("");
@@ -45,13 +48,13 @@ export function UnlockClient() {
 
   async function setNewCode() {
     setMessage(null);
-    if (code.length < 10) return setMessage("Use at least 10 characters.");
-    if (code !== code2) return setMessage("The two entries don't match.");
+    if (code.length < 10) return setMessage(t("creator.unlock.min10"));
+    if (code !== code2) return setMessage(t("creator.unlock.noMatch"));
     setBusy(true);
     const { data, error } = await supabase.rpc("set_creator_code", { p_new: code });
     if (error || !(data as { ok: boolean })?.ok) {
       setBusy(false);
-      return setMessage(error?.message ?? (data as { error?: string })?.error ?? "Could not save the code.");
+      return setMessage(error?.message ?? (data as { error?: string })?.error ?? t("creator.unlock.saveFail"));
     }
     const { data: made, error: keyErr } = await supabase.rpc("create_recovery_keys");
     setBusy(false);
@@ -69,7 +72,7 @@ export function UnlockClient() {
     if (error) return setMessage(error.message);
     const r = data as { ok: boolean; error?: string; attempts_left?: number };
     if (r.ok) return router.replace("/creator");
-    setMessage(r.error + (r.attempts_left !== undefined ? ` ${r.attempts_left} tries left.` : ""));
+    setMessage((r.error ?? "") + (r.attempts_left !== undefined ? ` ${t("creator.unlock.triesLeft", { n: r.attempts_left })}` : ""));
     await load();
   }
 
@@ -81,66 +84,68 @@ export function UnlockClient() {
     if (error) return setMessage(error.message);
     const r = data as { ok: boolean; error?: string };
     if (r.ok) return router.replace("/creator");
-    setMessage(r.error ?? "That key did not work.");
+    setMessage(r.error ?? t("creator.unlock.keyFail"));
     await load();
   }
 
-  if (!status) return <p className="muted">Checking…</p>;
+  if (!status) return <p className="muted">{t("creator.unlock.checking")}</p>;
 
   const showKeys = keys !== null;
 
   return (
     <>
-      <BackLink href="/profile" label="Back to my profile" />
-      <p className="title" style={{ marginBottom: 6 }}>Open the Creator panel</p>
+      <BackLink href="/profile" label={t("staff.backToProfile")} />
+      <div className="row between wrap" style={{ gap: 8, marginBottom: 6 }}>
+        <p className="title" style={{ margin: 0 }}>{t("creator.unlock.title")}</p>
+        <LanguageSelect style={{ width: "auto", padding: "6px 10px", fontSize: 13 }} />
+      </div>
 
       {showKeys ? (
         <div className="card">
-          <p className="title" style={{ marginBottom: 4 }}>Save your recovery keys</p>
+          <p className="title" style={{ marginBottom: 4 }}>{t("creator.unlock.saveKeys")}</p>
           <p className="muted">
-            Each key works once and gets you back in if you lose your authenticator app or forget the access code. They are
-            shown only now. Keep them offline (printed, or in a password manager), never on the device you sign in from.
+            {t("creator.unlock.saveKeysHelp")}
           </p>
           <pre style={{ background: "var(--bg)", padding: 10, borderRadius: 8, overflowX: "auto" }}>{keys!.join("\n")}</pre>
-          <Button variant="primary" onClick={() => router.replace("/creator")}>I have saved them</Button>
+          <Button variant="primary" onClick={() => router.replace("/creator")}>{t("creator.unlock.savedThem")}</Button>
         </div>
       ) : useKey ? (
         <div className="card">
-          <p className="title" style={{ marginBottom: 4 }}>Use a recovery key</p>
-          <p className="muted">Type one of your recovery keys. It works once.</p>
+          <p className="title" style={{ marginBottom: 4 }}>{t("creator.unlock.useKeyTitle")}</p>
+          <p className="muted">{t("creator.unlock.useKeyHelp")}</p>
           <input value={key} onChange={(e) => setKey(e.target.value)} placeholder="AOE-RK-XXXX-XXXX-XXXX" autoComplete="off" />
           <div className="row" style={{ gap: 8 }}>
-            <Button variant="primary" disabled={busy || !key.trim()} onClick={submitKey}>Use this key</Button>
-            <Button onClick={() => setUseKey(false)}>Back</Button>
+            <Button variant="primary" disabled={busy || !key.trim()} onClick={submitKey}>{t("creator.unlock.useThisKey")}</Button>
+            <Button onClick={() => setUseKey(false)}>{t("common.back")}</Button>
           </div>
         </div>
       ) : !status.aal2 ? (
         <div className="card">
-          <p className="title" style={{ marginBottom: 4 }}>Step 1: two-step sign-in</p>
+          <p className="title" style={{ marginBottom: 4 }}>{t("creator.unlock.step1")}</p>
           <TwoStepPanel onVerified={load} />
           {status.has_factor && (
             <p className="tiny" style={{ marginTop: 12 }}>
-              Lost your authenticator app?{" "}
-              <button className="btn small" onClick={() => setUseKey(true)}>Use a recovery key</button>
+              {t("creator.unlock.lostApp")}{" "}
+              <button className="btn small" onClick={() => setUseKey(true)}>{t("creator.unlock.useKeyTitle")}</button>
             </p>
           )}
         </div>
       ) : !status.has_code ? (
         <div className="card">
-          <p className="title" style={{ marginBottom: 4 }}>Step 2: choose your access code</p>
+          <p className="title" style={{ marginBottom: 4 }}>{t("creator.unlock.step2Choose")}</p>
           <p className="muted">
-            Used every time you open this panel, together with your sign-in. At least 10 characters. It is stored scrambled; nobody can read it back.
+            {t("creator.unlock.codeHelp")}
           </p>
-          <input type="password" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Access code" autoComplete="new-password" />
-          <input type="password" value={code2} onChange={(e) => setCode2(e.target.value)} placeholder="Type it again" autoComplete="new-password" style={{ marginTop: 8 }} />
-          <Button variant="primary" style={{ marginTop: 8 }} disabled={busy} onClick={setNewCode}>Save the code</Button>
+          <input type="password" value={code} onChange={(e) => setCode(e.target.value)} placeholder={t("creator.unlock.codePh")} autoComplete="new-password" />
+          <input type="password" value={code2} onChange={(e) => setCode2(e.target.value)} placeholder={t("creator.unlock.again")} autoComplete="new-password" style={{ marginTop: 8 }} />
+          <Button variant="primary" style={{ marginTop: 8 }} disabled={busy} onClick={setNewCode}>{t("creator.unlock.saveCode")}</Button>
         </div>
       ) : (
         <div className="card">
-          <p className="title" style={{ marginBottom: 4 }}>Step 2: access code</p>
+          <p className="title" style={{ marginBottom: 4 }}>{t("creator.unlock.step2Code")}</p>
           {status.locked && (
             <p className="muted" style={{ color: "#b5471f" }}>
-              Too many wrong tries. You can try again after {status.locked_until ? new Date(status.locked_until).toLocaleTimeString() : "15 minutes"}, or use a recovery key.
+              {t("creator.unlock.locked", { time: status.locked_until ? new Date(status.locked_until).toLocaleTimeString(lang) : t("creator.unlock.15min") })}
             </p>
           )}
           <input
@@ -148,12 +153,12 @@ export function UnlockClient() {
             value={code}
             onChange={(e) => setCode(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && code && submitCode()}
-            placeholder="Access code"
+            placeholder={t("creator.unlock.codePh")}
             autoComplete="off"
           />
           <div className="row" style={{ gap: 8, marginTop: 8 }}>
-            <Button variant="primary" disabled={busy || !code || status.locked} onClick={submitCode}>Open the panel</Button>
-            <Button onClick={() => setUseKey(true)}>Locked out?</Button>
+            <Button variant="primary" disabled={busy || !code || status.locked} onClick={submitCode}>{t("creator.unlock.open")}</Button>
+            <Button onClick={() => setUseKey(true)}>{t("creator.unlock.lockedOut")}</Button>
           </div>
         </div>
       )}

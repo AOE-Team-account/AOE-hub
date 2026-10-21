@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/Button";
 
 interface Provider { id: string; label: string; model: string; restingUntil: string | null; lastError: string | null; lastOkAt: string | null }
@@ -21,6 +22,7 @@ interface Status {
 // and walks the Creator through changing the embedding model safely: build
 // the new data next to the old, check it is complete, switch, then clean up.
 export function AiDataCard() {
+  const { t, lang } = useLanguage();
   const [s, setS] = useState<Status | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -30,8 +32,8 @@ export function AiDataCard() {
     const res = await fetch("/api/creator/knowledge/embedding");
     const data = await res.json().catch(() => ({}));
     if (res.ok) setS(data);
-    else setError(data?.error ?? "Could not read the AI status.");
-  }, []);
+    else setError(data?.error ?? t("creator.ai.readFail"));
+  }, [t]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -45,8 +47,8 @@ export function AiDataCard() {
     const res = await fetch("/api/creator/knowledge/embedding", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, ...extra }) });
     const data = await res.json().catch(() => ({}));
     setBusy(false);
-    if (!res.ok) return setError(data?.error ?? "That did not work.");
-    if (action === "cleanup") setMessage(`Removed ${data.removedChunks} old pieces of data.`);
+    if (!res.ok) return setError(data?.error ?? t("creator.didNotWork"));
+    if (action === "cleanup") setMessage(t("creator.ai.removedOld", { n: data.removedChunks }));
     await load();
   }
 
@@ -58,67 +60,67 @@ export function AiDataCard() {
       for (let i = 0; i < 400; i++) {
         const res = await fetch("/api/creator/knowledge/index", { method: "POST" });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) { setError(data?.error ?? "Indexing failed."); break; }
+        if (!res.ok) { setError(data?.error ?? t("creator.ai.indexFail")); break; }
         await load();
         if (data.rateLimited) {
           const secs = Number(data.retryAfterSec) || 0;
           setMessage(
             secs > 900
-              ? `Google's free daily limit (1,000 pieces a day) is used up. It opens again in about ${Math.ceil(secs / 3600)} hour(s). Press the button again then; nothing is lost.`
-              : "Google asked us to slow down. Press the button again in a minute; nothing is lost."
+              ? t("creator.ai.dailyLimit", { hours: Math.ceil(secs / 3600) })
+              : t("creator.ai.slowDown")
           );
           break;
         }
-        if (data.done) { setMessage("Everything is up to date."); break; }
+        if (data.done) { setMessage(t("creator.ai.upToDate")); break; }
       }
     } finally {
       setBusy(false);
     }
   }
 
-  if (!s) return <p className="muted">{error ?? "Loading…"}</p>;
+  if (!s) return <p className="muted">{error ?? t("common.loading")}</p>;
   const nextReady = s.nextModel && (s.pendingNext ?? 0) === 0;
 
   return (
     <div className="card">
-      <p style={{ fontWeight: 500, fontSize: 14, margin: "0 0 8px" }}>The hub&apos;s AI</p>
-      <p className="tiny" style={{ marginBottom: 6 }}>Answers and translation use Gemini first ({s.googleKeyCount} Google key{s.googleKeyCount === 1 ? "" : "s"}, tried in order), and Groq when they are full. It returns to Gemini by itself after resting. Search data uses the same Google keys.</p>
+      <p style={{ fontWeight: 500, fontSize: 14, margin: "0 0 8px" }}>{t("creator.ai.title")}</p>
+      <p className="tiny" style={{ marginBottom: 6 }}>{t("creator.ai.help", { n: s.googleKeyCount })}</p>
       {s.providers.map((p) => (
         <p className="tiny" key={p.id} style={{ margin: "0 0 2px" }}>
           <strong>{p.label}</strong> ({p.model}):{" "}
-          {p.restingUntil ? `resting until ${new Date(p.restingUntil).toLocaleTimeString()}${p.lastError ? ` — ${p.lastError}` : ""}` : p.lastOkAt ? `working (last answer ${new Date(p.lastOkAt).toLocaleString()})` : "ready"}
+          {p.restingUntil ? t("creator.ai.resting", { time: new Date(p.restingUntil).toLocaleTimeString(lang) }) + (p.lastError ? ` — ${p.lastError}` : "") : p.lastOkAt ? t("creator.ai.workingLast", { time: new Date(p.lastOkAt).toLocaleString(lang) }) : t("creator.ai.ready")}
         </p>
       ))}
-      {!s.googleConfigured && <p className="tiny" style={{ color: "#b5471f" }}>No Google key has been added yet (add one in the AI key pool above), so the hub is using the local development model.</p>}
-      {!s.groqConfigured && <p className="tiny">No Groq key has been added: there is no backup when Gemini is full (add one in the AI key pool above).</p>}
+      {!s.googleConfigured && <p className="tiny" style={{ color: "#b5471f" }}>{t("creator.ai.noGoogle")}</p>}
+      {!s.groqConfigured && <p className="tiny">{t("creator.ai.noGroq")}</p>}
 
-      <p style={{ fontWeight: 500, fontSize: 14, margin: "14px 0 6px" }}>Search data (embeddings)</p>
+      <p style={{ fontWeight: 500, fontSize: 14, margin: "14px 0 6px" }}>{t("creator.ai.searchData")}</p>
       <p className="muted" style={{ margin: "0 0 4px" }}>
-        Searching with: <strong>{s.liveModel}</strong> · {s.documents} documents · {s.pendingDocuments} waiting
+        {t("creator.ai.searchingWith", { model: s.liveModel, docs: s.documents, waiting: s.pendingDocuments })}
       </p>
       {s.nextModel ? (
         <p className="muted" style={{ margin: "0 0 8px" }}>
-          Building alongside: <strong>{s.nextModel}</strong> · {s.documents - (s.pendingNext ?? 0)} of {s.documents} done
+          {t("creator.ai.building", { model: s.nextModel, done: s.documents - (s.pendingNext ?? 0), docs: s.documents })}
         </p>
       ) : (
-        <p className="tiny" style={{ margin: "0 0 8px" }}>Nothing else is being built.</p>
+        <p className="tiny" style={{ margin: "0 0 8px" }}>{t("creator.ai.nothingBuilding")}</p>
       )}
       <div className="row wrap" style={{ gap: 8 }}>
-        <Button size="small" disabled={busy} onClick={build}>{busy ? "Working…" : "Update index"}</Button>
+        <Button size="small" disabled={busy} onClick={build}>{busy ? t("staff.working") : t("creator.ai.updateIndex")}</Button>
         {!s.nextModel && s.liveModel !== s.suggestedModel && (
           <Button size="small" variant="primary" disabled={busy || !s.googleConfigured} onClick={async () => { await act("start-next"); await build(); }}>
-            Start re-embedding with Google ({s.suggestedModel})
+            {t("creator.ai.startReembed", { model: s.suggestedModel })}
           </Button>
         )}
         {s.nextModel && (
           <>
-            <Button size="small" variant="primary" disabled={busy || !nextReady} onClick={() => act("switch")}>Switch searches to {s.nextModel}</Button>
-            <Button size="small" disabled={busy} onClick={() => act("cancel-next")}>Cancel</Button>
+            <Button size="small" variant="primary" disabled={busy || !nextReady} onClick={() => act("switch")}>{t("creator.ai.switchTo", { model: s.nextModel })}</Button>
+            <Button size="small" disabled={busy} onClick={() => act("cancel-next")}>{t("common.cancel")}</Button>
           </>
         )}
         {!s.nextModel && s.liveModel === s.suggestedModel && (
-          <Button size="small" disabled={busy} onClick={() => { if (window.confirm("Delete the old search data from the previous model? Do this only after checking the AI answers well.")) act("cleanup"); }}>
-            Clean up old data
+          <Button size="small" disabled={busy} onClick={() => { if (window.confirm(t("creator.ai.confirmCleanup"))) act("cleanup"); }}>
+            {t("creator.ai.cleanup")}
           </Button>
         )}
       </div>

@@ -13,7 +13,9 @@ import { LANG_PATTERN, englishNameOf } from "./languages";
 // to promote it into the written files.
 
 const EN = en as Record<string, string>;
-const KEYS = Object.keys(EN);
+// Wording used only inside the Creator panel is kept in English and Chinese; AI-added languages
+// translate everything else (including the Watcher and Deacon panels).
+const KEYS = Object.keys(EN).filter((k) => !k.startsWith("creator."));
 const CHUNK = 40;
 
 export interface LanguageState {

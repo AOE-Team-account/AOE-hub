@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/Button";
 import { AiDataCard } from "./AiDataCard";
 
@@ -18,9 +19,10 @@ interface KnowledgeStatus {
 }
 
 export function KnowledgePanel() {
+  const { t } = useLanguage();
   return (
     <>
-      <p className="label" style={{ fontWeight: 500, margin: "0 0 8px" }}>AI status</p>
+      <p className="label" style={{ fontWeight: 500, margin: "0 0 8px" }}>{t("creator.kn.aiStatus")}</p>
       <AiDataCard />
       <KnowledgeTools />
     </>
@@ -28,6 +30,7 @@ export function KnowledgePanel() {
 }
 
 function KnowledgeTools() {
+  const { t, lang } = useLanguage();
   const [status, setStatus] = useState<KnowledgeStatus | null>(null);
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
@@ -41,8 +44,8 @@ function KnowledgeTools() {
     const res = await fetch("/api/creator/knowledge");
     const data = await res.json().catch(() => ({}));
     if (res.ok) setStatus(data);
-    else setError(data?.error ?? "Could not read the knowledge base.");
-  }, []);
+    else setError(data?.error ?? t("creator.kn.readFail"));
+  }, [t]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -59,12 +62,12 @@ function KnowledgeTools() {
         const res = await fetch("/api/creator/knowledge/index", { method: "POST" });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          setError(data?.error ?? "Indexing failed.");
+          setError(data?.error ?? t("creator.ai.indexFail"));
           break;
         }
         await refresh();
         if (data.done) {
-          setMessage("The assistant's knowledge is up to date.");
+          setMessage(t("creator.kn.upToDate"));
           break;
         }
       }
@@ -85,7 +88,7 @@ function KnowledgeTools() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       setBusy(null);
-      setError(data?.error ?? "Could not add it.");
+      setError(data?.error ?? t("creator.kn.addFail"));
       return;
     }
     setTitle("");
@@ -95,7 +98,7 @@ function KnowledgeTools() {
   }
 
   async function deleteBook(id: string, bookTitle: string) {
-    if (!window.confirm(`Remove "${bookTitle}" from the assistant's knowledge? This can't be undone.`)) return;
+    if (!window.confirm(t("creator.kn.confirmRemove", { title: bookTitle }))) return;
     setBusy(id);
     setError(null);
     setMessage(null);
@@ -103,47 +106,46 @@ function KnowledgeTools() {
     const data = await res.json().catch(() => ({}));
     setBusy(null);
     if (!res.ok) {
-      setError(data?.error ?? "Could not delete the book.");
+      setError(data?.error ?? t("creator.kn.deleteFail"));
       return;
     }
-    setMessage(`Removed "${bookTitle}".`);
+    setMessage(t("creator.kn.removed", { title: bookTitle }));
     await refresh();
   }
 
   return (
     <>
-      <p className="label" style={{ fontWeight: 500, margin: "20px 0 8px" }}>Assistant knowledge</p>
+      <p className="label" style={{ fontWeight: 500, margin: "20px 0 8px" }}>{t("creator.kn.knowledge")}</p>
       <p className="tiny" style={{ marginBottom: 10 }}>
-        The assistant answers from the hub&apos;s posts, files, its guide, community answers, and the philosophy books added
-        here. New and edited posts are picked up when you update the index.
+        {t("creator.kn.knowledgeHelp")}
       </p>
       <div className="card">
         <p className="muted" style={{ margin: "0 0 8px" }}>
-          {status ? `${status.documents} documents · ${status.pendingDocuments} waiting to be indexed` : "Loading…"}
+          {status ? t("creator.kn.docsWaiting", { docs: status.documents, waiting: status.pendingDocuments }) : t("common.loading")}
         </p>
         <Button size="small" disabled={busy !== null} onClick={updateIndex}>
-          {busy === "indexing" ? "Updating…" : "Update index"}
+          {busy === "indexing" ? t("creator.kn.updating") : t("creator.ai.updateIndex")}
         </Button>
       </div>
 
       <div className="card" style={{ marginTop: 10 }}>
-        <p style={{ fontWeight: 500, fontSize: 14, margin: "0 0 8px" }}>Add a philosophy book or file</p>
-        <input placeholder="Title (a book, or a file such as an article or notes)" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <p style={{ fontWeight: 500, fontSize: 14, margin: "0 0 8px" }}>{t("creator.kn.addTitle")}</p>
+        <input placeholder={t("creator.kn.titlePh")} value={title} onChange={(e) => setTitle(e.target.value)} />
         <input
           type="file"
           accept=".txt,.md,.markdown,.pdf,.epub,text/plain,application/pdf,application/epub+zip"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           style={{ marginTop: 8 }}
         />
-        <p className="tiny" style={{ margin: "6px 0" }}>…or paste the text:</p>
+        <p className="tiny" style={{ margin: "6px 0" }}>{t("creator.kn.orPaste")}</p>
         <textarea rows={4} value={text} onChange={(e) => setText(e.target.value)} disabled={!!file} />
         <div style={{ marginTop: 8 }}>
           <Button variant="primary" size="small" disabled={busy !== null || !title.trim() || (!file && text.trim().length < 50)} onClick={addBook}>
-            {busy === "adding" ? "Adding…" : "Add and index"}
+            {busy === "adding" ? t("creator.kn.adding") : t("creator.kn.addIndex")}
           </Button>
         </div>
         <p className="tiny" style={{ marginTop: 6 }}>
-          Adding something with the same title replaces the old copy. .txt, .md, .pdf, and .epub are supported — a scanned PDF with no selectable text won&apos;t work, since nothing here can read text out of an image.
+          {t("creator.kn.addHelp")}
         </p>
       </div>
 
@@ -152,27 +154,27 @@ function KnowledgeTools() {
         const shown = q ? status.books.filter((b) => b.title.toLowerCase().includes(q)) : status.books;
         return (
           <div className="card" style={{ marginTop: 10 }}>
-            <p style={{ fontWeight: 500, fontSize: 14, margin: "0 0 8px" }}>Philosophy books and files ({status.books.length})</p>
+            <p style={{ fontWeight: 500, fontSize: 14, margin: "0 0 8px" }}>{t("creator.kn.booksTitle", { n: status.books.length })}</p>
             <input
               type="search"
-              placeholder="Search the books and files by title…"
+              placeholder={t("creator.kn.searchPh")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              aria-label="Search the books and files"
+              aria-label={t("creator.kn.searchLabel")}
               style={{ marginBottom: 8 }}
             />
-            {q && <p className="tiny" style={{ margin: "0 0 6px" }}>Showing {shown.length} of {status.books.length}</p>}
-            {shown.length === 0 && <p className="muted">Nothing matches &ldquo;{search}&rdquo;.</p>}
+            {q && <p className="tiny" style={{ margin: "0 0 6px" }}>{t("creator.kn.showing", { shown: shown.length, total: status.books.length })}</p>}
+            {shown.length === 0 && <p className="muted">{t("creator.kn.noMatch", { q: search })}</p>}
             {shown.map((b) => (
               <div className="row between wrap" key={b.id} style={{ gap: 8, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
                 <div>
                   <p style={{ margin: 0 }}>{b.title}</p>
                   <p className="tiny" style={{ margin: 0 }}>
-                    {b.characters.toLocaleString()} characters · added {new Date(b.createdAt).toLocaleDateString()}
+                    {t("creator.kn.bookMeta", { n: b.characters.toLocaleString(lang), date: new Date(b.createdAt).toLocaleDateString(lang) })}
                   </p>
                 </div>
                 <Button size="small" variant="danger" disabled={busy !== null} onClick={() => deleteBook(b.id, b.title)}>
-                  {busy === b.id ? "Removing…" : "Delete"}
+                  {busy === b.id ? t("creator.kn.removing") : t("common.delete")}
                 </Button>
               </div>
             ))}
