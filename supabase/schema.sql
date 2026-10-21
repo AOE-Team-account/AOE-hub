@@ -941,7 +941,6 @@ create index if not exists file_assets_file_post_id_idx on public.file_assets (f
 -- Step 7: "Made with AI" label, "Other" choices, and link-outs
 -- ============================================================================
 alter table public.file_posts add column if not exists made_with_ai boolean not null default false;
-alter table public.experience_posts add column if not exists made_with_ai boolean not null default false;
 
 -- "Other" for a section or media type that none of the choices fit.
 alter table public.file_posts drop constraint if exists file_posts_section_check;
@@ -984,132 +983,6 @@ insert into public.approved_link_hosts (host, name) values
   ('play.unity.com', 'Unity Play')
 on conflict (host) do nothing;
 
--- ============================================================================
--- Preview pictures and short videos (Step 7). Optional. A file post can have
--- several pictures and videos; an experience post one picture. Pictures are
--- re-encoded by the server (so nothing but a picture survives); videos go
--- through the malware check and stay hidden until it passes. Written only by
--- the server (service role); read through the policy below.
--- ============================================================================
-create table if not exists public.post_media (
-  id uuid primary key default gen_random_uuid(),
-  owner_type text not null check (owner_type in ('file', 'experience')),
-  owner_id uuid not null,
-  kind text not null check (kind in ('image', 'video')),
-  storage_backend text not null default 'r2' check (storage_backend in ('r2', 'internet-archive')),
-  storage_path text,
-  mime_type text not null,
-  size_bytes bigint not null,
-  scan_status text not null default 'pending' check (scan_status in ('pending', 'clean', 'flagged')),
-  scan_analysis_id text,
-  sort_order integer not null default 0,
-  created_at timestamptz not null default now()
-);
-create index if not exists post_media_owner_idx on public.post_media (owner_type, owner_id, sort_order);
-alter table public.post_media enable row level security;
-
-drop policy if exists "clean preview media is public" on public.post_media;
-create policy "clean preview media is public" on public.post_media
-  for select using (
-    (scan_status = 'clean' and (
-        (owner_type = 'file' and exists (select 1 from public.file_posts f where f.id = owner_id and f.deleted_at is null and private.author_is_active(f.author_id)))
-     or (owner_type = 'experience' and exists (select 1 from public.experience_posts e where e.id = owner_id and e.deleted_at is null and private.author_is_active(e.author_id)))))
-    or (owner_type = 'file' and exists (select 1 from public.file_posts f where f.id = owner_id and f.author_id = auth.uid() and f.deleted_at is null))
-    or (owner_type = 'experience' and exists (select 1 from public.experience_posts e where e.id = owner_id and e.author_id = auth.uid() and e.deleted_at is null))
-    or private.reviewer_can(auth.uid(), 'file', 'view')
-  );
-
--- When a post is erased for good, its media rows go with it (the purge job
--- removes the stored bytes first; see list_expired_storage).
-create or replace function private.drop_post_media()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  delete from public.post_media where owner_type = tg_argv[0] and owner_id = old.id;
-  return old;
-end;
-$$;
-drop trigger if exists drop_media_file on public.file_posts;
-create trigger drop_media_file after delete on public.file_posts for each row execute function private.drop_post_media('file');
-drop trigger if exists drop_media_experience on public.experience_posts;
-create trigger drop_media_experience after delete on public.experience_posts for each row execute function private.drop_post_media('experience');
-
--- A member asking for another website to be allowed.
-create table if not exists public.link_host_requests (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.profiles (id) on delete cascade,
-  host text not null check (char_length(host) between 3 and 200),
-  note text check (note is null or char_length(note) <= 500),
-  status text not null default 'open' check (status in ('open', 'approved', 'dismissed')),
-  created_at timestamptz not null default now()
-);
-alter table public.link_host_requests enable row level security;
-drop policy if exists "members file and see their own link requests" on public.link_host_requests;
-create policy "members file and see their own link requests" on public.link_host_requests
-  for select using (auth.uid() = user_id or private.creator_unlocked(false));
-drop policy if exists "members can ask for a link site" on public.link_host_requests;
-create policy "members can ask for a link site" on public.link_host_requests
-  for insert with check (auth.uid() = user_id and status = 'open' and private.can_participate(auth.uid()));
-
-create or replace function public.add_link_host(p_host text, p_name text)
-returns void
-language plpgsql
-security definer
-volatile
-set search_path = public
-as $$
-declare
-  v_host text := lower(btrim(coalesce(p_host, '')));
-begin
-  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
-  v_host := regexp_replace(v_host, '^https?://', '');
-  v_host := regexp_replace(v_host, '/.*$', '');
-  if v_host !~ '^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$' or position('.' in v_host) = 0 then raise exception 'Use just the website name, like itch.io.'; end if;
-  insert into public.approved_link_hosts (host, name, active) values (v_host, left(btrim(coalesce(nullif(p_name, ''), v_host)), 80), true)
-  on conflict (host) do update set name = excluded.name, active = true;
-  perform private.log_activity(auth.uid(), 'setting-changed', null, null, null, null, jsonb_build_object('key', 'link_host_added', 'host', v_host));
-end;
-$$;
-
-create or replace function public.remove_link_host(p_host text)
-returns void
-language plpgsql
-security definer
-volatile
-set search_path = public
-as $$
-begin
-  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
-  delete from public.approved_link_hosts where host = lower(btrim(p_host));
-  perform private.log_activity(auth.uid(), 'setting-changed', null, null, null, null, jsonb_build_object('key', 'link_host_removed', 'host', p_host));
-end;
-$$;
-
-create or replace function public.resolve_link_host_request(p_id uuid, p_approve boolean)
-returns void
-language plpgsql
-security definer
-volatile
-set search_path = public
-as $$
-declare
-  v_req public.link_host_requests;
-begin
-  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
-  select * into v_req from public.link_host_requests where id = p_id and status = 'open';
-  if not found then raise exception 'No such open request.'; end if;
-  update public.link_host_requests set status = case when p_approve then 'approved' else 'dismissed' end where id = p_id;
-  if p_approve then perform public.add_link_host(v_req.host, null); end if;
-  insert into public.notifications (user_id, body, kind, data)
-  values (v_req.user_id,
-          case when p_approve then 'Your request was approved: links to ' || v_req.host || ' are now allowed.'
-               else 'Your request for links to ' || v_req.host || ' was not approved this time.' end,
-          'link-host-request', '{}'::jsonb);
-end;
-$$;
 
 
 comment on column public.file_assets.scan_status is 'Malware scan gate (VirusTotal, Phase 3) — only "clean" assets are ever downloadable.';
@@ -3425,40 +3298,7 @@ $$;
 -- ---- Erasing for good (30 days after deletion) ------------------------------
 -- Run by the server (service role) from /api/cron/purge-trash, which first
 -- deletes the stored files listed by list_expired_storage().
-drop function if exists public.list_expired_storage(integer);
-create or replace function public.list_expired_storage(p_days integer default 30)
-returns table (asset_id uuid, storage_backend text, storage_path text, game_prefix text)
-language sql
-security definer
-stable
-set search_path = public
-as $$
-  select a.id, a.storage_backend, a.storage_path, a.game_prefix
-    from public.file_assets a
-    join public.file_posts p on p.id = a.file_post_id
-   where (a.storage_path is not null or a.game_prefix is not null)
-     and (
-       (p.deleted_at is not null and p.deleted_at < now() - make_interval(days => p_days))
-       or exists (select 1 from public.profiles pr
-                   where pr.id = p.author_id and pr.account_status = 'deleted'
-                     and pr.account_status_changed_at < now() - make_interval(days => p_days))
-     )
-  union all
-  select m.id, m.storage_backend, m.storage_path, null::text
-    from public.post_media m
-    left join public.file_posts f on m.owner_type = 'file' and f.id = m.owner_id
-    left join public.experience_posts e on m.owner_type = 'experience' and e.id = m.owner_id
-   where m.storage_path is not null and ((f.id is not null and (
-            (f.deleted_at is not null and f.deleted_at < now() - make_interval(days => p_days))
-            or exists (select 1 from public.profiles pr where pr.id = f.author_id and pr.account_status = 'deleted'
-                          and pr.account_status_changed_at < now() - make_interval(days => p_days))))
-      or (e.id is not null and (
-            (e.deleted_at is not null and e.deleted_at < now() - make_interval(days => p_days))
-            or exists (select 1 from public.profiles pr where pr.id = e.author_id and pr.account_status = 'deleted'
-                          and pr.account_status_changed_at < now() - make_interval(days => p_days)))));
-$$;
-revoke execute on function public.list_expired_storage(integer) from public, anon, authenticated;
-grant execute on function public.list_expired_storage(integer) to service_role;
+
 
 create or replace function public.purge_expired(p_days integer default 30)
 returns jsonb
@@ -4009,6 +3849,171 @@ begin
   return v_old;
 end;
 $$;
+
+alter table public.experience_posts add column if not exists made_with_ai boolean not null default false;
+
+-- ============================================================================
+-- Preview pictures and short videos (Step 7). Optional. A file post can have
+-- several pictures and videos; an experience post one picture. Pictures are
+-- re-encoded by the server (so nothing but a picture survives); videos go
+-- through the malware check and stay hidden until it passes. Written only by
+-- the server (service role); read through the policy below.
+-- ============================================================================
+create table if not exists public.post_media (
+  id uuid primary key default gen_random_uuid(),
+  owner_type text not null check (owner_type in ('file', 'experience')),
+  owner_id uuid not null,
+  kind text not null check (kind in ('image', 'video')),
+  storage_backend text not null default 'r2' check (storage_backend in ('r2', 'internet-archive')),
+  storage_path text,
+  mime_type text not null,
+  size_bytes bigint not null,
+  scan_status text not null default 'pending' check (scan_status in ('pending', 'clean', 'flagged')),
+  scan_analysis_id text,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now()
+);
+create index if not exists post_media_owner_idx on public.post_media (owner_type, owner_id, sort_order);
+alter table public.post_media enable row level security;
+
+drop policy if exists "clean preview media is public" on public.post_media;
+create policy "clean preview media is public" on public.post_media
+  for select using (
+    (scan_status = 'clean' and (
+        (owner_type = 'file' and exists (select 1 from public.file_posts f where f.id = owner_id and f.deleted_at is null and private.author_is_active(f.author_id)))
+     or (owner_type = 'experience' and exists (select 1 from public.experience_posts e where e.id = owner_id and e.deleted_at is null and private.author_is_active(e.author_id)))))
+    or (owner_type = 'file' and exists (select 1 from public.file_posts f where f.id = owner_id and f.author_id = auth.uid() and f.deleted_at is null))
+    or (owner_type = 'experience' and exists (select 1 from public.experience_posts e where e.id = owner_id and e.author_id = auth.uid() and e.deleted_at is null))
+    or private.reviewer_can(auth.uid(), 'file', 'view')
+  );
+
+-- When a post is erased for good, its media rows go with it (the purge job
+-- removes the stored bytes first; see list_expired_storage).
+create or replace function private.drop_post_media()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.post_media where owner_type = tg_argv[0] and owner_id = old.id;
+  return old;
+end;
+$$;
+drop trigger if exists drop_media_file on public.file_posts;
+create trigger drop_media_file after delete on public.file_posts for each row execute function private.drop_post_media('file');
+drop trigger if exists drop_media_experience on public.experience_posts;
+create trigger drop_media_experience after delete on public.experience_posts for each row execute function private.drop_post_media('experience');
+
+-- A member asking for another website to be allowed.
+create table if not exists public.link_host_requests (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  host text not null check (char_length(host) between 3 and 200),
+  note text check (note is null or char_length(note) <= 500),
+  status text not null default 'open' check (status in ('open', 'approved', 'dismissed')),
+  created_at timestamptz not null default now()
+);
+alter table public.link_host_requests enable row level security;
+drop policy if exists "members file and see their own link requests" on public.link_host_requests;
+create policy "members file and see their own link requests" on public.link_host_requests
+  for select using (auth.uid() = user_id or private.creator_unlocked(false));
+drop policy if exists "members can ask for a link site" on public.link_host_requests;
+create policy "members can ask for a link site" on public.link_host_requests
+  for insert with check (auth.uid() = user_id and status = 'open' and private.can_participate(auth.uid()));
+
+create or replace function public.add_link_host(p_host text, p_name text)
+returns void
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+declare
+  v_host text := lower(btrim(coalesce(p_host, '')));
+begin
+  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
+  v_host := regexp_replace(v_host, '^https?://', '');
+  v_host := regexp_replace(v_host, '/.*$', '');
+  if v_host !~ '^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$' or position('.' in v_host) = 0 then raise exception 'Use just the website name, like itch.io.'; end if;
+  insert into public.approved_link_hosts (host, name, active) values (v_host, left(btrim(coalesce(nullif(p_name, ''), v_host)), 80), true)
+  on conflict (host) do update set name = excluded.name, active = true;
+  perform private.log_activity(auth.uid(), 'setting-changed', null, null, null, null, jsonb_build_object('key', 'link_host_added', 'host', v_host));
+end;
+$$;
+
+create or replace function public.remove_link_host(p_host text)
+returns void
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+begin
+  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
+  delete from public.approved_link_hosts where host = lower(btrim(p_host));
+  perform private.log_activity(auth.uid(), 'setting-changed', null, null, null, null, jsonb_build_object('key', 'link_host_removed', 'host', p_host));
+end;
+$$;
+
+create or replace function public.resolve_link_host_request(p_id uuid, p_approve boolean)
+returns void
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+declare
+  v_req public.link_host_requests;
+begin
+  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
+  select * into v_req from public.link_host_requests where id = p_id and status = 'open';
+  if not found then raise exception 'No such open request.'; end if;
+  update public.link_host_requests set status = case when p_approve then 'approved' else 'dismissed' end where id = p_id;
+  if p_approve then perform public.add_link_host(v_req.host, null); end if;
+  insert into public.notifications (user_id, body, kind, data)
+  values (v_req.user_id,
+          case when p_approve then 'Your request was approved: links to ' || v_req.host || ' are now allowed.'
+               else 'Your request for links to ' || v_req.host || ' was not approved this time.' end,
+          'link-host-request', '{}'::jsonb);
+end;
+$$;
+
+-- (Defined here, after post_media exists.)
+drop function if exists public.list_expired_storage(integer);
+create or replace function public.list_expired_storage(p_days integer default 30)
+returns table (asset_id uuid, storage_backend text, storage_path text, game_prefix text)
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select a.id, a.storage_backend, a.storage_path, a.game_prefix
+    from public.file_assets a
+    join public.file_posts p on p.id = a.file_post_id
+   where (a.storage_path is not null or a.game_prefix is not null)
+     and (
+       (p.deleted_at is not null and p.deleted_at < now() - make_interval(days => p_days))
+       or exists (select 1 from public.profiles pr
+                   where pr.id = p.author_id and pr.account_status = 'deleted'
+                     and pr.account_status_changed_at < now() - make_interval(days => p_days))
+     )
+  union all
+  select m.id, m.storage_backend, m.storage_path, null::text
+    from public.post_media m
+    left join public.file_posts f on m.owner_type = 'file' and f.id = m.owner_id
+    left join public.experience_posts e on m.owner_type = 'experience' and e.id = m.owner_id
+   where m.storage_path is not null and ((f.id is not null and (
+            (f.deleted_at is not null and f.deleted_at < now() - make_interval(days => p_days))
+            or exists (select 1 from public.profiles pr where pr.id = f.author_id and pr.account_status = 'deleted'
+                          and pr.account_status_changed_at < now() - make_interval(days => p_days))))
+      or (e.id is not null and (
+            (e.deleted_at is not null and e.deleted_at < now() - make_interval(days => p_days))
+            or exists (select 1 from public.profiles pr where pr.id = e.author_id and pr.account_status = 'deleted'
+                          and pr.account_status_changed_at < now() - make_interval(days => p_days)))));
+$$;
+revoke execute on function public.list_expired_storage(integer) from public, anon, authenticated;
+grant execute on function public.list_expired_storage(integer) to service_role;
 
 -- Whether the signed-in member has turned on two-step sign-in.
 create or replace function public.my_two_step_status()
