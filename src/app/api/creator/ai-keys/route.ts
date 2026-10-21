@@ -10,13 +10,14 @@ const PROVIDERS: PoolProvider[] = ["google", "groq", "qwen-intl", "qwen-cn"];
 
 // The hub's AI key pool, Creator only. Keys go in here and never come out:
 // the list holds a name and the last four characters, nothing more.
-function fileKeys() {
-  const rows: { provider: PoolProvider; label: string; hint: string }[] = [];
+function fileKeysFull() {
+  const rows: { provider: PoolProvider; label: string; hint: string; key: string }[] = [];
   const g = [process.env.GOOGLE_AI_API_KEY, ...[2, 3, 4, 5, 6, 7, 8, 9].map((i) => process.env[`GOOGLE_AI_API_KEY_${i}`])];
-  g.forEach((k, i) => { if (k?.trim()) rows.push({ provider: "google", label: i === 0 ? "Google (settings file)" : `Google ${i + 1} (settings file)`, hint: k.trim().slice(-4) }); });
-  if (process.env.GROQ_API_KEY?.trim()) rows.push({ provider: "groq", label: "Groq (settings file)", hint: process.env.GROQ_API_KEY.trim().slice(-4) });
+  g.forEach((k, i) => { if (k?.trim()) rows.push({ provider: "google", label: i === 0 ? "Google (settings file)" : `Google ${i + 1} (settings file)`, hint: k.trim().slice(-4), key: k.trim() }); });
+  if (process.env.GROQ_API_KEY?.trim()) rows.push({ provider: "groq", label: "Groq (settings file)", hint: process.env.GROQ_API_KEY.trim().slice(-4), key: process.env.GROQ_API_KEY.trim() });
   return rows;
 }
+const fileKeys = () => fileKeysFull().map(({ provider, label, hint }) => ({ provider, label, hint }));
 
 export async function GET() {
   const guard = await requireCreator();
@@ -50,6 +51,22 @@ export async function POST(request: Request) {
       await svc.rpc("record_hub_ai_key_check", { p_id: id, p_ok: true, p_note: check.note });
       invalidateKeyPool();
       return NextResponse.json({ ok: true, id, note: check.note });
+    }
+    case "test-all": {
+      // Asks every company whether each key is accepted right now (settings-file keys and pool keys).
+      const { data: secrets } = await svc.rpc("hub_ai_key_secrets", { p_only_active: false });
+      const pool = (secrets ?? []) as { id: string; provider: PoolProvider; label: string; api_key: string }[];
+      const results: { source: "file" | "pool"; id?: string; label: string; hint: string; ok: boolean; note: string }[] = [];
+      for (const f of fileKeysFull()) {
+        const c = await testPoolKey(f.provider, f.key);
+        results.push({ source: "file", label: f.label, hint: f.hint, ok: c.ok, note: c.note });
+      }
+      for (const p of pool) {
+        const c = await testPoolKey(p.provider, p.api_key);
+        await svc.rpc("record_hub_ai_key_check", { p_id: p.id, p_ok: c.ok, p_note: c.note });
+        results.push({ source: "pool", id: p.id, label: p.label, hint: p.api_key.slice(-4), ok: c.ok, note: c.note });
+      }
+      return NextResponse.json({ results });
     }
     case "test": {
       if (!body.id || !uuid.test(body.id)) return NextResponse.json({ error: "Missing key." }, { status: 400 });

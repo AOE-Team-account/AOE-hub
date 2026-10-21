@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { r2Endpoint, r2AccessKeyId, r2SecretAccessKey, r2BucketName } from "./config";
 
@@ -30,4 +30,27 @@ export async function deleteFromR2(key: string): Promise<void> {
 export async function getR2MediaUrl(key: string): Promise<string> {
   const command = new GetObjectCommand({ Bucket: r2BucketName, Key: key });
   return getSignedUrl(client, command, { expiresIn: 6 * 60 * 60 });
+}
+
+/** Reads one stored object (used to serve hosted games). */
+export async function getR2Object(key: string) {
+  const res = await client.send(new GetObjectCommand({ Bucket: r2BucketName, Key: key }));
+  return res;
+}
+
+/** Removes every object whose key starts with the prefix (a hosted game's files). Returns how many were removed. */
+export async function deleteFromR2Prefix(prefix: string): Promise<number> {
+  if (!prefix || prefix.length < 8) throw new Error("Refusing to delete such a short prefix.");
+  let removed = 0;
+  let token: string | undefined;
+  do {
+    const list = await client.send(new ListObjectsV2Command({ Bucket: r2BucketName, Prefix: prefix, ContinuationToken: token }));
+    const keys = (list.Contents ?? []).map((o) => ({ Key: o.Key! }));
+    if (keys.length > 0) {
+      await client.send(new DeleteObjectsCommand({ Bucket: r2BucketName, Delete: { Objects: keys, Quiet: true } }));
+      removed += keys.length;
+    }
+    token = list.IsTruncated ? list.NextContinuationToken : undefined;
+  } while (token);
+  return removed;
 }

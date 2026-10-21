@@ -29,6 +29,8 @@ export function KeyPool() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fileStatus, setFileStatus] = useState<Record<string, { ok: boolean; note: string }>>({});
+  const [checkedAt, setCheckedAt] = useState<Date | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/creator/ai-keys");
@@ -51,9 +53,34 @@ export function KeyPool() {
     return true;
   }
 
+  async function testAll() {
+    setBusy(true); setError(null); setMessage(null);
+    const res = await fetch("/api/creator/ai-keys", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "test-all" }) });
+    const data = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok) return setError(data?.error ?? "That did not work.");
+    const map: Record<string, { ok: boolean; note: string }> = {};
+    for (const r of data.results as { source: string; label: string; hint: string; ok: boolean; note: string }[]) {
+      if (r.source === "file") map[`${r.label}|${r.hint}`] = { ok: r.ok, note: r.note };
+    }
+    setFileStatus(map);
+    setCheckedAt(new Date());
+    const all = data.results as { ok: boolean }[];
+    setMessage(`Checked ${all.length} keys just now: ${all.filter((r) => r.ok).length} working.`);
+    await load();
+  }
+
+  const total = rows.length + fileRows.length;
+  const working = rows.filter((r) => r.active && r.last_check_ok === true).length + Object.values(fileStatus).filter((s) => s.ok).length;
+
   return (
     <div className="card">
       <p className="title" style={{ marginBottom: 4 }}>AI key pool</p>
+      <p className="muted" style={{ marginBottom: 8 }}>
+        <strong>{total}</strong> {total === 1 ? "key" : "keys"} in the pool ({fileRows.length} in the settings file, {rows.length} added here).
+        {checkedAt ? <> <strong>{working}</strong> working when last checked ({checkedAt.toLocaleTimeString()}).</> : " Press “Test all keys” to see which ones work right now."}
+      </p>
+      <Button size="small" disabled={busy || total === 0} onClick={testAll} style={{ marginBottom: 10 }}>{busy ? "Checking…" : "Test all keys"}</Button>
       <p className="muted" style={{ marginBottom: 10 }}>
         Add the hub&apos;s AI keys here instead of in the settings file. Each key is checked with its company, then stored encrypted
         and <strong>never shown again</strong> (only its name and last four characters). The hub tries the keys in the order they were
@@ -80,7 +107,10 @@ export function KeyPool() {
       {fileRows.map((r, i) => (
         <div className="row between wrap" key={`f${i}`} style={{ gap: 8, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
           <span><strong>{r.label}</strong> <span className="tiny">· {nameOf(r.provider)} · …{r.hint}</span></span>
-          <span className="tiny">In the settings file (change it there)</span>
+          <span className="tiny">
+            {fileStatus[`${r.label}|${r.hint}`] ? `${fileStatus[`${r.label}|${r.hint}`].ok ? "OK" : "Problem"}: ${fileStatus[`${r.label}|${r.hint}`].note} · ` : ""}
+            In the settings file (change it there)
+          </span>
         </div>
       ))}
       {rows.map((r) => (
