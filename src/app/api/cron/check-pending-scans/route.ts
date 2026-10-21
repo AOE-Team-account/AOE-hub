@@ -58,5 +58,29 @@ export async function POST(request: Request) {
     resolved.push({ id: asset.id, result });
   }
 
-  return NextResponse.json({ checked: pending?.length ?? 0, resolved });
+  // Preview videos waiting on the same check.
+  const { data: pendingMedia } = await supabase
+    .from("post_media")
+    .select("id, storage_path, storage_backend, scan_analysis_id")
+    .eq("scan_status", "pending")
+    .not("scan_analysis_id", "is", null);
+  for (const m of pendingMedia ?? []) {
+    const result = await checkAnalysis(m.scan_analysis_id as string);
+    if (result === "pending") continue;
+    if (result === "flagged") {
+      if (m.storage_backend && m.storage_path) {
+        try {
+          await deleteFile(m.storage_backend as StorageBackend, m.storage_path);
+        } catch (err) {
+          console.error(`Failed to quarantine flagged preview ${m.id}:`, err);
+        }
+      }
+      await supabase.from("post_media").update({ scan_status: "flagged", storage_path: null, scan_analysis_id: null }).eq("id", m.id);
+    } else {
+      await supabase.from("post_media").update({ scan_status: "clean", scan_analysis_id: null }).eq("id", m.id);
+    }
+    resolved.push({ id: m.id, result });
+  }
+
+  return NextResponse.json({ checked: (pending?.length ?? 0) + (pendingMedia?.length ?? 0), resolved });
 }

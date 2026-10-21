@@ -7,6 +7,8 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import type { UiKey } from "@/lib/i18n/strings";
 import { friendlyWriteError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/client";
+import { PreviewPicker } from "@/components/ui/PreviewPicker";
+import { uploadPreviews } from "@/lib/media-client";
 import { BackLink } from "@/components/ui/BackLink";
 import { Button } from "@/components/ui/Button";
 import type { ExperienceCategory } from "@/lib/types";
@@ -31,6 +33,7 @@ export default function NewExperiencePostPage() {
   const [category, setCategory] = useState<ExperienceCategory>("starting-out");
   const [body, setBody] = useState("");
   const [madeWithAi, setMadeWithAi] = useState(false);
+  const [previewImages, setPreviewImages] = useState<File[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,14 +44,21 @@ export default function NewExperiencePostPage() {
     setSubmitting(true);
     setError(null);
     const supabase = createClient();
-    const { error: insertError } = await supabase
+    const { data: created, error: insertError } = await supabase
       .from("experience_posts")
-      .insert({ author_id: user.id, category, body: body.trim(), made_with_ai: madeWithAi });
-    setSubmitting(false);
-    if (insertError) {
-      setError(friendlyWriteError(insertError));
+      .insert({ author_id: user.id, category, body: body.trim(), made_with_ai: madeWithAi })
+      .select("id")
+      .single();
+    if (insertError || !created) {
+      setSubmitting(false);
+      setError(friendlyWriteError(insertError ?? { message: "Could not post." }));
       return;
     }
+    if (previewImages.length > 0) {
+      const failed = await uploadPreviews("experience", created.id, previewImages);
+      if (failed > 0) window.alert(t("previews.failedSome", { n: failed }));
+    }
+    setSubmitting(false);
     router.push("/experience");
     router.refresh();
   }
@@ -72,6 +82,8 @@ export default function NewExperiencePostPage() {
         value={body}
         onChange={(e) => setBody(e.target.value)}
       />
+
+      <PreviewPicker single images={previewImages} videos={[]} onChange={(i) => setPreviewImages(i)} />
 
       <label className="check-item" style={{ alignItems: "flex-start", marginTop: 14 }}>
         <input type="checkbox" checked={madeWithAi} onChange={(e) => setMadeWithAi(e.target.checked)} style={{ width: "auto", marginTop: 3 }} />

@@ -400,5 +400,19 @@
   "upload.linkRemove": "移除",
   "file.hostedOutside": "托管在 AOEhub 之外",
   "file.hostedOutsideNote": "此文件位于其他网站。AOEhub 没有扫描它，也无法保证它安全或真实。只有在信任创作者时才打开。",
-  "file.openLink": "打开链接 ↗"
+  "file.openLink": "打开链接 ↗",
+  "previews.title": "预览（可选）",
+  "previews.help": "添加图片或短视频，让大家看到这是什么。视频可以像预告片一样。最多可添加 {images} 张图片和 {videos} 个视频（每个视频最长 {minutes} 分钟、不超过 {size}）。",
+  "previews.onePicture": "添加一张图片（可选）",
+  "previews.addImages": "添加图片",
+  "previews.addVideo": "添加视频",
+  "previews.remove": "移除",
+  "previews.videoTooLong": "视频最长 {minutes} 分钟。",
+  "previews.videoTooBig": "视频不能超过 {size}。",
+  "previews.imageTooBig": "图片不能超过 {size}。",
+  "previews.videoType": "视频必须是 MP4 或 WebM 格式。",
+  "previews.tooMany": "最多可添加 {images} 张图片和 {videos} 个视频。",
+  "previews.uploading": "正在上传预览……{done} / {total}",
+  "previews.failedSome": "您的帖子已发布，但有 {n} 个预览未能添加。您可以稍后再试。",
+  "previews.videoChecking": "视频在通过恶意软件检查后才会显示。"
 }

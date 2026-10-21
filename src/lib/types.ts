@@ -102,6 +102,8 @@ export interface FilePost {
   updatedAt?: string;
   assets: FileAsset[];
   madeWithAi?: boolean;
+  /** Preview pictures and videos that passed the check, in order. */
+  media?: { id: string; kind: "image" | "video" }[];
 }
 
 export interface Comment {
@@ -127,6 +129,8 @@ export interface ExperiencePost {
   pinned?: boolean;
   isAnnouncement?: boolean;
   madeWithAi?: boolean;
+  /** The picture of the post, if it has one. */
+  imageId?: string;
 }
 
 export interface NotificationItem {

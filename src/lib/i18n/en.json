@@ -400,5 +400,19 @@
   "upload.linkRemove": "Remove",
   "file.hostedOutside": "Hosted outside AOEhub",
   "file.hostedOutsideNote": "This file is on another website. AOEhub has not scanned it and cannot guarantee it is safe or genuine. Only open it if you trust the creator.",
-  "file.openLink": "Open link ↗"
+  "file.openLink": "Open link ↗",
+  "previews.title": "Previews (optional)",
+  "previews.help": "Add pictures or short videos so people can see what this is. A video can work like a trailer. You can add up to {images} pictures and {videos} videos (each video up to {minutes} minutes and {size}).",
+  "previews.onePicture": "Add a picture (optional)",
+  "previews.addImages": "Add pictures",
+  "previews.addVideo": "Add a video",
+  "previews.remove": "Remove",
+  "previews.videoTooLong": "A video can be at most {minutes} minutes long.",
+  "previews.videoTooBig": "A video can be at most {size}.",
+  "previews.imageTooBig": "A picture can be at most {size}.",
+  "previews.videoType": "Videos must be MP4 or WebM.",
+  "previews.tooMany": "You can add at most {images} pictures and {videos} videos.",
+  "previews.uploading": "Uploading previews… {done} of {total}",
+  "previews.failedSome": "Your post was published, but {n} preview(s) could not be added. You can try again later.",
+  "previews.videoChecking": "Videos appear once they have been checked for malware."
 }

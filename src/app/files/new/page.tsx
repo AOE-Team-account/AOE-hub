@@ -10,6 +10,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { UiKey } from "@/lib/i18n/strings";
 import { BackLink } from "@/components/ui/BackLink";
 import { Button } from "@/components/ui/Button";
+import { PreviewPicker } from "@/components/ui/PreviewPicker";
+import { uploadPreviews } from "@/lib/media-client";
 import { ChipRow } from "@/components/ui/ChipRow";
 import { Segmented } from "@/components/ui/Segmented";
 import type { Authorship, FileSection, MediaType } from "@/lib/types";
@@ -64,6 +66,8 @@ export default function UploadFilePage() {
   const [authorship, setAuthorship] = useState<Authorship>("original");
   const [rows, setRows] = useState<FileRow[]>([newRow()]);
   const [madeWithAi, setMadeWithAi] = useState(false);
+  const [previewImages, setPreviewImages] = useState<File[]>([]);
+  const [previewVideos, setPreviewVideos] = useState<File[]>([]);
   const [hosts, setHosts] = useState<{ host: string; name: string }[]>([]);
   const [askOpen, setAskOpen] = useState(false);
   const [askText, setAskText] = useState("");
@@ -147,6 +151,13 @@ export default function UploadFilePage() {
       const flagged = (data.results as { label: string; scanStatus: string }[]).filter((r) => r.scanStatus === "flagged");
       if (flagged.length > 0) {
         setStatusMessage(t("upload.flagged", { labels: flagged.map((f) => f.label).join(", ") }));
+      }
+      const previews = [...previewImages, ...previewVideos];
+      if (previews.length > 0) {
+        const failed = await uploadPreviews("file", data.postId, previews, (done, total) =>
+          setStatusMessage(t("previews.uploading", { done, total }))
+        );
+        if (failed > 0) window.alert(t("previews.failedSome", { n: failed }));
       }
       router.push(`/files/${data.postId}`);
       router.refresh();
@@ -261,6 +272,8 @@ export default function UploadFilePage() {
           {askSent && <p className="tiny" style={{ color: "var(--accent)" }}>{t("upload.linkAskSent")}</p>}
         </div>
       )}
+
+      <PreviewPicker images={previewImages} videos={previewVideos} onChange={(i, v) => { setPreviewImages(i); setPreviewVideos(v); }} />
 
       <label className="check-item" style={{ alignItems: "flex-start", marginTop: 16 }}>
         <input type="checkbox" checked={madeWithAi} onChange={(e) => setMadeWithAi(e.target.checked)} style={{ width: "auto", marginTop: 3 }} />

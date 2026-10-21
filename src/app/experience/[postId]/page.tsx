@@ -71,6 +71,10 @@ export default async function ExperiencePostPage({ params }: PageProps<"/experie
           </span>
           {post.madeWithAi && <Badge variant="neutral">{t("badge.madeWithAi")}</Badge>}
         </div>
+        {post.imageId && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={`/api/media/${post.imageId}`} alt="" style={{ maxWidth: "100%", maxHeight: 420, borderRadius: 10, margin: "4px 0 10px", display: "block" }} />
+        )}
         <Translated type="experience-post" id={post.id} field="body" text={post.body} className="muted" note noteWhenPaused />
       </div>
 

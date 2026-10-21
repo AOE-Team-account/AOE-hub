@@ -25,3 +25,9 @@ export async function getR2DownloadUrl(key: string): Promise<string> {
 export async function deleteFromR2(key: string): Promise<void> {
   await client.send(new DeleteObjectCommand({ Bucket: r2BucketName, Key: key }));
 }
+
+/** A link for playing or showing a preview: lives long enough for a whole video to be watched. */
+export async function getR2MediaUrl(key: string): Promise<string> {
+  const command = new GetObjectCommand({ Bucket: r2BucketName, Key: key });
+  return getSignedUrl(client, command, { expiresIn: 6 * 60 * 60 });
+}

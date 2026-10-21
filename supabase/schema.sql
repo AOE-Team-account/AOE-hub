@@ -978,6 +978,59 @@ insert into public.approved_link_hosts (host, name) values
   ('play.unity.com', 'Unity Play')
 on conflict (host) do nothing;
 
+-- ============================================================================
+-- Preview pictures and short videos (Step 7). Optional. A file post can have
+-- several pictures and videos; an experience post one picture. Pictures are
+-- re-encoded by the server (so nothing but a picture survives); videos go
+-- through the malware check and stay hidden until it passes. Written only by
+-- the server (service role); read through the policy below.
+-- ============================================================================
+create table if not exists public.post_media (
+  id uuid primary key default gen_random_uuid(),
+  owner_type text not null check (owner_type in ('file', 'experience')),
+  owner_id uuid not null,
+  kind text not null check (kind in ('image', 'video')),
+  storage_backend text not null default 'r2' check (storage_backend in ('r2', 'internet-archive')),
+  storage_path text,
+  mime_type text not null,
+  size_bytes bigint not null,
+  scan_status text not null default 'pending' check (scan_status in ('pending', 'clean', 'flagged')),
+  scan_analysis_id text,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now()
+);
+create index if not exists post_media_owner_idx on public.post_media (owner_type, owner_id, sort_order);
+alter table public.post_media enable row level security;
+
+drop policy if exists "clean preview media is public" on public.post_media;
+create policy "clean preview media is public" on public.post_media
+  for select using (
+    (scan_status = 'clean' and (
+        (owner_type = 'file' and exists (select 1 from public.file_posts f where f.id = owner_id and f.deleted_at is null and private.author_is_active(f.author_id)))
+     or (owner_type = 'experience' and exists (select 1 from public.experience_posts e where e.id = owner_id and e.deleted_at is null and private.author_is_active(e.author_id)))))
+    or (owner_type = 'file' and exists (select 1 from public.file_posts f where f.id = owner_id and f.author_id = auth.uid() and f.deleted_at is null))
+    or (owner_type = 'experience' and exists (select 1 from public.experience_posts e where e.id = owner_id and e.author_id = auth.uid() and e.deleted_at is null))
+    or private.reviewer_can(auth.uid(), 'file', 'view')
+  );
+
+-- When a post is erased for good, its media rows go with it (the purge job
+-- removes the stored bytes first; see list_expired_storage).
+create or replace function private.drop_post_media()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.post_media where owner_type = tg_argv[0] and owner_id = old.id;
+  return old;
+end;
+$$;
+drop trigger if exists drop_media_file on public.file_posts;
+create trigger drop_media_file after delete on public.file_posts for each row execute function private.drop_post_media('file');
+drop trigger if exists drop_media_experience on public.experience_posts;
+create trigger drop_media_experience after delete on public.experience_posts for each row execute function private.drop_post_media('experience');
+
 -- A member asking for another website to be allowed.
 create table if not exists public.link_host_requests (
   id uuid primary key default gen_random_uuid(),
@@ -3382,7 +3435,20 @@ as $$
        or exists (select 1 from public.profiles pr
                    where pr.id = p.author_id and pr.account_status = 'deleted'
                      and pr.account_status_changed_at < now() - make_interval(days => p_days))
-     );
+     )
+  union all
+  select m.id, m.storage_backend, m.storage_path
+    from public.post_media m
+    left join public.file_posts f on m.owner_type = 'file' and f.id = m.owner_id
+    left join public.experience_posts e on m.owner_type = 'experience' and e.id = m.owner_id
+   where (f.id is not null and (
+            (f.deleted_at is not null and f.deleted_at < now() - make_interval(days => p_days))
+            or exists (select 1 from public.profiles pr where pr.id = f.author_id and pr.account_status = 'deleted'
+                          and pr.account_status_changed_at < now() - make_interval(days => p_days))))
+      or (e.id is not null and (
+            (e.deleted_at is not null and e.deleted_at < now() - make_interval(days => p_days))
+            or exists (select 1 from public.profiles pr where pr.id = e.author_id and pr.account_status = 'deleted'
+                          and pr.account_status_changed_at < now() - make_interval(days => p_days))));
 $$;
 
 create or replace function public.purge_expired(p_days integer default 30)
@@ -4028,6 +4094,7 @@ revoke all on public.kb_document_models, public.ai_provider_state from anon, aut
 revoke all on public.ui_languages, public.ui_strings, public.content_translations, public.translation_usage from anon, authenticated;
 revoke all on public.upload_usage, public.member_upload_limits from anon, authenticated;
 revoke all on public.hub_ai_keys from anon, authenticated;
+revoke insert, update, delete on public.post_media from anon, authenticated;
 revoke insert, update, delete, truncate on public.ai_key_help from anon, authenticated;
 revoke all on public.hub_settings, public.creator_access, public.creator_sessions, public.creator_recovery_keys, public.creator_security_events from anon, authenticated;
 revoke all on public.restrictions from anon;

@@ -10,6 +10,7 @@ import { BackLink } from "@/components/ui/BackLink";
 import { AuthorLink } from "@/components/ui/AuthorLink";
 import { Translated } from "@/components/ui/Translated";
 import { Badge } from "@/components/ui/Badge";
+import { MediaGallery } from "@/components/ui/MediaGallery";
 import { Discussion } from "@/components/discussion/Discussion";
 import { NoticeBox } from "@/components/review/NoticeBox";
 import { getServerT } from "@/lib/i18n/server";
@@ -64,15 +65,18 @@ export default async function FileDetailPage({ params }: PageProps<"/files/[file
       <BackLink href="/files" label={t("file.back")} />
       <NoticeBox notice={fileNotices[file.id]} itemKey={`file:${file.id}`} />
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-        <div className="preview-img large">
-          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <circle cx="8.5" cy="8.5" r="1.5" />
-            <path d="M21 15l-5-5L5 21" />
-          </svg>
-          {t("files.previewLabel")}
-        </div>
+        {(file.media?.length ?? 0) === 0 && (
+          <div className="preview-img large">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <path d="M21 15l-5-5L5 21" />
+            </svg>
+            {t("files.previewLabel")}
+          </div>
+        )}
         <div style={{ padding: "1rem 1.1rem" }}>
+          <MediaGallery media={file.media ?? []} />
           <div className="row wrap" style={{ gap: 8, marginBottom: 8 }}>
             <Badge>{t(file.authorship === "original" ? "files.badge.original" : file.authorship === "remix" ? "files.badge.remix" : "files.badge.found")}</Badge>
             {file.madeWithAi && <Badge variant="neutral">{t("badge.madeWithAi")}</Badge>}

@@ -132,6 +132,10 @@ export function ExperienceBoardClient({
               <ReportButton targetType="experience-post" targetId={post.id} />
             </div>
             {post.title && <Translated type="experience-post" id={post.id} field="title" text={post.title} className="title" style={{ margin: "0 0 4px" }} />}
+            {post.imageId && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={`/api/media/${post.imageId}`} alt="" loading="lazy" style={{ maxWidth: "100%", maxHeight: 260, borderRadius: 10, margin: "4px 0 8px", display: "block" }} />
+            )}
             <Translated type="experience-post" id={post.id} field="body" text={post.body} className="muted" note />
             <p className="tiny">{t("exp.viewsReplies", { views: post.views, replies: post.replyCount })}</p>
           </ClickableCard>

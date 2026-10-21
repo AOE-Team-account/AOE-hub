@@ -3,6 +3,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { ExperiencePost, Comment } from "@/lib/types";
+import { mediaFor } from "./media";
 import { nestComments, type CommentRow } from "./comments";
 
 interface ExperiencePostRow {
@@ -59,16 +60,17 @@ export async function listExperiencePosts(): Promise<ExperiencePost[]> {
     .order("created_at", { ascending: false });
 
   const rows = (data ?? []) as ExperiencePostRow[];
-  const counts = await replyCountsFor(rows.map((r) => r.id));
-  return rows.map((row) => fromRow(row, counts[row.id] ?? 0));
+  const ids = rows.map((r) => r.id);
+  const [counts, media] = await Promise.all([replyCountsFor(ids), mediaFor("experience", ids)]);
+  return rows.map((row) => ({ ...fromRow(row, counts[row.id] ?? 0), imageId: media[row.id]?.find((m) => m.kind === "image")?.id }));
 }
 
 export async function getExperiencePostById(id: string): Promise<ExperiencePost | undefined> {
   const supabase = await createClient();
   const { data } = await supabase.from("experience_posts").select("*").eq("id", id).single();
   if (!data) return undefined;
-  const counts = await replyCountsFor([id]);
-  return fromRow(data as ExperiencePostRow, counts[id] ?? 0);
+  const [counts, media] = await Promise.all([replyCountsFor([id]), mediaFor("experience", [id])]);
+  return { ...fromRow(data as ExperiencePostRow, counts[id] ?? 0), imageId: media[id]?.find((m) => m.kind === "image")?.id };
 }
 
 export async function listExperienceComments(postId: string): Promise<Comment[]> {

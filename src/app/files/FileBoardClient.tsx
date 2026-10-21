@@ -96,13 +96,20 @@ function FileBoardContent({ files, authors }: { files: FilePost[]; authors: Reco
         const author = authors[file.authorId];
         return (
           <ClickableCard key={file.id} href={`/files/${file.id}`} className="file-card">
-            <div className="preview-img">
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <path d="M21 15l-5-5L5 21" />
-              </svg>
-              {t("files.previewLabel")}
+            <div className="preview-img" style={{ overflow: "hidden" }}>
+              {file.media?.find((m) => m.kind === "image") ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={`/api/media/${file.media.find((m) => m.kind === "image")!.id}`} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                <>
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <path d="M21 15l-5-5L5 21" />
+                  </svg>
+                  {t("files.previewLabel")}
+                </>
+              )}
             </div>
             <div className="body">
               <div className="row between">

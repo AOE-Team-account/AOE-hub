@@ -3,6 +3,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { FilePost, FileAsset, Comment } from "@/lib/types";
+import { mediaFor } from "./media";
 import { nestComments, type CommentRow } from "./comments";
 
 interface FilePostRow {
@@ -77,16 +78,17 @@ export async function listFilePosts(): Promise<FilePost[]> {
   const { data } = await supabase.from("file_posts").select("*").order("created_at", { ascending: false });
 
   const rows = (data ?? []) as FilePostRow[];
-  const assets = await assetsFor(rows.map((r) => r.id));
-  return rows.map((row) => fromRow(row, assets[row.id] ?? []));
+  const ids = rows.map((r) => r.id);
+  const [assets, media] = await Promise.all([assetsFor(ids), mediaFor("file", ids)]);
+  return rows.map((row) => ({ ...fromRow(row, assets[row.id] ?? []), media: media[row.id] ?? [] }));
 }
 
 export async function getFilePostById(id: string): Promise<FilePost | undefined> {
   const supabase = await createClient();
   const { data } = await supabase.from("file_posts").select("*").eq("id", id).single();
   if (!data) return undefined;
-  const assets = await assetsFor([id]);
-  return fromRow(data as FilePostRow, assets[id] ?? []);
+  const [assets, media] = await Promise.all([assetsFor([id]), mediaFor("file", [id])]);
+  return { ...fromRow(data as FilePostRow, assets[id] ?? []), media: media[id] ?? [] };
 }
 
 export async function listFileComments(fileId: string): Promise<Comment[]> {
