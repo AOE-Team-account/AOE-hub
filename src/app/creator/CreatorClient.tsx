@@ -35,6 +35,8 @@ export interface CreatorData {
   names: Record<string, string>;
   keyHelp: KeyHelpRow[];
   uploads: { files: number; bytes: number };
+  linkHosts: { host: string; name: string }[];
+  linkRequests: { id: string; user_id: string; host: string; note: string | null; created_at: string }[];
   security: { requireTwoStepForStaff: boolean; events: { at: string; kind: string }[]; keysLeft: number };
 }
 
@@ -105,6 +107,8 @@ export function CreatorClient({ data }: { data: CreatorData }) {
   const [upFiles, setUpFiles] = useState(String(data.uploads.files));
   const [upGb, setUpGb] = useState(String(Math.round((data.uploads.bytes / GB) * 100) / 100));
   const [limitFor, setLimitFor] = useState<null | { person: Person; usedFiles: number; usedBytes: number; limitFiles: number | null; limitBytes: number | null; files: string; gb: string }>(null);
+  const [newHost, setNewHost] = useState("");
+  const [newHostName, setNewHostName] = useState("");
   const [annTitle, setAnnTitle] = useState("");
   const [annBody, setAnnBody] = useState("");
 
@@ -476,6 +480,41 @@ export function CreatorClient({ data }: { data: CreatorData }) {
                 if (ok1) await perform(() => supabase.rpc("set_hub_setting", { p_key: "upload_daily_bytes", p_value: Math.round(Number(upGb) * GB) }), "Upload limit saved.");
               }}>Save</Button>
             </div>
+          </div>
+          <div className="card">
+            <p className="title" style={{ marginBottom: 4 }}>Websites members may link to</p>
+            <p className="muted" style={{ marginBottom: 10 }}>
+              A link-out (for a file too big to upload) may only point to these websites, or to a page on them. Each one is labelled
+              &ldquo;Hosted outside AOEhub&rdquo; and is not scanned by the hub.
+            </p>
+            {data.linkHosts.map((h) => (
+              <div className="row between wrap" key={h.host} style={{ gap: 8, padding: "5px 0", borderTop: "1px solid var(--border)" }}>
+                <span><strong>{h.name}</strong> <span className="tiny">· {h.host}</span></span>
+                <Button size="small" disabled={busy} onClick={() => { if (window.confirm(`Stop allowing links to ${h.host}? Links already posted stay as they are.`)) perform(() => supabase.rpc("remove_link_host", { p_host: h.host }), `${h.host} removed.`); }}>Remove</Button>
+              </div>
+            ))}
+            <div className="row wrap" style={{ gap: 8, marginTop: 10 }}>
+              <input style={{ width: 200 }} value={newHost} onChange={(e) => setNewHost(e.target.value)} placeholder="Website, e.g. itch.io" />
+              <input style={{ width: 160 }} value={newHostName} onChange={(e) => setNewHostName(e.target.value)} placeholder="Name to show" />
+              <Button variant="primary" size="small" disabled={busy || !newHost.trim()} onClick={async () => {
+                const ok = await perform(() => supabase.rpc("add_link_host", { p_host: newHost, p_name: newHostName }), "Website added.");
+                if (ok) { setNewHost(""); setNewHostName(""); }
+              }}>Allow this website</Button>
+            </div>
+            {data.linkRequests.length > 0 && (
+              <>
+                <p className="label" style={{ fontWeight: 500, margin: "14px 0 6px" }}>Requests from members</p>
+                {data.linkRequests.map((r) => (
+                  <div className="row between wrap" key={r.id} style={{ gap: 8, padding: "5px 0", borderTop: "1px solid var(--border)" }}>
+                    <span><strong>{r.host}</strong>{r.note ? <span className="tiny"> · {r.note}</span> : null} <span className="tiny">· from {nameOf(r.user_id)}</span></span>
+                    <span className="row" style={{ gap: 6 }}>
+                      <Button size="small" variant="primary" disabled={busy} onClick={() => perform(() => supabase.rpc("resolve_link_host_request", { p_id: r.id, p_approve: true }), "Approved. The member was told.")}>Allow</Button>
+                      <Button size="small" disabled={busy} onClick={() => perform(() => supabase.rpc("resolve_link_host_request", { p_id: r.id, p_approve: false }), "Dismissed. The member was told.")}>Not now</Button>
+                    </span>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
           <KeyHelpEditor rows={data.keyHelp} />
           <div className="card">

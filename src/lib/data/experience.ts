@@ -15,6 +15,7 @@ interface ExperiencePostRow {
   pinned: boolean;
   is_announcement: boolean;
   created_at: string;
+  made_with_ai: boolean | null;
 }
 
 function fromRow(row: ExperiencePostRow, replyCount: number): ExperiencePost {
@@ -29,6 +30,7 @@ function fromRow(row: ExperiencePostRow, replyCount: number): ExperiencePost {
     createdAt: row.created_at,
     pinned: row.pinned,
     isAnnouncement: row.is_announcement,
+    madeWithAi: row.made_with_ai ?? false,
   };
 }
 

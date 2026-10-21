@@ -8,7 +8,7 @@
 /** A language code such as "en", "zh-CN" or "es". Three are written by hand; others are added by AI. */
 export type LanguageCode = string;
 
-export type MediaType = "document" | "image" | "audio" | "video" | "game" | "app";
+export type MediaType = "document" | "image" | "audio" | "video" | "game" | "app" | "other";
 
 export type FileSection =
   | "curriculum"
@@ -18,7 +18,8 @@ export type FileSection =
   | "songs"
   | "art"
   | "printables"
-  | "apps";
+  | "apps"
+  | "other";
 
 export type Authorship = "original" | "remix" | "notmine";
 
@@ -82,6 +83,9 @@ export interface FileAsset {
   downloads: number;
   scanStatus: ScanStatus;
   sizeBytes: number | null;
+  /** A link to another website (nothing is stored or scanned by the hub). */
+  isLink?: boolean;
+  linkUrl?: string;
 }
 
 export interface FilePost {
@@ -97,6 +101,7 @@ export interface FilePost {
   createdAt: string;
   updatedAt?: string;
   assets: FileAsset[];
+  madeWithAi?: boolean;
 }
 
 export interface Comment {
@@ -121,6 +126,7 @@ export interface ExperiencePost {
   createdAt: string;
   pinned?: boolean;
   isAnnouncement?: boolean;
+  madeWithAi?: boolean;
 }
 
 export interface NotificationItem {

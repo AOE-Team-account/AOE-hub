@@ -127,6 +127,7 @@ export function ExperienceBoardClient({
               {post.isAnnouncement ? <span style={{ fontWeight: 500, fontSize: 13 }}>AOEhub</span> : author && <AuthorLink userId={author.id} name={author.name} badges={author.badges} />}
               {post.isAnnouncement ? <Badge>{t("exp.fromAoehub")}</Badge> : post.category && <Badge>{t(CATEGORY_LABEL_KEYS[post.category])}</Badge>}
               {isAnswerer(post.authorId) && <Badge variant="neutral">{t("exp.pinned")}</Badge>}
+              {post.madeWithAi && <Badge variant="neutral">{t("badge.madeWithAi")}</Badge>}
               <span className="tiny">{timeAgo(post.createdAt, t)}</span>
               <ReportButton targetType="experience-post" targetId={post.id} />
             </div>

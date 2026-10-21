@@ -8,6 +8,7 @@ import { getBadgeMap } from "@/lib/data/badges";
 import type { User } from "@/lib/types";
 import { BackLink } from "@/components/ui/BackLink";
 import { AuthorLink } from "@/components/ui/AuthorLink";
+import { Badge } from "@/components/ui/Badge";
 import { Translated } from "@/components/ui/Translated";
 import { Discussion } from "@/components/discussion/Discussion";
 import { NoticeBox } from "@/components/review/NoticeBox";
@@ -68,6 +69,7 @@ export default async function ExperiencePostPage({ params }: PageProps<"/experie
           <span className="tiny">
             {new Date(post.createdAt).toLocaleDateString(lang)} · {t("files.views", { n: post.views })}
           </span>
+          {post.madeWithAi && <Badge variant="neutral">{t("badge.madeWithAi")}</Badge>}
         </div>
         <Translated type="experience-post" id={post.id} field="body" text={post.body} className="muted" note noteWhenPaused />
       </div>

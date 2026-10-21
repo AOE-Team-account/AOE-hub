@@ -41,9 +41,42 @@ export async function POST(request: Request) {
   const remixOfPostId = form.get("remixOfPostId")?.toString() || null;
   const labels = JSON.parse(form.get("labels")?.toString() || "[]") as string[];
   const files = form.getAll("files").filter((f): f is File => f instanceof File);
-
-  if (!title || !description || !section || !mediaType || !authorship || files.length === 0) {
+  const madeWithAi = form.get("madeWithAi")?.toString() === "true";
+  let rawLinks: { label?: unknown; url?: unknown }[] = [];
+  try {
+    const parsed = JSON.parse(form.get("links")?.toString() || "[]");
+    if (Array.isArray(parsed)) rawLinks = parsed.slice(0, 20);
+  } catch {
     return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
+  }
+
+  if (!title || !description || !section || !mediaType || !authorship || (files.length === 0 && rawLinks.length === 0)) {
+    return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
+  }
+
+  // Link-outs: https only, no passwords in the address, and only websites the
+  // Creator has approved (an address of the site itself or one of its sub-sites).
+  const links: { label: string; url: string; host: string }[] = [];
+  if (rawLinks.length > 0) {
+    const { data: hostRows } = await createServiceRoleClient().from("approved_link_hosts").select("host").eq("active", true);
+    const approved = ((hostRows ?? []) as { host: string }[]).map((h) => h.host);
+    for (const l of rawLinks) {
+      const label = typeof l.label === "string" ? l.label.trim().slice(0, 120) : "";
+      let url: URL;
+      try {
+        url = new URL(typeof l.url === "string" ? l.url.trim() : "");
+      } catch {
+        return NextResponse.json({ error: "Invalid link.", code: "link-invalid" }, { status: 400 });
+      }
+      if (url.protocol !== "https:" || url.username || url.password || url.href.length > 500) {
+        return NextResponse.json({ error: "Invalid link.", code: "link-invalid" }, { status: 400 });
+      }
+      const host = url.hostname.toLowerCase();
+      if (!approved.some((a) => host === a || host.endsWith("." + a))) {
+        return NextResponse.json({ error: "That website is not on the allowed list.", code: "link-host", host }, { status: 400 });
+      }
+      links.push({ label: label || host, url: url.href, host });
+    }
   }
 
   for (const file of files) {
@@ -58,7 +91,7 @@ export async function POST(request: Request) {
   // The daily allowance (set by the Creator; the Creator's own account has none).
   // Taken before anything is stored, and given back for files that fail.
   const totalBytes = files.reduce((n, f) => n + f.size, 0);
-  const allowance = await createServiceRoleClient().rpc("take_upload_allowance", { p_user: user.id, p_files: files.length, p_bytes: totalBytes });
+  const allowance = await createServiceRoleClient().rpc("take_upload_allowance", { p_user: user.id, p_files: files.length + links.length, p_bytes: totalBytes });
   if (allowance.error) {
     console.error("Upload allowance check failed:", allowance.error.message);
     return NextResponse.json({ error: "Could not check your upload allowance. Please try again." }, { status: 500 });
@@ -83,12 +116,13 @@ export async function POST(request: Request) {
       media_type: mediaType,
       authorship,
       remix_of_post_id: remixOfPostId,
+      made_with_ai: madeWithAi,
     })
     .select()
     .single();
 
   if (postError || !post) {
-    await createServiceRoleClient().rpc("refund_upload_allowance", { p_user: user.id, p_files: files.length, p_bytes: totalBytes });
+    await createServiceRoleClient().rpc("refund_upload_allowance", { p_user: user.id, p_files: files.length + links.length, p_bytes: totalBytes });
     return NextResponse.json({ error: postError ? friendlyWriteError(postError) : "Could not create the post." }, { status: 500 });
   }
 
@@ -157,6 +191,24 @@ export async function POST(request: Request) {
 
     if (assetError) console.error("Failed to record file asset:", assetError);
     results.push({ label, scanStatus });
+  }
+
+  // Links have nothing to store or scan: record them as they are.
+  for (const link of links) {
+    const { error: linkError } = await createServiceRoleClient().from("file_assets").insert({
+      file_post_id: post.id,
+      label: link.label,
+      is_link: true,
+      link_url: link.url,
+      link_host: link.host,
+      scan_status: "clean",
+    });
+    if (linkError) {
+      console.error("Failed to record link:", linkError);
+      refundFiles++;
+    } else {
+      results.push({ label: link.label, scanStatus: "clean" });
+    }
   }
 
   if (refundFiles > 0) {

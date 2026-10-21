@@ -936,6 +936,123 @@ alter table public.file_assets add column if not exists scan_analysis_id text;
 
 create index if not exists file_assets_file_post_id_idx on public.file_assets (file_post_id);
 
+-- ============================================================================
+-- Step 7: "Made with AI" label, "Other" choices, and link-outs
+-- ============================================================================
+alter table public.file_posts add column if not exists made_with_ai boolean not null default false;
+alter table public.experience_posts add column if not exists made_with_ai boolean not null default false;
+
+-- "Other" for a section or media type that none of the choices fit.
+alter table public.file_posts drop constraint if exists file_posts_section_check;
+alter table public.file_posts add constraint file_posts_section_check
+  check (section in ('curriculum', 'games', 'books', 'cards', 'songs', 'art', 'printables', 'apps', 'other'));
+alter table public.file_posts drop constraint if exists file_posts_media_type_check;
+alter table public.file_posts add constraint file_posts_media_type_check
+  check (media_type in ('document', 'image', 'audio', 'video', 'game', 'app', 'other'));
+
+-- A link-out: the "file" is a link to another website (for files too big to
+-- upload, or hosted elsewhere). Nothing is stored or scanned by the hub, so
+-- the row has no storage_path and cannot be downloaded through the hub;
+-- scan_status is 'clean' only so that the row is visible (the page labels it
+-- "Hosted outside AOEhub").
+alter table public.file_assets add column if not exists is_link boolean not null default false;
+alter table public.file_assets add column if not exists link_url text;
+alter table public.file_assets add column if not exists link_host text;
+
+-- The websites a link-out may point to. Editable by the Creator.
+create table if not exists public.approved_link_hosts (
+  host text primary key check (host ~ '^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$'),
+  name text not null check (char_length(name) between 1 and 80),
+  active boolean not null default true,
+  added_at timestamptz not null default now()
+);
+alter table public.approved_link_hosts enable row level security;
+drop policy if exists "approved link hosts are public" on public.approved_link_hosts;
+create policy "approved link hosts are public" on public.approved_link_hosts for select using (active);
+
+insert into public.approved_link_hosts (host, name) values
+  ('github.com', 'GitHub'),
+  ('github.io', 'GitHub Pages'),
+  ('itch.io', 'itch.io'),
+  ('store.steampowered.com', 'Steam'),
+  ('play.unity.com', 'Unity Play')
+on conflict (host) do nothing;
+
+-- A member asking for another website to be allowed.
+create table if not exists public.link_host_requests (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  host text not null check (char_length(host) between 3 and 200),
+  note text check (note is null or char_length(note) <= 500),
+  status text not null default 'open' check (status in ('open', 'approved', 'dismissed')),
+  created_at timestamptz not null default now()
+);
+alter table public.link_host_requests enable row level security;
+drop policy if exists "members file and see their own link requests" on public.link_host_requests;
+create policy "members file and see their own link requests" on public.link_host_requests
+  for select using (auth.uid() = user_id or private.creator_unlocked(false));
+drop policy if exists "members can ask for a link site" on public.link_host_requests;
+create policy "members can ask for a link site" on public.link_host_requests
+  for insert with check (auth.uid() = user_id and status = 'open' and private.can_participate(auth.uid()));
+
+create or replace function public.add_link_host(p_host text, p_name text)
+returns void
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+declare
+  v_host text := lower(btrim(coalesce(p_host, '')));
+begin
+  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
+  v_host := regexp_replace(v_host, '^https?://', '');
+  v_host := regexp_replace(v_host, '/.*$', '');
+  if v_host !~ '^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$' or position('.' in v_host) = 0 then raise exception 'Use just the website name, like itch.io.'; end if;
+  insert into public.approved_link_hosts (host, name, active) values (v_host, left(btrim(coalesce(nullif(p_name, ''), v_host)), 80), true)
+  on conflict (host) do update set name = excluded.name, active = true;
+  perform private.log_activity(auth.uid(), 'setting-changed', null, null, null, null, jsonb_build_object('key', 'link_host_added', 'host', v_host));
+end;
+$$;
+
+create or replace function public.remove_link_host(p_host text)
+returns void
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+begin
+  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
+  delete from public.approved_link_hosts where host = lower(btrim(p_host));
+  perform private.log_activity(auth.uid(), 'setting-changed', null, null, null, null, jsonb_build_object('key', 'link_host_removed', 'host', p_host));
+end;
+$$;
+
+create or replace function public.resolve_link_host_request(p_id uuid, p_approve boolean)
+returns void
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+declare
+  v_req public.link_host_requests;
+begin
+  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
+  select * into v_req from public.link_host_requests where id = p_id and status = 'open';
+  if not found then raise exception 'No such open request.'; end if;
+  update public.link_host_requests set status = case when p_approve then 'approved' else 'dismissed' end where id = p_id;
+  if p_approve then perform public.add_link_host(v_req.host, null); end if;
+  insert into public.notifications (user_id, body, kind, data)
+  values (v_req.user_id,
+          case when p_approve then 'Your request was approved: links to ' || v_req.host || ' are now allowed.'
+               else 'Your request for links to ' || v_req.host || ' was not approved this time.' end,
+          'link-host-request', '{}'::jsonb);
+end;
+$$;
+
+
 comment on column public.file_assets.scan_status is 'Malware scan gate (VirusTotal, Phase 3) — only "clean" assets are ever downloadable.';
 comment on column public.file_assets.storage_backend is 'Which S3-compatible backend actually holds the bytes: Cloudflare R2 (small files) or Internet Archive (large files).';
 
@@ -3924,11 +4041,12 @@ grant insert, delete on public.follows to authenticated;
 
 -- file_posts / experience_posts: members create and delete their own; views,
 -- pinned, announcement flags, deletion fields are never client-written.
-grant insert (author_id, title, description, section, media_type, authorship, remix_of_post_id)
+grant insert (author_id, title, description, section, media_type, authorship, remix_of_post_id, made_with_ai)
   on public.file_posts to authenticated;
 grant delete on public.file_posts to authenticated;
 
-grant insert (author_id, category, title, body) on public.experience_posts to authenticated;
+grant insert (author_id, category, title, body, made_with_ai) on public.experience_posts to authenticated;
+grant insert (user_id, host, note) on public.link_host_requests to authenticated;
 grant delete on public.experience_posts to authenticated;
 
 -- file_assets: written only by the upload route (service role) and the scan
@@ -3996,6 +4114,9 @@ grant execute on function public.creator_security_events_list() to authenticated
 grant execute on function public.get_hub_settings() to authenticated;
 grant execute on function public.set_hub_setting(text, jsonb) to authenticated;
 grant execute on function public.member_upload_limit(uuid) to authenticated;
+grant execute on function public.add_link_host(text, text) to authenticated;
+grant execute on function public.remove_link_host(text) to authenticated;
+grant execute on function public.resolve_link_host_request(uuid, boolean) to authenticated;
 grant execute on function public.add_hub_ai_key(text, text, text) to authenticated;
 grant execute on function public.set_hub_ai_key_active(uuid, boolean) to authenticated;
 grant execute on function public.remove_hub_ai_key(uuid) to authenticated;

@@ -75,6 +75,7 @@ export default async function FileDetailPage({ params }: PageProps<"/files/[file
         <div style={{ padding: "1rem 1.1rem" }}>
           <div className="row wrap" style={{ gap: 8, marginBottom: 8 }}>
             <Badge>{t(file.authorship === "original" ? "files.badge.original" : file.authorship === "remix" ? "files.badge.remix" : "files.badge.found")}</Badge>
+            {file.madeWithAi && <Badge variant="neutral">{t("badge.madeWithAi")}</Badge>}
             <span className="tiny">{t("file.postedBy")}</span>
             {author && <AuthorLink userId={author.id} name={author.name} badges={author.badges} />}
           </div>
@@ -91,19 +92,36 @@ export default async function FileDetailPage({ params }: PageProps<"/files/[file
         <p className="tiny" style={{ marginBottom: 10 }}>
           {t("file.translatedNote")}
         </p>
-        {file.assets.map((asset) => (
-          <div className="row between" key={asset.id} style={{ padding: "8px 0", borderTop: "1px solid var(--border)" }}>
-            <div>
-              <p style={{ fontWeight: 500, fontSize: 14, margin: 0 }}>{asset.label}</p>
-              <p className="tiny">
-                {t("file.downloads", { n: asset.downloads })}
-                {asset.scanStatus === "pending" && t("file.pendingNote")}
-                {asset.scanStatus === "flagged" && t("file.flaggedNote")}
-              </p>
+        {file.assets.map((asset) =>
+          asset.isLink && asset.linkUrl ? (
+            <div key={asset.id} style={{ padding: "8px 0", borderTop: "1px solid var(--border)" }}>
+              <div className="row between wrap" style={{ gap: 8 }}>
+                <div>
+                  <p style={{ fontWeight: 500, fontSize: 14, margin: 0 }}>{asset.label}</p>
+                  <p className="tiny" style={{ margin: 0 }}>
+                    <Badge variant="neutral">{t("file.hostedOutside")}</Badge> {new URL(asset.linkUrl).hostname}
+                  </p>
+                </div>
+                <a className="btn primary small" href={asset.linkUrl} target="_blank" rel="noopener noreferrer nofollow">
+                  {t("file.openLink")}
+                </a>
+              </div>
+              <p className="tiny" style={{ margin: "6px 0 0" }}>{t("file.hostedOutsideNote")}</p>
             </div>
-            <DownloadButton assetId={asset.id} scanStatus={asset.scanStatus} />
-          </div>
-        ))}
+          ) : (
+            <div className="row between" key={asset.id} style={{ padding: "8px 0", borderTop: "1px solid var(--border)" }}>
+              <div>
+                <p style={{ fontWeight: 500, fontSize: 14, margin: 0 }}>{asset.label}</p>
+                <p className="tiny">
+                  {t("file.downloads", { n: asset.downloads })}
+                  {asset.scanStatus === "pending" && t("file.pendingNote")}
+                  {asset.scanStatus === "flagged" && t("file.flaggedNote")}
+                </p>
+              </div>
+              <DownloadButton assetId={asset.id} scanStatus={asset.scanStatus} />
+            </div>
+          )
+        )}
         <RemixButton />
       </div>
 

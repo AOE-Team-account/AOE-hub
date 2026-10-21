@@ -20,7 +20,7 @@ export default async function CreatorPage() {
 
   const review = await loadReviewData(supabase, userId, ["file", "post", "comment"]);
 
-  const [keyHelpRes, settingsRes, eventsRes, holdersRes, queueRes, trashRes, logRes] = await Promise.all([
+  const [keyHelpRes, settingsRes, eventsRes, holdersRes, queueRes, trashRes, logRes, hostsRes, requestsRes] = await Promise.all([
     supabase.rpc("list_ai_key_help"),
     supabase.rpc("get_hub_settings"),
     supabase.rpc("creator_security_events_list"),
@@ -28,15 +28,19 @@ export default async function CreatorPage() {
     supabase.rpc("creator_account_queue"),
     supabase.rpc("list_trash"),
     supabase.from("activity_log").select("id, created_at, actor_id, actor_role, action, target_kind, target_id, subject_user_id, reason_code, details, undoes").order("id", { ascending: false }).limit(200),
+    supabase.from("approved_link_hosts").select("host, name").order("name"),
+    supabase.from("link_host_requests").select("id, user_id, host, note, created_at").eq("status", "open").order("created_at"),
   ]);
 
   const holders = (holdersRes.data ?? []) as { user_id: string; role: string }[];
   const trash = (trashRes.data ?? []) as CreatorData["trash"];
   const log = (logRes.data ?? []) as CreatorData["log"];
+  const linkRequests = (requestsRes.data ?? []) as CreatorData["linkRequests"];
 
   const nameIds = new Set<string>();
   holders.forEach((h) => nameIds.add(h.user_id));
   trash.forEach((t) => nameIds.add(t.author_id));
+  linkRequests.forEach((r) => nameIds.add(r.user_id));
   log.forEach((l) => {
     if (l.actor_id) nameIds.add(l.actor_id);
     if (l.subject_user_id) nameIds.add(l.subject_user_id);
@@ -56,6 +60,8 @@ export default async function CreatorPage() {
     log,
     names,
     keyHelp: (keyHelpRes.data ?? []) as KeyHelpRow[],
+    linkHosts: (hostsRes.data ?? []) as CreatorData["linkHosts"],
+    linkRequests,
     uploads: {
       files: Number((settingsRes.data as Record<string, unknown> | null)?.upload_daily_files ?? 100),
       bytes: Number((settingsRes.data as Record<string, unknown> | null)?.upload_daily_bytes ?? 1073741824),

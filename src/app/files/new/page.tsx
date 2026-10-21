@@ -1,10 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useRequireAuthPage } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { formatBytes } from "@/lib/format";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import type { UiKey } from "@/lib/i18n/strings";
 import { BackLink } from "@/components/ui/BackLink";
 import { Button } from "@/components/ui/Button";
@@ -19,6 +21,7 @@ const MEDIA_TYPES: { value: MediaType; key: UiKey }[] = [
   { value: "video", key: "files.media.video" },
   { value: "game", key: "files.media.gameOnly" },
   { value: "app", key: "files.media.app" },
+  { value: "other", key: "files.media.other" },
 ];
 
 const SECTIONS: { value: FileSection; key: UiKey }[] = [
@@ -30,6 +33,7 @@ const SECTIONS: { value: FileSection; key: UiKey }[] = [
   { value: "art", key: "files.section.art" },
   { value: "printables", key: "files.section.printables" },
   { value: "apps", key: "files.section.apps" },
+  { value: "other", key: "files.section.other" },
 ];
 
 const AUTHORSHIP_OPTIONS: { value: Authorship; key: UiKey }[] = [
@@ -39,9 +43,14 @@ const AUTHORSHIP_OPTIONS: { value: Authorship; key: UiKey }[] = [
 ];
 
 interface FileRow {
+  kind: "file" | "link";
   label: string;
   file: File | null;
+  url: string;
 }
+
+const newRow = (kind: "file" | "link" = "file"): FileRow => ({ kind, label: "", file: null, url: "" });
+const usable = (r: FileRow) => (r.kind === "file" ? !!r.file : r.url.trim().length > 0);
 
 export default function UploadFilePage() {
   const { t } = useLanguage();
@@ -53,24 +62,51 @@ export default function UploadFilePage() {
   const [mediaType, setMediaType] = useState<MediaType>("document");
   const [section, setSection] = useState<FileSection>("curriculum");
   const [authorship, setAuthorship] = useState<Authorship>("original");
-  const [rows, setRows] = useState<FileRow[]>([{ label: "", file: null }]);
+  const [rows, setRows] = useState<FileRow[]>([newRow()]);
+  const [madeWithAi, setMadeWithAi] = useState(false);
+  const [hosts, setHosts] = useState<{ host: string; name: string }[]>([]);
+  const [askOpen, setAskOpen] = useState(false);
+  const [askText, setAskText] = useState("");
+  const [askSent, setAskSent] = useState(false);
+  const { user } = useAuth();
   const [acknowledged, setAcknowledged] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
+  useEffect(() => {
+    createClient()
+      .from("approved_link_hosts")
+      .select("host, name")
+      .order("name")
+      .then(({ data }) => setHosts((data ?? []) as { host: string; name: string }[]));
+  }, []);
+
   if (!ready) return null;
 
-  const canSubmit = acknowledged && title.trim() && description.trim() && rows.some((r) => r.file);
+  const canSubmit = acknowledged && title.trim() && description.trim() && rows.some(usable);
+
+  async function sendAsk() {
+    if (!user || !askText.trim()) return;
+    const text = askText.trim();
+    const { error: insertError } = await createClient()
+      .from("link_host_requests")
+      .insert({ user_id: user.id, host: text.slice(0, 200), note: text.length > 200 ? text.slice(0, 500) : null });
+    if (!insertError) {
+      setAskSent(true);
+      setAskText("");
+    }
+  }
 
   function updateRow(i: number, patch: Partial<FileRow>) {
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   }
 
   async function submit() {
-    const usableRows = rows.filter((r) => r.file);
-    if (!title.trim() || !description.trim() || usableRows.length === 0) return;
+    const fileRows = rows.filter((r) => r.kind === "file" && r.file);
+    const linkRows = rows.filter((r) => r.kind === "link" && r.url.trim());
+    if (!title.trim() || !description.trim() || fileRows.length + linkRows.length === 0) return;
 
     setSubmitting(true);
     setError(null);
@@ -82,14 +118,20 @@ export default function UploadFilePage() {
     formData.set("section", section);
     formData.set("mediaType", mediaType);
     formData.set("authorship", authorship);
-    formData.set("labels", JSON.stringify(usableRows.map((r) => r.label || r.file!.name)));
-    usableRows.forEach((r) => formData.append("files", r.file!));
+    formData.set("labels", JSON.stringify(fileRows.map((r) => r.label || r.file!.name)));
+    fileRows.forEach((r) => formData.append("files", r.file!));
+    formData.set("links", JSON.stringify(linkRows.map((r) => ({ label: r.label, url: r.url.trim() }))));
+    formData.set("madeWithAi", String(madeWithAi));
 
     try {
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) {
-        if (data.code === "daily-limit") {
+        if (data.code === "link-host") {
+          setError(t("upload.linkBadHost"));
+        } else if (data.code === "link-invalid") {
+          setError(t("upload.linkInvalid"));
+        } else if (data.code === "daily-limit") {
           setError(
             data.filesLeft > 0 && data.bytesLeft > 0
               ? t("upload.limitReached", { files: data.filesLeft, size: formatBytes(data.bytesLeft) })
@@ -153,29 +195,81 @@ export default function UploadFilePage() {
         {t("upload.filesHelp")}
       </p>
       {rows.map((row, i) => (
-        <div className="row" style={{ gap: 8, marginBottom: 8 }} key={i}>
+        <div className="row wrap" style={{ gap: 8, marginBottom: 8 }} key={i}>
+          <select
+            value={row.kind}
+            onChange={(e) => updateRow(i, { kind: e.target.value as "file" | "link" })}
+            style={{ width: "auto" }}
+            aria-label={t("upload.files")}
+          >
+            <option value="file">{t("upload.rowFile")}</option>
+            <option value="link">{t("upload.rowLink")}</option>
+          </select>
           <input
             placeholder={t("upload.labelPlaceholder")}
-            style={{ flex: 1 }}
+            style={{ flex: 1, minWidth: 160 }}
             value={row.label}
             onChange={(e) => updateRow(i, { label: e.target.value })}
           />
-          <input
-            ref={(el) => {
-              fileInputRefs.current[i] = el;
-            }}
-            type="file"
-            style={{ display: "none" }}
-            onChange={(e) => updateRow(i, { file: e.target.files?.[0] ?? null })}
-          />
-          <button className="btn small" type="button" onClick={() => fileInputRefs.current[i]?.click()}>
-            {row.file ? row.file.name.slice(0, 20) : t("upload.chooseFile")}
-          </button>
+          {row.kind === "file" ? (
+            <>
+              <input
+                ref={(el) => {
+                  fileInputRefs.current[i] = el;
+                }}
+                type="file"
+                style={{ display: "none" }}
+                onChange={(e) => updateRow(i, { file: e.target.files?.[0] ?? null })}
+              />
+              <button className="btn small" type="button" onClick={() => fileInputRefs.current[i]?.click()}>
+                {row.file ? row.file.name.slice(0, 20) : t("upload.chooseFile")}
+              </button>
+            </>
+          ) : (
+            <input
+              placeholder={t("upload.linkUrl")}
+              style={{ flex: 2, minWidth: 220 }}
+              value={row.url}
+              inputMode="url"
+              onChange={(e) => updateRow(i, { url: e.target.value })}
+            />
+          )}
+          {rows.length > 1 && (
+            <button className="btn small" type="button" onClick={() => setRows((r) => r.filter((_, idx) => idx !== i))}>
+              {t("upload.linkRemove")}
+            </button>
+          )}
         </div>
       ))}
-      <button className="btn small" type="button" onClick={() => setRows((r) => [...r, { label: "", file: null }])}>
+      <button className="btn small" type="button" onClick={() => setRows((r) => [...r, newRow()])}>
         {t("upload.addAnother")}
       </button>
+      {rows.some((r) => r.kind === "link") && (
+        <div style={{ marginTop: 10 }}>
+          <p className="tiny">{t("upload.linkHelp", { sites: hosts.map((h) => h.name).join(", ") || "—" })}</p>
+          {!askSent && (
+            <button type="button" className="tiny" onClick={() => setAskOpen((v) => !v)} style={{ background: "none", border: 0, padding: 0, color: "var(--accent)", cursor: "pointer", font: "inherit", fontSize: 12 }}>
+              {t("upload.linkAsk")}
+            </button>
+          )}
+          {askOpen && !askSent && (
+            <div className="row wrap" style={{ gap: 8, marginTop: 6 }}>
+              <input style={{ flex: 1, minWidth: 220 }} value={askText} maxLength={500} onChange={(e) => setAskText(e.target.value)} placeholder={t("upload.linkAskPlaceholder")} />
+              <Button size="small" onClick={sendAsk} disabled={!askText.trim()}>{t("upload.linkAskSend")}</Button>
+            </div>
+          )}
+          {askSent && <p className="tiny" style={{ color: "var(--accent)" }}>{t("upload.linkAskSent")}</p>}
+        </div>
+      )}
+
+      <label className="check-item" style={{ alignItems: "flex-start", marginTop: 16 }}>
+        <input type="checkbox" checked={madeWithAi} onChange={(e) => setMadeWithAi(e.target.checked)} style={{ width: "auto", marginTop: 3 }} />
+        <span>
+          {t("upload.madeWithAi")}
+          <br />
+          <span className="tiny">{t("upload.madeWithAiHelp")}</span>
+        </span>
+      </label>
 
       <div className="card" style={{ background: "var(--bg)", borderStyle: "dashed", marginTop: 18 }}>
         <p className="muted" style={{ marginBottom: 10 }}>

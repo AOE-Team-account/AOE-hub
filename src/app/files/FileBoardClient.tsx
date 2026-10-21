@@ -22,6 +22,7 @@ const SECTION_OPTION_KEYS: { value: FileSection | "all"; key: UiKey }[] = [
   { value: "art", key: "files.section.art" },
   { value: "printables", key: "files.section.printables" },
   { value: "apps", key: "files.section.apps" },
+  { value: "other", key: "files.section.other" },
 ];
 
 const MEDIA_TYPE_OPTION_KEYS: { value: MediaType | "all"; key: UiKey }[] = [
@@ -31,6 +32,7 @@ const MEDIA_TYPE_OPTION_KEYS: { value: MediaType | "all"; key: UiKey }[] = [
   { value: "image", key: "files.media.image" },
   { value: "document", key: "files.media.document" },
   { value: "game", key: "files.media.game" },
+  { value: "other", key: "files.media.other" },
 ];
 
 export function FileBoardClient({ files, authors }: { files: FilePost[]; authors: Record<string, User | undefined> }) {
@@ -105,7 +107,10 @@ function FileBoardContent({ files, authors }: { files: FilePost[]; authors: Reco
             <div className="body">
               <div className="row between">
                 <Translated type="file" id={file.id} field="title" text={file.title} className="title" style={{ margin: 0 }} />
-                <Badge>{t(file.authorship === "original" ? "files.badge.original" : file.authorship === "remix" ? "files.badge.remix" : "files.badge.found")}</Badge>
+                <span className="row" style={{ gap: 4 }}>
+                  {file.madeWithAi && <Badge variant="neutral">{t("badge.madeWithAi")}</Badge>}
+                  <Badge>{t(file.authorship === "original" ? "files.badge.original" : file.authorship === "remix" ? "files.badge.remix" : "files.badge.found")}</Badge>
+                </span>
               </div>
               <Translated type="file" id={file.id} field="description" text={file.description} className="muted" note />
               <div className="row tiny wrap" style={{ gap: 12 }}>

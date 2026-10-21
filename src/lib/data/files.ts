@@ -17,6 +17,7 @@ interface FilePostRow {
   views: number;
   created_at: string;
   updated_at: string | null;
+  made_with_ai: boolean | null;
 }
 
 interface FileAssetRow {
@@ -27,6 +28,8 @@ interface FileAssetRow {
   downloads: number;
   scan_status: FileAsset["scanStatus"];
   size_bytes: number | null;
+  is_link: boolean | null;
+  link_url: string | null;
 }
 
 function fromRow(row: FilePostRow, assets: FileAsset[]): FilePost {
@@ -43,6 +46,7 @@ function fromRow(row: FilePostRow, assets: FileAsset[]): FilePost {
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? undefined,
     assets,
+    madeWithAi: row.made_with_ai ?? false,
   };
 }
 
@@ -60,6 +64,8 @@ async function assetsFor(postIds: string[]): Promise<Record<string, FileAsset[]>
       downloads: row.downloads,
       scanStatus: row.scan_status,
       sizeBytes: row.size_bytes,
+      isLink: row.is_link ?? false,
+      linkUrl: row.link_url ?? undefined,
     };
     byPost[row.file_post_id] = [...(byPost[row.file_post_id] ?? []), asset];
   }

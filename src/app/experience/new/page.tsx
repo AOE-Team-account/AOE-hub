@@ -30,6 +30,7 @@ export default function NewExperiencePostPage() {
   const [acknowledged, setAcknowledged] = useState(false);
   const [category, setCategory] = useState<ExperienceCategory>("starting-out");
   const [body, setBody] = useState("");
+  const [madeWithAi, setMadeWithAi] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,7 +43,7 @@ export default function NewExperiencePostPage() {
     const supabase = createClient();
     const { error: insertError } = await supabase
       .from("experience_posts")
-      .insert({ author_id: user.id, category, body: body.trim() });
+      .insert({ author_id: user.id, category, body: body.trim(), made_with_ai: madeWithAi });
     setSubmitting(false);
     if (insertError) {
       setError(friendlyWriteError(insertError));
@@ -71,6 +72,15 @@ export default function NewExperiencePostPage() {
         value={body}
         onChange={(e) => setBody(e.target.value)}
       />
+
+      <label className="check-item" style={{ alignItems: "flex-start", marginTop: 14 }}>
+        <input type="checkbox" checked={madeWithAi} onChange={(e) => setMadeWithAi(e.target.checked)} style={{ width: "auto", marginTop: 3 }} />
+        <span>
+          {t("upload.madeWithAi")}
+          <br />
+          <span className="tiny">{t("upload.madeWithAiHelp")}</span>
+        </span>
+      </label>
 
       <div className="card" style={{ background: "var(--bg)", borderStyle: "dashed", marginTop: 18 }}>
         <p className="muted" style={{ marginBottom: 10 }}>
