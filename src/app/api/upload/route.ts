@@ -205,7 +205,10 @@ export async function POST(request: Request) {
     // member must never be able to mark their own file "clean"). The post
     // above was just created under the member's own session, so it is theirs.
     const assetId = randomUUID();
-    const { error: assetError } = await createServiceRoleClient().from("file_assets").insert({
+    // A dropped connection to the database must not lose a file that is already stored: try again.
+    let assetError: { message: string } | null = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const res = await createServiceRoleClient().from("file_assets").insert({
       id: assetId,
       file_post_id: post.id,
       label,
@@ -215,7 +218,11 @@ export async function POST(request: Request) {
       size_bytes: buffer.length,
       scan_status: scanStatus,
       scan_analysis_id: scanStatus === "pending" ? analysisId : null,
-    });
+      });
+      assetError = res.error;
+      if (!assetError || !/fetch failed|ECONNRESET|timeout/i.test(assetError.message + ((res.error as { details?: string }).details ?? ""))) break;
+      await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+    }
 
     if (assetError) console.error("Failed to record file asset:", assetError);
 
