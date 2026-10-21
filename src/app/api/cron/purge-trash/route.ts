@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { deleteFile, type StorageBackend } from "@/lib/storage/router";
+import { deleteFromR2Prefix } from "@/lib/storage/r2";
 
 export const runtime = "nodejs";
 
@@ -26,9 +27,10 @@ export async function POST(request: Request) {
   // Delete the stored bytes first. If any fails we stop before touching the
   // database, so a retry still knows which files to remove.
   let removedFiles = 0;
-  for (const f of (files ?? []) as { asset_id: string; storage_backend: StorageBackend; storage_path: string }[]) {
+  for (const f of (files ?? []) as { asset_id: string; storage_backend: StorageBackend | null; storage_path: string | null; game_prefix: string | null }[]) {
     try {
-      await deleteFile(f.storage_backend, f.storage_path);
+      if (f.storage_backend && f.storage_path) await deleteFile(f.storage_backend, f.storage_path);
+      if (f.game_prefix) await deleteFromR2Prefix(f.game_prefix);
       removedFiles += 1;
     } catch (err) {
       console.error(`purge-trash: could not delete ${f.storage_backend}:${f.storage_path}:`, err instanceof Error ? err.message : err);

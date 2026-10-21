@@ -7,6 +7,8 @@ import { supabaseUrl, supabaseAnonKey } from "@/lib/supabase/config";
 // Next.js 16 convention (this project's node_modules/next has a breaking
 // rename here; see the AGENTS.md note at the repo root).
 export async function proxy(request: NextRequest) {
+  // The game address never handles sign-in; nothing there may touch a session.
+  if ((request.headers.get("host") ?? "").toLowerCase().startsWith("play.")) return NextResponse.next();
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(

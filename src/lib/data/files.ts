@@ -31,6 +31,7 @@ interface FileAssetRow {
   size_bytes: number | null;
   is_link: boolean | null;
   link_url: string | null;
+  is_game: boolean | null;
 }
 
 function fromRow(row: FilePostRow, assets: FileAsset[]): FilePost {
@@ -67,6 +68,7 @@ async function assetsFor(postIds: string[]): Promise<Record<string, FileAsset[]>
       sizeBytes: row.size_bytes,
       isLink: row.is_link ?? false,
       linkUrl: row.link_url ?? undefined,
+      isGame: row.is_game ?? false,
     };
     byPost[row.file_post_id] = [...(byPost[row.file_post_id] ?? []), asset];
   }

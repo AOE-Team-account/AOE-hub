@@ -414,5 +414,14 @@
   "previews.tooMany": "最多可添加 {images} 张图片和 {videos} 个视频。",
   "previews.uploading": "正在上传预览……{done} / {total}",
   "previews.failedSome": "您的帖子已发布，但有 {n} 个预览未能添加。您可以稍后再试。",
-  "previews.videoChecking": "视频在通过恶意软件检查后才会显示。"
+  "previews.videoChecking": "视频在通过恶意软件检查后才会显示。",
+  "game.play": "开始玩",
+  "game.fullscreen": "全屏",
+  "game.close": "关闭游戏",
+  "game.note": "这个游戏在 AOEhub 的保护框内运行，无法看到您的账号信息。",
+  "game.playable": "可在线玩",
+  "game.checking": "这个游戏仍在进行恶意软件检查，通过后即可在线玩。",
+  "upload.gameHelp": "要让游戏可以在 AOEhub 上直接玩，请上传一个 .zip 文件，其顶层包含 index.html，并把游戏需要的一切都放在里面（游戏不能从其他网站加载任何内容）。最大 {size}。更大？请使用“链接”行，链接到 Unity Play、itch.io、Steam 或其他允许的网站。",
+  "upload.gameTooBig": "这里的游戏或应用最大 {size}。更大的请使用“链接”行。",
+  "upload.gameInvalid": "这个游戏压缩包无法使用：{reason}"
 }

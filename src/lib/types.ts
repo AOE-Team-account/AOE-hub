@@ -86,6 +86,8 @@ export interface FileAsset {
   /** A link to another website (nothing is stored or scanned by the hub). */
   isLink?: boolean;
   linkUrl?: string;
+  /** A hosted game that can be played in the browser. */
+  isGame?: boolean;
 }
 
 export interface FilePost {

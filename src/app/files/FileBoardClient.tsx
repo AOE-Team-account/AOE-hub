@@ -115,6 +115,7 @@ function FileBoardContent({ files, authors }: { files: FilePost[]; authors: Reco
               <div className="row between">
                 <Translated type="file" id={file.id} field="title" text={file.title} className="title" style={{ margin: 0 }} />
                 <span className="row" style={{ gap: 4 }}>
+                  {file.assets.some((a) => a.isGame && a.scanStatus === "clean") && <Badge variant="neutral">{t("game.playable")}</Badge>}
                   {file.madeWithAi && <Badge variant="neutral">{t("badge.madeWithAi")}</Badge>}
                   <Badge>{t(file.authorship === "original" ? "files.badge.original" : file.authorship === "remix" ? "files.badge.remix" : "files.badge.found")}</Badge>
                 </span>

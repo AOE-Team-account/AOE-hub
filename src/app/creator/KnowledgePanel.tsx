@@ -32,6 +32,7 @@ function KnowledgeTools() {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [search, setSearch] = useState("");
   const [busy, setBusy] = useState<"adding" | "indexing" | string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -84,7 +85,7 @@ function KnowledgeTools() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       setBusy(null);
-      setError(data?.error ?? "Could not add the book.");
+      setError(data?.error ?? "Could not add it.");
       return;
     }
     setTitle("");
@@ -126,8 +127,8 @@ function KnowledgeTools() {
       </div>
 
       <div className="card" style={{ marginTop: 10 }}>
-        <p style={{ fontWeight: 500, fontSize: 14, margin: "0 0 8px" }}>Add a philosophy book</p>
-        <input placeholder="Book title" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <p style={{ fontWeight: 500, fontSize: 14, margin: "0 0 8px" }}>Add a philosophy book or file</p>
+        <input placeholder="Title (a book, or a file such as an article or notes)" value={title} onChange={(e) => setTitle(e.target.value)} />
         <input
           type="file"
           accept=".txt,.md,.markdown,.pdf,.epub,text/plain,application/pdf,application/epub+zip"
@@ -142,28 +143,42 @@ function KnowledgeTools() {
           </Button>
         </div>
         <p className="tiny" style={{ marginTop: 6 }}>
-          Adding a book with the same title replaces the old copy. .txt, .md, .pdf, and .epub are supported — a scanned PDF with no selectable text won&apos;t work, since nothing here can read text out of an image.
+          Adding something with the same title replaces the old copy. .txt, .md, .pdf, and .epub are supported — a scanned PDF with no selectable text won&apos;t work, since nothing here can read text out of an image.
         </p>
       </div>
 
-      {status && status.books.length > 0 && (
-        <div className="card" style={{ marginTop: 10 }}>
-          <p style={{ fontWeight: 500, fontSize: 14, margin: "0 0 8px" }}>Philosophy books ({status.books.length})</p>
-          {status.books.map((b) => (
-            <div className="row between wrap" key={b.id} style={{ gap: 8, padding: "6px 0" }}>
-              <div>
-                <p style={{ margin: 0 }}>{b.title}</p>
-                <p className="tiny" style={{ margin: 0 }}>
-                  {b.characters.toLocaleString()} characters · added {new Date(b.createdAt).toLocaleDateString()}
-                </p>
+      {status && status.books.length > 0 && (() => {
+        const q = search.trim().toLowerCase();
+        const shown = q ? status.books.filter((b) => b.title.toLowerCase().includes(q)) : status.books;
+        return (
+          <div className="card" style={{ marginTop: 10 }}>
+            <p style={{ fontWeight: 500, fontSize: 14, margin: "0 0 8px" }}>Philosophy books and files ({status.books.length})</p>
+            <input
+              type="search"
+              placeholder="Search the books and files by title…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search the books and files"
+              style={{ marginBottom: 8 }}
+            />
+            {q && <p className="tiny" style={{ margin: "0 0 6px" }}>Showing {shown.length} of {status.books.length}</p>}
+            {shown.length === 0 && <p className="muted">Nothing matches &ldquo;{search}&rdquo;.</p>}
+            {shown.map((b) => (
+              <div className="row between wrap" key={b.id} style={{ gap: 8, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
+                <div>
+                  <p style={{ margin: 0 }}>{b.title}</p>
+                  <p className="tiny" style={{ margin: 0 }}>
+                    {b.characters.toLocaleString()} characters · added {new Date(b.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
+                <Button size="small" variant="danger" disabled={busy !== null} onClick={() => deleteBook(b.id, b.title)}>
+                  {busy === b.id ? "Removing…" : "Delete"}
+                </Button>
               </div>
-              <Button size="small" variant="danger" disabled={busy !== null} onClick={() => deleteBook(b.id, b.title)}>
-                {busy === b.id ? "Removing…" : "Delete"}
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        );
+      })()}
 
       {message && <p className="tiny" style={{ marginTop: 8 }}>{message}</p>}
       {error && <p className="tiny" style={{ marginTop: 8, color: "#b5471f" }}>{error}</p>}

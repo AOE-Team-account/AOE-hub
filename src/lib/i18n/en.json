@@ -414,5 +414,14 @@
   "previews.tooMany": "You can add at most {images} pictures and {videos} videos.",
   "previews.uploading": "Uploading previews… {done} of {total}",
   "previews.failedSome": "Your post was published, but {n} preview(s) could not be added. You can try again later.",
-  "previews.videoChecking": "Videos appear once they have been checked for malware."
+  "previews.videoChecking": "Videos appear once they have been checked for malware.",
+  "game.play": "Play",
+  "game.fullscreen": "Full screen",
+  "game.close": "Close the game",
+  "game.note": "This game runs inside AOEhub in a protected box. It cannot see your account.",
+  "game.playable": "Playable",
+  "game.checking": "This game is still being checked for malware and can be played once it passes.",
+  "upload.gameHelp": "To make a game playable on AOEhub, upload one .zip with an index.html at the top and everything the game needs inside it (it cannot load anything from other websites). Up to {size}. Bigger? Use a Link row to Unity Play, itch.io, Steam or another allowed place.",
+  "upload.gameTooBig": "A game or app can be at most {size} here. For a bigger one, use a Link row.",
+  "upload.gameInvalid": "That game zip cannot be used: {reason}"
 }

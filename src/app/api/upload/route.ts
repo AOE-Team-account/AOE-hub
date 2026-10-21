@@ -6,6 +6,9 @@ import { createServiceRoleClient } from "@/lib/supabase/service";
 import { scanFileWithShortPoll, type ScanResult } from "@/lib/malware-scan/virustotal";
 import { chooseStorageBackend, uploadFile, deleteFile } from "@/lib/storage/router";
 import type { MediaType } from "@/lib/types";
+import { GAME_MAX_BYTES, GameZipError, inspectGameZip, type GameFile } from "@/lib/games";
+import { uploadToR2 } from "@/lib/storage/r2";
+import { deleteFromR2Prefix } from "@/lib/storage/r2";
 
 // Node runtime (not edge) — needed for Buffer and for VirusTotal's polling
 // loop, which can legitimately take several seconds per file.
@@ -88,6 +91,29 @@ export async function POST(request: Request) {
     }
   }
 
+  // Games and apps: at most 50 MB each (bigger ones link out). A .zip with an
+  // index.html at the top becomes a playable game; the zip is looked inside
+  // (never run) before anything is stored, so an unsafe one is refused whole.
+  const isGamePost = mediaType === "game" || mediaType === "app";
+  const preBuffers: (Buffer | null)[] = files.map(() => null);
+  const gamePlans: (GameFile[] | null)[] = files.map(() => null);
+  if (isGamePost) {
+    for (let i = 0; i < files.length; i++) {
+      if (files[i].size > GAME_MAX_BYTES) {
+        return NextResponse.json({ error: "A game or app can be at most 50 MB here.", code: "game-too-big", name: files[i].name }, { status: 413 });
+      }
+      if (/\.zip$/i.test(files[i].name)) {
+        preBuffers[i] = Buffer.from(await files[i].arrayBuffer());
+        try {
+          gamePlans[i] = inspectGameZip(preBuffers[i]!);
+        } catch (err) {
+          if (err instanceof GameZipError) return NextResponse.json({ error: err.message, code: "game-invalid", reason: err.code }, { status: 400 });
+          throw err;
+        }
+      }
+    }
+  }
+
   // The daily allowance (set by the Creator; the Creator's own account has none).
   // Taken before anything is stored, and given back for files that fail.
   const totalBytes = files.reduce((n, f) => n + f.size, 0);
@@ -131,7 +157,7 @@ export async function POST(request: Request) {
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     const label = labels[i] || file.name;
-    const buffer = Buffer.from(await file.arrayBuffer());
+    const buffer = preBuffers[i] ?? Buffer.from(await file.arrayBuffer());
     const contentType = file.type || "application/octet-stream";
     const backend = chooseStorageBackend(buffer.length, mediaType as MediaType);
     const key = `${post.id}/${randomUUID()}-${file.name}`;
@@ -178,7 +204,9 @@ export async function POST(request: Request) {
     // server code, and members have no write access to file_assets at all (a
     // member must never be able to mark their own file "clean"). The post
     // above was just created under the member's own session, so it is theirs.
+    const assetId = randomUUID();
     const { error: assetError } = await createServiceRoleClient().from("file_assets").insert({
+      id: assetId,
       file_post_id: post.id,
       label,
       storage_path: scanStatus === "flagged" ? null : key,
@@ -190,6 +218,30 @@ export async function POST(request: Request) {
     });
 
     if (assetError) console.error("Failed to record file asset:", assetError);
+
+    // A playable game: unpack it into storage so it can be served from the play address.
+    const plan = gamePlans[i];
+    if (plan && !assetError && scanStatus !== "flagged") {
+      const prefix = `games/${assetId}/`;
+      try {
+        const queue = [...plan];
+        await Promise.all(
+          Array.from({ length: 6 }, async () => {
+            for (let f = queue.shift(); f; f = queue.shift()) {
+              await uploadToR2(prefix + f.path, Buffer.from(f.data), f.mime);
+            }
+          })
+        );
+        await createServiceRoleClient().from("file_assets").update({ is_game: true, game_prefix: prefix }).eq("id", assetId);
+      } catch (err) {
+        console.error("Could not unpack the game:", err instanceof Error ? err.message : err);
+        try {
+          await deleteFromR2Prefix(prefix);
+        } catch {
+          /* nothing more to do; the zip itself is still a normal download */
+        }
+      }
+    }
     results.push({ label, scanStatus });
   }
 

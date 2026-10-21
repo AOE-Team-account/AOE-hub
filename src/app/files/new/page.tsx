@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { UiKey } from "@/lib/i18n/strings";
 import { BackLink } from "@/components/ui/BackLink";
 import { Button } from "@/components/ui/Button";
+import { GAME_MAX_BYTES } from "@/lib/games";
 import { PreviewPicker } from "@/components/ui/PreviewPicker";
 import { uploadPreviews } from "@/lib/media-client";
 import { ChipRow } from "@/components/ui/ChipRow";
@@ -110,6 +111,10 @@ export default function UploadFilePage() {
   async function submit() {
     const fileRows = rows.filter((r) => r.kind === "file" && r.file);
     const linkRows = rows.filter((r) => r.kind === "link" && r.url.trim());
+    if ((mediaType === "game" || mediaType === "app") && fileRows.some((r) => r.file!.size > GAME_MAX_BYTES)) {
+      setError(t("upload.gameTooBig", { size: formatBytes(GAME_MAX_BYTES) }));
+      return;
+    }
     if (!title.trim() || !description.trim() || fileRows.length + linkRows.length === 0) return;
 
     setSubmitting(true);
@@ -131,7 +136,11 @@ export default function UploadFilePage() {
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) {
-        if (data.code === "link-host") {
+        if (data.code === "game-too-big") {
+          setError(t("upload.gameTooBig", { size: formatBytes(GAME_MAX_BYTES) }));
+        } else if (data.code === "game-invalid") {
+          setError(t("upload.gameInvalid", { reason: data.error }));
+        } else if (data.code === "link-host") {
           setError(t("upload.linkBadHost"));
         } else if (data.code === "link-invalid") {
           setError(t("upload.linkInvalid"));
@@ -255,6 +264,9 @@ export default function UploadFilePage() {
       <button className="btn small" type="button" onClick={() => setRows((r) => [...r, newRow()])}>
         {t("upload.addAnother")}
       </button>
+      {(mediaType === "game" || mediaType === "app") && (
+        <p className="tiny" style={{ marginTop: 10 }}>{t("upload.gameHelp", { size: formatBytes(GAME_MAX_BYTES) })}</p>
+      )}
       {rows.some((r) => r.kind === "link") && (
         <div style={{ marginTop: 10 }}>
           <p className="tiny">{t("upload.linkHelp", { sites: hosts.map((h) => h.name).join(", ") || "—" })}</p>

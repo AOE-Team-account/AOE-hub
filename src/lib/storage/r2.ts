@@ -33,8 +33,8 @@ export async function getR2MediaUrl(key: string): Promise<string> {
 }
 
 /** Reads one stored object (used to serve hosted games). */
-export async function getR2Object(key: string) {
-  const res = await client.send(new GetObjectCommand({ Bucket: r2BucketName, Key: key }));
+export async function getR2Object(key: string, range?: string) {
+  const res = await client.send(new GetObjectCommand({ Bucket: r2BucketName, Key: key, Range: range }));
   return res;
 }
 

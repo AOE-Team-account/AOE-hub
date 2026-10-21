@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { checkAnalysis } from "@/lib/malware-scan/virustotal";
 import { deleteFile, type StorageBackend } from "@/lib/storage/router";
+import { deleteFromR2Prefix } from "@/lib/storage/r2";
 
 export const runtime = "nodejs";
 
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
   const supabase = createServiceRoleClient();
   const { data: pending, error } = await supabase
     .from("file_assets")
-    .select("id, storage_path, storage_backend, scan_analysis_id")
+    .select("id, storage_path, storage_backend, scan_analysis_id, game_prefix")
     .eq("scan_status", "pending")
     .not("scan_analysis_id", "is", null);
 
@@ -48,9 +49,16 @@ export async function POST(request: Request) {
           console.error(`Failed to quarantine flagged asset ${asset.id}:`, err);
         }
       }
+      if (asset.game_prefix) {
+        try {
+          await deleteFromR2Prefix(asset.game_prefix as string);
+        } catch (err) {
+          console.error(`Failed to remove the unpacked game of ${asset.id}:`, err);
+        }
+      }
       await supabase
         .from("file_assets")
-        .update({ scan_status: "flagged", storage_path: null, storage_backend: null, scan_analysis_id: null })
+        .update({ scan_status: "flagged", storage_path: null, storage_backend: null, scan_analysis_id: null, is_game: false, game_prefix: null })
         .eq("id", asset.id);
     } else {
       await supabase.from("file_assets").update({ scan_status: "clean", scan_analysis_id: null }).eq("id", asset.id);

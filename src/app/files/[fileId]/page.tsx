@@ -11,6 +11,7 @@ import { AuthorLink } from "@/components/ui/AuthorLink";
 import { Translated } from "@/components/ui/Translated";
 import { Badge } from "@/components/ui/Badge";
 import { MediaGallery } from "@/components/ui/MediaGallery";
+import { GamePlayer } from "@/components/files/GamePlayer";
 import { Discussion } from "@/components/discussion/Discussion";
 import { NoticeBox } from "@/components/review/NoticeBox";
 import { getServerT } from "@/lib/i18n/server";
@@ -96,6 +97,10 @@ export default async function FileDetailPage({ params }: PageProps<"/files/[file
         <p className="tiny" style={{ marginBottom: 10 }}>
           {t("file.translatedNote")}
         </p>
+        {file.assets.filter((a) => a.isGame && a.scanStatus === "clean").map((a) => (
+          <GamePlayer key={a.id} assetId={a.id} />
+        ))}
+        {file.assets.some((a) => a.isGame && a.scanStatus === "pending") && <p className="tiny" style={{ marginBottom: 8 }}>{t("game.checking")}</p>}
         {file.assets.map((asset) =>
           asset.isLink && asset.linkUrl ? (
             <div key={asset.id} style={{ padding: "8px 0", borderTop: "1px solid var(--border)" }}>

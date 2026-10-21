@@ -959,6 +959,11 @@ alter table public.file_assets add column if not exists is_link boolean not null
 alter table public.file_assets add column if not exists link_url text;
 alter table public.file_assets add column if not exists link_host text;
 
+-- A hosted game: the uploaded .zip was unpacked into storage under game_prefix and is
+-- played from the hub's separate play address (only once scan_status is 'clean').
+alter table public.file_assets add column if not exists is_game boolean not null default false;
+alter table public.file_assets add column if not exists game_prefix text;
+
 -- The websites a link-out may point to. Editable by the Creator.
 create table if not exists public.approved_link_hosts (
   host text primary key check (host ~ '^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$'),
@@ -3419,17 +3424,18 @@ $$;
 -- ---- Erasing for good (30 days after deletion) ------------------------------
 -- Run by the server (service role) from /api/cron/purge-trash, which first
 -- deletes the stored files listed by list_expired_storage().
+drop function if exists public.list_expired_storage(integer);
 create or replace function public.list_expired_storage(p_days integer default 30)
-returns table (asset_id uuid, storage_backend text, storage_path text)
+returns table (asset_id uuid, storage_backend text, storage_path text, game_prefix text)
 language sql
 security definer
 stable
 set search_path = public
 as $$
-  select a.id, a.storage_backend, a.storage_path
+  select a.id, a.storage_backend, a.storage_path, a.game_prefix
     from public.file_assets a
     join public.file_posts p on p.id = a.file_post_id
-   where a.storage_path is not null
+   where (a.storage_path is not null or a.game_prefix is not null)
      and (
        (p.deleted_at is not null and p.deleted_at < now() - make_interval(days => p_days))
        or exists (select 1 from public.profiles pr
@@ -3437,19 +3443,21 @@ as $$
                      and pr.account_status_changed_at < now() - make_interval(days => p_days))
      )
   union all
-  select m.id, m.storage_backend, m.storage_path
+  select m.id, m.storage_backend, m.storage_path, null::text
     from public.post_media m
     left join public.file_posts f on m.owner_type = 'file' and f.id = m.owner_id
     left join public.experience_posts e on m.owner_type = 'experience' and e.id = m.owner_id
-   where (f.id is not null and (
+   where m.storage_path is not null and ((f.id is not null and (
             (f.deleted_at is not null and f.deleted_at < now() - make_interval(days => p_days))
             or exists (select 1 from public.profiles pr where pr.id = f.author_id and pr.account_status = 'deleted'
                           and pr.account_status_changed_at < now() - make_interval(days => p_days))))
       or (e.id is not null and (
             (e.deleted_at is not null and e.deleted_at < now() - make_interval(days => p_days))
             or exists (select 1 from public.profiles pr where pr.id = e.author_id and pr.account_status = 'deleted'
-                          and pr.account_status_changed_at < now() - make_interval(days => p_days))));
+                          and pr.account_status_changed_at < now() - make_interval(days => p_days)))));
 $$;
+revoke execute on function public.list_expired_storage(integer) from public, anon, authenticated;
+grant execute on function public.list_expired_storage(integer) to service_role;
 
 create or replace function public.purge_expired(p_days integer default 30)
 returns jsonb
