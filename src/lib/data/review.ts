@@ -24,7 +24,7 @@ export interface ReviewItem {
 
 export interface ReviewReport {
   id: string;
-  targetType: "file" | "experience-post" | "comment" | "user";
+  targetType: "file" | "experience-post" | "comment" | "user" | "profile-picture";
   targetId: string;
   reason: string;
   details: string | null;
@@ -49,6 +49,7 @@ export interface Reason {
 }
 
 export interface ReviewData {
+  viewerId: string;
   kinds: ItemKind[];
   reports: ReviewReport[];
   browse: ReviewItem[];
@@ -71,6 +72,7 @@ export async function loadReviewData(supabase: SupabaseClient, viewerId: string,
   const reports = (reportRows ?? []) as Row[];
 
   const want = { file: new Set<string>(), post: new Set<string>(), comment: new Set<string>(), user: new Set<string>() };
+  const pictureOwners = new Set<string>();
   for (const r of reports) {
     const t = r.target_type as string;
     const id = r.target_id as string;
@@ -78,6 +80,7 @@ export async function loadReviewData(supabase: SupabaseClient, viewerId: string,
     else if (t === "experience-post") want.post.add(id);
     else if (t === "comment") want.comment.add(id);
     else if (t === "user") want.user.add(id);
+    else if (t === "profile-picture") { want.user.add(id); pictureOwners.add(id); }
   }
 
   const files: Row[] = [];
@@ -188,7 +191,7 @@ export async function loadReviewData(supabase: SupabaseClient, viewerId: string,
       details: (r.details as string | null) ?? null,
       createdAt: r.created_at as string,
       item: k ? byKey.get(`${k}:${r.target_id}`) ?? null : null,
-      userName: r.target_type === "user" ? names.get(r.target_id as string) : undefined,
+      userName: r.target_type === "user" || r.target_type === "profile-picture" ? names.get(r.target_id as string) : undefined,
     };
   });
 
@@ -226,5 +229,5 @@ export async function loadReviewData(supabase: SupabaseClient, viewerId: string,
     appliesTo: (r.applies_to as string[]) ?? [],
   }));
 
-  return { kinds, reports: reportList, browse, summaries, reasons };
+  return { viewerId, kinds, reports: reportList, browse, summaries, reasons };
 }

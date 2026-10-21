@@ -15,6 +15,7 @@ import { GamePlayer } from "@/components/files/GamePlayer";
 import { Discussion } from "@/components/discussion/Discussion";
 import { NoticeBox } from "@/components/review/NoticeBox";
 import { getServerT } from "@/lib/i18n/server";
+import { lookStyle } from "@/lib/profile-look";
 import { getNotices, flattenCommentIds } from "@/lib/data/notices";
 import { DownloadButton, RemixButton } from "@/components/files/FileDetailActions";
 
@@ -65,7 +66,7 @@ export default async function FileDetailPage({ params }: PageProps<"/files/[file
     <>
       <BackLink href="/files" label={t("file.back")} />
       <NoticeBox notice={fileNotices[file.id]} itemKey={`file:${file.id}`} />
-      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+      <div className="card" style={{ padding: 0, overflow: "hidden", ...(author ? lookStyle(author) : {}) }}>
         {(file.media?.length ?? 0) === 0 && (
           <div className="preview-img large">
             <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">

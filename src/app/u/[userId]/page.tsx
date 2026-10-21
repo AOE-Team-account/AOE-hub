@@ -5,6 +5,9 @@ import { listExperiencePosts } from "@/lib/data/experience";
 import { getServerT } from "@/lib/i18n/server";
 import { BackLink } from "@/components/ui/BackLink";
 import { FollowButton } from "@/components/profile/FollowButton";
+import { Avatar } from "@/components/profile/Avatar";
+import { ReportProfilePicture } from "@/components/profile/ReportProfilePicture";
+import { lookStyle } from "@/lib/profile-look";
 
 export default async function PublicProfilePage({ params }: PageProps<"/u/[userId]">) {
   const { t, lang } = await getServerT();
@@ -19,34 +22,19 @@ export default async function PublicProfilePage({ params }: PageProps<"/u/[userI
   return (
     <>
       <BackLink href="/experience" label={t("common.back")} />
-      <div className="card row between">
+      <div className="card row between" style={lookStyle({ background: user.background, postFont: user.postFont })}>
         <div className="row" style={{ gap: 14 }}>
-          <div
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: "50%",
-              background: "var(--accent)",
-              color: "var(--accent-text)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 600,
-              fontFamily: "var(--font-heading)",
-              flexShrink: 0,
-            }}
-          >
-            {user.initials}
-          </div>
+          <Avatar userId={user.id} initials={user.initials} avatarV={user.avatarV} frame={user.frame} />
           <div>
-            <p className="title" style={{ margin: 0 }}>{user.name}</p>
-            <p className="tiny">
+            <p className="title" style={{ margin: 0, color: "inherit" }}>{user.name}</p>
+            <p className="tiny" style={{ color: "inherit", opacity: 0.8 }}>
               {t("u.memberSince", {
                 date: new Date(user.memberSince).toLocaleDateString(lang, { month: "long", year: "numeric" }),
                 points: user.points.toLocaleString(),
                 followers: user.followers.toLocaleString(),
               })}
             </p>
+            {user.avatarV && <ReportProfilePicture userId={user.id} />}
           </div>
         </div>
         <FollowButton />

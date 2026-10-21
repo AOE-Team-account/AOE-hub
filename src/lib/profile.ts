@@ -20,6 +20,10 @@ export interface ProfileRow {
   account_status?: "active" | "suspended" | "deleted";
   region?: "china" | "world" | null;
   language?: string | null;
+  avatar_path?: string | null;
+  profile_frame?: string | null;
+  profile_background?: string | null;
+  post_font?: string | null;
 }
 
 // `roles` is only ever passed for the signed-in person themselves: who holds a
@@ -47,5 +51,9 @@ export function userFromProfileRow(
     followers: row.followers_count,
     following: row.following_count,
     filesCount: row.files_count,
+    avatarV: row.avatar_path ? row.avatar_path.split("/").pop()!.slice(0, 8) : undefined,
+    frame: row.profile_frame ?? "none",
+    background: row.profile_background ?? "none",
+    postFont: row.post_font ?? "default",
   };
 }

@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Translated } from "@/components/ui/Translated";
 import { useLanguage } from "@/contexts/LanguageContext";
 import type { UiKey } from "@/lib/i18n/strings";
+import { lookStyle } from "@/lib/profile-look";
 import type { FilePost, FileSection, MediaType, User } from "@/lib/types";
 
 const SECTION_OPTION_KEYS: { value: FileSection | "all"; key: UiKey }[] = [
@@ -95,7 +96,7 @@ function FileBoardContent({ files, authors }: { files: FilePost[]; authors: Reco
       {filtered.map((file) => {
         const author = authors[file.authorId];
         return (
-          <ClickableCard key={file.id} href={`/files/${file.id}`} className="file-card">
+          <ClickableCard key={file.id} href={`/files/${file.id}`} className="file-card" style={author ? lookStyle(author) : undefined}>
             <div className="preview-img" style={{ overflow: "hidden" }}>
               {file.media?.find((m) => m.kind === "image") ? (
                 // eslint-disable-next-line @next/next/no-img-element

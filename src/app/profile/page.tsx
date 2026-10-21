@@ -8,6 +8,10 @@ import { createClient } from "@/lib/supabase/client";
 import { PointsInfoButton } from "@/components/profile/PointsInfoButton";
 import { VerifiedPinsCard } from "@/components/profile/VerifiedPinsCard";
 import { Button } from "@/components/ui/Button";
+import { Avatar } from "@/components/profile/Avatar";
+import { BACKGROUND_CODES, FONT_CODES, FRAME_CODES, lookStyle } from "@/lib/profile-look";
+import { formatBytes } from "@/lib/format";
+import type { UiKey } from "@/lib/i18n/strings";
 import type { ExperiencePost, FilePost } from "@/lib/types";
 
 export default function ProfilePage() {
@@ -17,6 +21,11 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [frame, setFrame] = useState("none");
+  const [background, setBackground] = useState("none");
+  const [postFont, setPostFont] = useState("default");
+  const [pictureMsg, setPictureMsg] = useState<string | null>(null);
+  const [pictureBusy, setPictureBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [myFiles, setMyFiles] = useState<FilePost[]>([]);
   const [myPosts, setMyPosts] = useState<ExperiencePost[]>([]);
@@ -28,6 +37,9 @@ export default function ProfilePage() {
       /* eslint-disable react-hooks/set-state-in-effect */
       setName(user.name);
       setDisplayName(user.displayName ?? "");
+      setFrame(user.frame);
+      setBackground(user.background);
+      setPostFont(user.postFont);
       /* eslint-enable react-hooks/set-state-in-effect */
     }
   }, [user]);
@@ -89,9 +101,28 @@ export default function ProfilePage() {
     if (!user) return;
     setSaving(true);
     const supabase = createClient();
-    await supabase.from("profiles").update({ name: name.trim(), display_name: displayName.trim() || null }).eq("id", user.id);
+    await supabase.from("profiles").update({ name: name.trim(), display_name: displayName.trim() || null, profile_frame: frame, profile_background: background, post_font: postFont }).eq("id", user.id);
     setSaving(false);
     setEditing(false);
+    await refreshProfile();
+  }
+
+  async function uploadPicture(file: File | undefined) {
+    if (!file) return;
+    setPictureBusy(true);
+    setPictureMsg(null);
+    const form = new FormData();
+    form.set("file", file);
+    const res = await fetch("/api/profile/picture", { method: "POST", body: form });
+    setPictureBusy(false);
+    if (!res.ok) return setPictureMsg(t("profile.pictureError", { size: formatBytes(5 * 1024 * 1024) }));
+    await refreshProfile();
+  }
+
+  async function removePicture() {
+    setPictureBusy(true);
+    await fetch("/api/profile/picture", { method: "DELETE" });
+    setPictureBusy(false);
     await refreshProfile();
   }
 
@@ -111,28 +142,12 @@ export default function ProfilePage() {
 
   return (
     <>
-      <div className="card row between">
+      <div className="card row between" style={lookStyle({ background: user.background, postFont: user.postFont })}>
         <div className="row" style={{ gap: 14 }}>
-          <div
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: "50%",
-              background: "var(--accent)",
-              color: "var(--accent-text)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 600,
-              fontFamily: "var(--font-heading)",
-              flexShrink: 0,
-            }}
-          >
-            {user.initials}
-          </div>
+          <Avatar userId={user.id} initials={user.initials} avatarV={user.avatarV} frame={user.frame} />
           <div>
-            <p className="title" style={{ margin: 0 }}>{user.name}</p>
-            <p className="tiny">
+            <p className="title" style={{ margin: 0, color: "inherit" }}>{user.name}</p>
+            <p className="tiny" style={{ color: "inherit", opacity: 0.8 }}>
               {t("profile.memberSince", { date: new Date(user.memberSince).toLocaleDateString(lang, { month: "long", year: "numeric" }) })}
             </p>
           </div>
@@ -142,7 +157,28 @@ export default function ProfilePage() {
 
       <div className={`compose-inline${editing ? " open" : ""}`}>
         <label className="field-label" style={{ marginTop: 0 }}>{t("profile.picture")}</label>
-        <button className="btn small">{t("profile.choosePicture")}</button>
+        <div className="row wrap" style={{ gap: 8 }}>
+          <label className="btn small" style={{ cursor: "pointer" }}>
+            {pictureBusy ? t("common.saving") : t("profile.choosePicture")}
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" style={{ display: "none" }} disabled={pictureBusy} onChange={(e) => { uploadPicture(e.target.files?.[0]); e.target.value = ""; }} />
+          </label>
+          {user.avatarV && <button className="btn small" type="button" disabled={pictureBusy} onClick={removePicture}>{t("profile.removePicture")}</button>}
+        </div>
+        <p className="tiny" style={{ marginTop: 4 }}>{t("profile.pictureHelp")}</p>
+        {pictureMsg && <p className="tiny" style={{ color: "#b5471f" }}>{pictureMsg}</p>}
+        <label className="field-label">{t("profile.frame")}</label>
+        <select value={frame} onChange={(e) => setFrame(e.target.value)}>
+          {FRAME_CODES.map((c) => <option key={c} value={c}>{t(`profile.frame.${c}` as UiKey)}</option>)}
+        </select>
+        <label className="field-label">{t("profile.background")}</label>
+        <select value={background} onChange={(e) => setBackground(e.target.value)}>
+          {BACKGROUND_CODES.map((c) => <option key={c} value={c}>{t(`profile.background.${c}` as UiKey)}</option>)}
+        </select>
+        <label className="field-label">{t("profile.font")}</label>
+        <select value={postFont} onChange={(e) => setPostFont(e.target.value)}>
+          {FONT_CODES.map((c) => <option key={c} value={c}>{t(`profile.font.${c}` as UiKey)}</option>)}
+        </select>
+        <p className="tiny" style={{ marginTop: 6 }}>{t("profile.lookHelp")}</p>
         <label className="field-label">{t("profile.name")}</label>
         <input value={name} onChange={(e) => setName(e.target.value)} />
         <label className="field-label">{t("profile.displayName")}</label>

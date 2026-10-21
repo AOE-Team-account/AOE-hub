@@ -257,7 +257,7 @@ returns text
 language sql
 immutable
 as $$
-  select case p_target_type when 'experience-post' then 'post' else p_target_type end;
+  select case p_target_type when 'experience-post' then 'post' when 'profile-picture' then 'picture' else p_target_type end;
 $$;
 
 -- Who wrote a file post / experience post / comment (null for anything else).
@@ -275,6 +275,7 @@ begin
     when 'post'    then (select author_id from public.experience_posts where id = p_id)
     when 'comment' then (select author_id from public.comments where id = p_id)
     when 'user'    then p_id
+    when 'picture' then p_id
   end;
 end;
 $$;
@@ -1229,7 +1230,7 @@ alter table public.comments add constraint comments_parent_type_check
 delete from public.reports where target_type = 'group';
 alter table public.reports drop constraint if exists reports_target_type_check;
 alter table public.reports add constraint reports_target_type_check
-  check (target_type in ('file', 'experience-post', 'comment', 'user'));
+  check (target_type in ('file', 'experience-post', 'comment', 'user', 'profile-picture'));
 
 drop trigger if exists reports_sync_group_flag on public.reports;
 drop function if exists public.sync_group_reported_flag();
@@ -3952,6 +3953,63 @@ begin
 end;
 $$;
 
+-- ============================================================================
+-- Profile picture and profile look (Step 8)
+-- The picture is re-saved by the server (nothing but a small picture survives)
+-- and is visible to anyone who can open the profile. The look (frame,
+-- background, post font) is cosmetic and open to every account.
+-- ============================================================================
+alter table public.profiles add column if not exists avatar_path text;
+alter table public.profiles add column if not exists profile_frame text not null default 'none';
+alter table public.profiles add column if not exists profile_background text not null default 'none';
+alter table public.profiles add column if not exists post_font text not null default 'default';
+alter table public.profiles drop constraint if exists profiles_profile_frame_check;
+alter table public.profiles add constraint profiles_profile_frame_check check (profile_frame in ('none', 'gold', 'leaf', 'sky', 'double'));
+alter table public.profiles drop constraint if exists profiles_profile_background_check;
+alter table public.profiles add constraint profiles_profile_background_check check (profile_background in ('none', 'paper', 'sage', 'night'));
+alter table public.profiles drop constraint if exists profiles_post_font_check;
+alter table public.profiles add constraint profiles_post_font_check check (post_font in ('default', 'serif', 'rounded', 'mono'));
+
+-- A report about someone's profile picture goes to the Creator, Watchers and Deacons.
+insert into public.reviewer_permissions (role, kind, action)
+select r.role, 'picture', a.action
+  from (values ('creator'), ('watcher'), ('deacon')) as r(role)
+  cross join (values ('view'), ('delete'), ('dismiss')) as a(action)
+on conflict do nothing;
+
+-- A reviewer, having LOOKED at the picture, removes it. The member is asked to
+-- change it. Returns the stored file's name so the server can delete the file.
+create or replace function public.remove_profile_picture(p_user_id uuid, p_report_id uuid)
+returns text
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_report public.reports;
+  v_old text;
+begin
+  if v_uid is null then raise exception 'Sign in required.'; end if;
+  if not private.reviewer_can(v_uid, 'picture', 'delete') then raise exception 'You are not allowed to do this.'; end if;
+  if p_user_id = v_uid then raise exception 'This one is yours. Another reviewer will handle it.'; end if;
+  select * into v_report from public.reports where id = p_report_id and status = 'open' and target_type = 'profile-picture' and target_id = p_user_id;
+  if not found then raise exception 'That report does not exist or is already settled.'; end if;
+
+  select avatar_path into v_old from public.profiles where id = p_user_id;
+  update public.profiles set avatar_path = null where id = p_user_id;
+  update public.reports set status = 'resolved' where target_type = 'profile-picture' and target_id = p_user_id and status = 'open';
+  insert into public.notifications (user_id, body, kind, data)
+  values (p_user_id,
+          'Please change your profile picture. It broke the hub''s content policy: No graphic, sexual, or adult content. We removed it, and you can choose a new one in your profile.',
+          'profile-picture-removed', '{}'::jsonb);
+  perform private.log_activity(v_uid, 'picture-removed', 'user', p_user_id, p_user_id, null,
+                               jsonb_build_object('report_id', p_report_id));
+  return v_old;
+end;
+$$;
+
 -- Whether the signed-in member has turned on two-step sign-in.
 create or replace function public.my_two_step_status()
 returns jsonb
@@ -4109,7 +4167,7 @@ revoke all on public.restrictions from anon;
 
 -- profiles: only the person's own presentation fields. Points, counters,
 -- account status and age attestation are changed by functions/triggers only.
-grant update (name, display_name, onboarding_experience, onboarding_reason, referral_source, region, language)
+grant update (name, display_name, onboarding_experience, onboarding_reason, referral_source, region, language, profile_frame, profile_background, post_font)
   on public.profiles to authenticated;
 
 grant insert, delete on public.follows to authenticated;
@@ -4189,6 +4247,7 @@ grant execute on function public.creator_security_events_list() to authenticated
 grant execute on function public.get_hub_settings() to authenticated;
 grant execute on function public.set_hub_setting(text, jsonb) to authenticated;
 grant execute on function public.member_upload_limit(uuid) to authenticated;
+grant execute on function public.remove_profile_picture(uuid, uuid) to authenticated;
 grant execute on function public.add_link_host(text, text) to authenticated;
 grant execute on function public.remove_link_host(text) to authenticated;
 grant execute on function public.resolve_link_host_request(uuid, boolean) to authenticated;

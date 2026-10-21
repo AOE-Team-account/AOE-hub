@@ -46,7 +46,7 @@ export type ReportReason =
   | "copyright"
   | "other";
 
-export type ReportTargetType = "file" | "experience-post" | "comment" | "user";
+export type ReportTargetType = "file" | "experience-post" | "comment" | "user" | "profile-picture";
 
 
 export interface User {
@@ -72,6 +72,11 @@ export interface User {
   followers: number;
   following: number;
   filesCount: number;
+  /** Changes whenever the profile picture does (used in the picture address); undefined = no picture. */
+  avatarV?: string;
+  frame: string;
+  background: string;
+  postFont: string;
 }
 
 export type ScanStatus = "pending" | "clean" | "flagged";

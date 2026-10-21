@@ -24,7 +24,7 @@ interface Pending {
   userName?: string;
 }
 
-const KIND_KEY: Record<string, UiKey> = { file: "staff.kind.file", post: "staff.kind.post", comment: "staff.kind.comment", user: "staff.kind.user" };
+const KIND_KEY: Record<string, UiKey> = { file: "staff.kind.file", post: "staff.kind.post", comment: "staff.kind.comment", user: "staff.kind.user", picture: "staff.kind.picture" };
 const TIER_KEY: Record<string, UiKey> = { watcher: "notice.tier.watcher", deacon: "notice.tier.deacon", creator: "notice.tier.creator" };
 const TITLE_KEY: Record<string, UiKey> = { file: "staff.itemTitle.file", announcement: "staff.itemTitle.announcement", post: "staff.itemTitle.post", comment: "staff.itemTitle.comment" };
 const STATUS_KEY: Record<string, UiKey> = { active: "staff.status.active", suspended: "staff.status.suspended", deleted: "staff.status.deleted" };
@@ -97,6 +97,21 @@ export function ReviewPanel({ data, isCreator, canSuspend }: { data: ReviewData;
     } else if (type === "suspend" && userId) {
       await run(() => supabase.rpc("suspend_account", { p_user_id: userId, p_reason: reason }), t("staff.done.suspended"));
     }
+  }
+
+  async function removePicture(r: ReviewReport) {
+    setBusy(true);
+    setError(null);
+    const res = await fetch("/api/moderation/remove-picture", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId: r.targetId, reportId: r.id }),
+    });
+    const d = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok) return setFlash(d?.error ?? t("creator.didNotWork"));
+    setFlash(t("staff.done.pictureRemoved"));
+    router.refresh();
   }
 
   async function removeNotice(item: ReviewItem) {
@@ -200,7 +215,7 @@ export function ReviewPanel({ data, isCreator, canSuspend }: { data: ReviewData;
             <div className="card" key={r.id}>
               <div className="row between wrap" style={{ gap: 8, marginBottom: 6 }}>
                 <span className="row" style={{ gap: 6 }}>
-                  <Badge variant="neutral">{t(KIND_KEY[r.item?.kind ?? "user"])}</Badge>
+                  <Badge variant="neutral">{t(KIND_KEY[r.item?.kind ?? (r.targetType === "profile-picture" ? "picture" : "user")])}</Badge>
                   <Badge variant="warn">{reasonText(t, r.reason)}</Badge>
                 </span>
                 <span className="tiny">{new Date(r.createdAt).toLocaleString(lang)}</span>
@@ -208,6 +223,16 @@ export function ReviewPanel({ data, isCreator, canSuspend }: { data: ReviewData;
               {r.details && <p className="muted" style={{ marginBottom: 8 }}>“{r.details}”</p>}
               {r.item ? (
                 <ItemBody item={r.item} />
+              ) : r.targetType === "profile-picture" ? (
+                <div>
+                  <p className="muted">{t("staff.pictureReport", { name: r.userName || t("staff.member") })}</p>
+                  <div className="row" style={{ gap: 10, margin: "6px 0" }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={`/api/avatar/${r.targetId}?t=${r.id.slice(0, 6)}`} alt="" width={96} height={96} style={{ borderRadius: 10, objectFit: "cover", border: "1px solid var(--border)", background: "var(--bg)" }}
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                  </div>
+                  <p className="tiny">{t("staff.removePictureHelp")}</p>
+                </div>
               ) : r.targetType === "user" ? (
                 <p className="muted">{t("staff.reportAboutAccount", { name: r.userName || t("staff.member") })}</p>
               ) : (
@@ -220,7 +245,10 @@ export function ReviewPanel({ data, isCreator, canSuspend }: { data: ReviewData;
                 {r.targetType === "user" && (
                   <Link href={`/u/${r.targetId}`} className="btn small">{t("staff.viewProfile")}</Link>
                 )}
-                {!(r.item?.mine) && (
+                {r.targetType === "profile-picture" && r.targetId !== data.viewerId && (
+                  <Button size="small" variant="danger" disabled={busy} onClick={() => removePicture(r)}>{t("staff.removePicture")}</Button>
+                )}
+                {!(r.item?.mine) && !(r.targetType === "profile-picture" && r.targetId === data.viewerId) && (
                   <Button size="small" onClick={() => open({ type: "dismiss", report: r })}>{t("staff.dismissReport")}</Button>
                 )}
               </div>

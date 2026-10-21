@@ -27,6 +27,8 @@ export function ReportModal() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isPicture = target?.targetType === "profile-picture";
+
   function reset() {
     setDetails("");
     setReason("scam");
@@ -43,7 +45,7 @@ export function ReportModal() {
     const { error: insertError } = await supabase.from("reports").insert({
       target_type: target.targetType,
       target_id: target.targetId,
-      reason,
+      reason: isPicture ? "inappropriate" : reason,
       details: details.trim() || null,
       reported_by: user.id,
     });
@@ -58,17 +60,19 @@ export function ReportModal() {
 
   return (
     <Modal open={Boolean(target)} onClose={closeReport}>
-      <p className="title">{t("report.title")}</p>
+      <p className="title">{isPicture ? t("report.pictureTitle") : t("report.title")}</p>
       <p className="muted" style={{ marginBottom: 10 }}>
-        {t("report.whatIssue")}
+        {isPicture ? t("report.pictureHelp") : t("report.whatIssue")}
       </p>
-      <select value={reason} onChange={(e) => setReason(e.target.value as ReportReason)} style={{ marginBottom: 10 }}>
-        {REASONS.map((r) => (
-          <option key={r.value} value={r.value}>
-            {t(r.label)}
-          </option>
-        ))}
-      </select>
+      {!isPicture && (
+        <select value={reason} onChange={(e) => setReason(e.target.value as ReportReason)} style={{ marginBottom: 10 }}>
+          {REASONS.map((r) => (
+            <option key={r.value} value={r.value}>
+              {t(r.label)}
+            </option>
+          ))}
+        </select>
+      )}
       <textarea
         placeholder={t("report.detailsPlaceholder")}
         style={{ minHeight: 60 }}

@@ -13,6 +13,7 @@ import { Translated } from "@/components/ui/Translated";
 import { Discussion } from "@/components/discussion/Discussion";
 import { NoticeBox } from "@/components/review/NoticeBox";
 import { getServerT } from "@/lib/i18n/server";
+import { lookStyle } from "@/lib/profile-look";
 import { getNotices, flattenCommentIds } from "@/lib/data/notices";
 
 function collectAuthorIds(comments: Awaited<ReturnType<typeof listExperienceComments>>): string[] {
@@ -62,7 +63,7 @@ export default async function ExperiencePostPage({ params }: PageProps<"/experie
     <>
       <BackLink href="/experience" label={t("exp.back")} />
       <NoticeBox notice={postNotices[post.id]} itemKey={`post:${post.id}`} />
-      <div className="card">
+      <div className="card" style={author && !post.isAnnouncement ? lookStyle(author) : undefined}>
         <div className="row wrap" style={{ gap: 8, marginBottom: 8 }}>
           {/* Hub announcements read as coming from AOEhub, never from a person. */}
           {post.isAnnouncement ? <span style={{ fontWeight: 500 }}>AOEhub</span> : author && <AuthorLink userId={author.id} name={author.name} badges={author.badges} />}

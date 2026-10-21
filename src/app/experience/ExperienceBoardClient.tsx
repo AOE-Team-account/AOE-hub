@@ -11,6 +11,7 @@ import { ClickableCard } from "@/components/ui/ClickableCard";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { rich } from "@/lib/i18n/rich";
 import type { UiKey } from "@/lib/i18n/strings";
+import { lookStyle } from "@/lib/profile-look";
 import type { ExperienceCategory, ExperiencePost, User } from "@/lib/types";
 
 const CATEGORY_OPTION_KEYS: { value: ExperienceCategory | "all"; key: UiKey }[] = [
@@ -122,7 +123,7 @@ export function ExperienceBoardClient({
       {feed.map((post) => {
         const author = authors[post.authorId];
         return (
-          <ClickableCard key={post.id} href={`/experience/${post.id}`}>
+          <ClickableCard key={post.id} href={`/experience/${post.id}`} style={author && !post.isAnnouncement ? lookStyle(author) : undefined}>
             <div className="row wrap" style={{ gap: 6, marginBottom: 6 }}>
               {post.isAnnouncement ? <span style={{ fontWeight: 500, fontSize: 13 }}>AOEhub</span> : author && <AuthorLink userId={author.id} name={author.name} badges={author.badges} />}
               {post.isAnnouncement ? <Badge>{t("exp.fromAoehub")}</Badge> : post.category && <Badge>{t(CATEGORY_LABEL_KEYS[post.category])}</Badge>}
