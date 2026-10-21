@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   LANGUAGE_NAMES,
@@ -48,6 +49,7 @@ export function LanguageProvider({
   /** The strings of an AI-added initial language, loaded on the server so the first paint is already in it. */
   initialStrings?: Record<string, string> | null;
 }) {
+  const router = useRouter();
   const [lang, setLangState] = useState<string>(initialLang);
   const [extra, setExtra] = useState<LanguageOption[]>([]);
   const [aiTables, setAiTables] = useState<Record<string, Partial<Record<UiKey, string>>>>(
@@ -95,7 +97,9 @@ export function LanguageProvider({
       /* storage can be blocked; the cookie below is what the server reads */
     }
     document.cookie = `${COOKIE}=${encodeURIComponent(next)}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
-  }, []);
+    // Text drawn by the server (page descriptions, panel intros) follows the cookie: draw it again.
+    router.refresh();
+  }, [router]);
 
   const languages = useMemo(() => [...STATIC_OPTIONS, ...extra], [extra]);
 
