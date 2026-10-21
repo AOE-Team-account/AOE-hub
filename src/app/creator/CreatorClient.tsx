@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { ChipRow } from "@/components/ui/ChipRow";
 import { formatBytes } from "@/lib/format";
+import { KeyPool } from "./KeyPool";
 import { Modal } from "@/components/ui/Modal";
 import { BackLink } from "@/components/ui/BackLink";
 import { ReviewPanel } from "@/components/review/ReviewPanel";
@@ -438,7 +439,10 @@ export function CreatorClient({ data }: { data: CreatorData }) {
       )}
 
       {tab === "ai" && (
-        <KnowledgePanel />
+        <>
+          <KeyPool />
+          <KnowledgePanel />
+        </>
       )}
 
       {tab === "hub" && (

@@ -89,8 +89,8 @@ export function AiDataCard() {
           {p.restingUntil ? `resting until ${new Date(p.restingUntil).toLocaleTimeString()}${p.lastError ? ` — ${p.lastError}` : ""}` : p.lastOkAt ? `working (last answer ${new Date(p.lastOkAt).toLocaleString()})` : "ready"}
         </p>
       ))}
-      {!s.googleConfigured && <p className="tiny" style={{ color: "#b5471f" }}>GOOGLE_AI_API_KEY is not set in .env.local, so the hub is using the local development model.</p>}
-      {!s.groqConfigured && <p className="tiny">No GROQ_API_KEY set: there is no backup when Gemini is full.</p>}
+      {!s.googleConfigured && <p className="tiny" style={{ color: "#b5471f" }}>No Google key has been added yet (add one in the AI key pool above), so the hub is using the local development model.</p>}
+      {!s.groqConfigured && <p className="tiny">No Groq key has been added: there is no backup when Gemini is full (add one in the AI key pool above).</p>}
 
       <p style={{ fontWeight: 500, fontSize: 14, margin: "14px 0 6px" }}>Search data (embeddings)</p>
       <p className="muted" style={{ margin: "0 0 4px" }}>

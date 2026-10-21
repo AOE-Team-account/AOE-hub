@@ -21,12 +21,13 @@ export async function GET() {
   const guard = await requireCreator();
   if (!guard.ok) return guard.response;
   const [status, providers] = await Promise.all([getIndexStatus(), getProviderStatuses()]);
+  const google = await googleKeys();
   return NextResponse.json({
     ...status,
     providers,
-    googleConfigured: googleKeys().length > 0,
-    googleKeyCount: googleKeys().length,
-    groqConfigured: Boolean(process.env.GROQ_API_KEY),
+    googleConfigured: google.length > 0,
+    googleKeyCount: google.length,
+    groqConfigured: providers.some((p) => p.id.startsWith("groq")),
     suggestedModel: GEMINI_EMBEDDING_MODEL,
   });
 }
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
   try {
     switch (body.action) {
       case "start-next":
-        if (googleKeys().length === 0) return NextResponse.json({ error: "GOOGLE_AI_API_KEY is not set in .env.local yet." }, { status: 400 });
+        if ((await googleKeys()).length === 0) return NextResponse.json({ error: "No Google key has been added yet. Add one in the AI key pool." }, { status: 400 });
         await startNextEmbeddingModel(GEMINI_EMBEDDING_MODEL);
         return NextResponse.json({ ok: true });
       case "cancel-next":

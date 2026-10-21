@@ -3,6 +3,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service";
 import { AIProviderError, chatComplete, type ChatMessage } from "./chat-providers";
 import { getHubChatTarget, type ChatTarget } from "./config";
 import { googleKeys } from "./google-keys";
+import { poolKeys, QWEN_BASES } from "./key-pool";
 
 // The hub's own answer-and-translation AI: Gemini first, Groq when Gemini is
 // full, and back to Gemini as soon as it has rested. (A member's own key
@@ -45,22 +46,30 @@ function groqTarget(apiKey: string): ChatTarget {
   };
 }
 
-export function hubProviders(): HubProvider[] {
+export async function hubProviders(): Promise<HubProvider[]> {
   const out: HubProvider[] = [];
-  const groq = process.env.GROQ_API_KEY;
-  // Each Google key (ideally each from its own project) is tried in order.
-  for (const g of googleKeys()) {
+  // Each Google key (ideally each from its own project) is tried in order:
+  // those in the settings file first, then the ones added in the Creator panel.
+  for (const g of await googleKeys()) {
+    const fromFile = /^\d+$/.test(g.id);
     out.push({
       id: g.id === "1" ? "gemini" : `gemini-${g.id}`,
-      label: g.id === "1" ? "Gemini" : `Gemini (key ${g.id})`,
+      label: g.id === "1" ? "Gemini" : fromFile ? `Gemini (key ${g.id})` : `Gemini — ${g.label}`,
       target: { kind: "openai-compatible", baseUrl: GEMINI_OPENAI_BASE, apiKey: g.key, model: process.env.GEMINI_CHAT_MODEL || DEFAULT_GEMINI_MODEL },
     });
   }
-  if (groq) {
+  const pool = await poolKeys();
+  const groqKeys: { id: string; label: string; key: string }[] = [];
+  if (process.env.GROQ_API_KEY) groqKeys.push({ id: "groq", label: "Groq", key: process.env.GROQ_API_KEY });
+  for (const p of pool.filter((k) => k.provider === "groq")) {
+    if (!groqKeys.some((g) => g.key === p.key)) groqKeys.push({ id: `groq-${p.id}`, label: `Groq — ${p.label}`, key: p.key });
+  }
+  for (const g of groqKeys) out.push({ id: g.id, label: g.label, target: groqTarget(g.key) });
+  for (const p of pool.filter((k) => k.provider === "qwen-intl" || k.provider === "qwen-cn")) {
     out.push({
-      id: "groq",
-      label: "Groq",
-      target: groqTarget(groq),
+      id: `qwen-${p.id}`,
+      label: `Qwen — ${p.label}`,
+      target: { kind: "openai-compatible", baseUrl: QWEN_BASES[p.provider as "qwen-intl" | "qwen-cn"], apiKey: p.key, model: process.env.QWEN_CHAT_MODEL || "qwen-plus" },
     });
   }
   if (out.length === 0) {
@@ -126,7 +135,7 @@ export async function hubChat(
   messages: ChatMessage[],
   opts: { maxTokens?: number; temperature?: number } = {}
 ): Promise<{ text: string; provider: HubProviderId }> {
-  const providers = hubProviders();
+  const providers = await hubProviders();
   const states = await loadStates();
   const now = Date.now();
   let lastError: AIProviderError | null = null;
@@ -164,7 +173,7 @@ export interface ProviderStatus {
 export async function getProviderStatuses(): Promise<ProviderStatus[]> {
   const states = await loadStates();
   const now = Date.now();
-  return hubProviders().map((p) => {
+  return (await hubProviders()).map((p) => {
     const st = states.get(p.id);
     const resting = st?.rested_until && new Date(st.rested_until).getTime() > now ? st.rested_until : null;
     return { id: p.id, label: p.label, model: p.target.model, restingUntil: resting, lastError: st?.last_error ?? null, lastOkAt: st?.last_ok_at ?? null };

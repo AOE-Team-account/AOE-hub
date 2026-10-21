@@ -76,8 +76,8 @@ async function embedGeminiBatch(model: string, key: string, batch: string[], kin
 }
 
 async function embedGemini(model: string, texts: string[], kind: EmbedKind): Promise<number[][]> {
-  const keys = googleKeys();
-  if (keys.length === 0) throw new AIProviderError("GOOGLE_AI_API_KEY is not set, so Google embeddings are not available.");
+  const keys = await googleKeys();
+  if (keys.length === 0) throw new AIProviderError("No Google key is set up, so Google embeddings are not available.");
   const out: number[][] = [];
   for (let i = 0; i < texts.length; i += GEMINI_BATCH) {
     const batch = texts.slice(i, i + GEMINI_BATCH);

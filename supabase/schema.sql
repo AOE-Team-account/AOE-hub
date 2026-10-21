@@ -2185,6 +2185,145 @@ revoke execute on function public.get_user_ai_key(uuid) from public, anon, authe
 grant execute on function public.get_user_ai_key(uuid) to service_role;
 
 -- ============================================================================
+-- The hub's own AI key pool (Step 7). The Creator adds keys for the hub's
+-- answer, translation and search AI in the Creator panel; they are stored
+-- encrypted in Supabase Vault, exactly like members' own keys, and can never
+-- be shown again — only a label and the last four characters. Keys in the
+-- server's settings file keep working alongside these.
+-- ============================================================================
+create table if not exists public.hub_ai_keys (
+  id uuid primary key default gen_random_uuid(),
+  provider text not null check (provider in ('google', 'groq', 'qwen-intl', 'qwen-cn')),
+  label text not null check (char_length(label) between 1 and 60),
+  hint text not null,
+  key_hash text not null unique,
+  vault_secret_id uuid not null,
+  active boolean not null default true,
+  sort_order integer generated always as identity,
+  created_at timestamptz not null default now(),
+  created_by uuid,
+  last_check_at timestamptz,
+  last_check_ok boolean,
+  last_check_note text
+);
+alter table public.hub_ai_keys enable row level security;
+
+create or replace function public.delete_vault_secret_for_hub_key()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from vault.secrets where id = old.vault_secret_id;
+  return old;
+end;
+$$;
+
+drop trigger if exists hub_ai_keys_delete_secret on public.hub_ai_keys;
+create trigger hub_ai_keys_delete_secret after delete on public.hub_ai_keys
+  for each row execute function public.delete_vault_secret_for_hub_key();
+
+create or replace function public.add_hub_ai_key(p_provider text, p_label text, p_key text)
+returns uuid
+language plpgsql
+security definer
+volatile
+set search_path = public, extensions
+as $$
+declare
+  v_id uuid := gen_random_uuid();
+  v_secret uuid;
+  v_hash text;
+begin
+  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
+  if p_provider not in ('google', 'groq', 'qwen-intl', 'qwen-cn') then raise exception 'Unsupported service.'; end if;
+  if p_label is null or char_length(btrim(p_label)) not between 1 and 60 then raise exception 'Give the key a short name (up to 60 characters).'; end if;
+  if p_key is null or char_length(p_key) not between 8 and 512 or p_key !~ '^[A-Za-z0-9._~+/=-]+$' then raise exception 'That does not look like an API key.'; end if;
+  v_hash := encode(digest(p_key, 'sha256'), 'hex');
+  if exists (select 1 from public.hub_ai_keys where key_hash = v_hash) then raise exception 'That key is already in the pool.'; end if;
+  v_secret := vault.create_secret(p_key, 'hub_ai_key_' || v_id::text, 'AOEhub hub AI key');
+  insert into public.hub_ai_keys (id, provider, label, hint, key_hash, vault_secret_id, created_by)
+  values (v_id, p_provider, btrim(p_label), right(p_key, 4), v_hash, v_secret, auth.uid());
+  perform private.log_activity(auth.uid(), 'setting-changed', null, null, null, null, jsonb_build_object('key', 'hub_ai_key_added', 'provider', p_provider, 'label', btrim(p_label)));
+  return v_id;
+end;
+$$;
+
+create or replace function public.set_hub_ai_key_active(p_id uuid, p_active boolean)
+returns void
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+begin
+  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
+  update public.hub_ai_keys set active = coalesce(p_active, active) where id = p_id;
+  if not found then raise exception 'No such key.'; end if;
+  perform private.log_activity(auth.uid(), 'setting-changed', null, null, null, null, jsonb_build_object('key', 'hub_ai_key_active', 'id', p_id, 'active', p_active));
+end;
+$$;
+
+create or replace function public.remove_hub_ai_key(p_id uuid)
+returns void
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+begin
+  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
+  delete from public.hub_ai_keys where id = p_id;
+  if not found then raise exception 'No such key.'; end if;
+  perform private.log_activity(auth.uid(), 'setting-changed', null, null, null, null, jsonb_build_object('key', 'hub_ai_key_removed', 'id', p_id));
+end;
+$$;
+
+-- Creator panel list: never includes the key itself.
+create or replace function public.list_hub_ai_keys()
+returns table (id uuid, provider text, label text, hint text, active boolean, created_at timestamptz,
+               last_check_at timestamptz, last_check_ok boolean, last_check_note text)
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+begin
+  if auth.uid() is null or not private.creator_unlocked(false) then raise exception 'Unlock the Creator panel first.'; end if;
+  return query
+    select k.id, k.provider, k.label, k.hint, k.active, k.created_at, k.last_check_at, k.last_check_ok, k.last_check_note
+      from public.hub_ai_keys k order by k.sort_order;
+end;
+$$;
+
+-- Server only (service role): the decrypted keys the AI code uses, active ones
+-- first in the order they were added; and the result of a test.
+create or replace function public.hub_ai_key_secrets(p_only_active boolean default true)
+returns table (id uuid, provider text, label text, api_key text)
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select k.id, k.provider, k.label, v.decrypted_secret
+    from public.hub_ai_keys k
+    join vault.decrypted_secrets v on v.id = k.vault_secret_id
+   where (not p_only_active or k.active)
+   order by k.sort_order;
+$$;
+
+create or replace function public.record_hub_ai_key_check(p_id uuid, p_ok boolean, p_note text)
+returns void
+language sql
+volatile
+security definer
+set search_path = public
+as $$
+  update public.hub_ai_keys set last_check_at = now(), last_check_ok = p_ok, last_check_note = left(p_note, 200) where id = p_id;
+$$;
+
+-- ============================================================================
 -- Moderation actions (chat6: Roles & moderation powers; Trust & safety)
 -- Every one of these checks the caller's role on the server, every time,
 -- writes the activity log, and tells the affected person privately. None of
@@ -3771,6 +3910,7 @@ revoke all on public.warnings, public.account_referrals from anon, authenticated
 revoke all on public.kb_document_models, public.ai_provider_state from anon, authenticated;
 revoke all on public.ui_languages, public.ui_strings, public.content_translations, public.translation_usage from anon, authenticated;
 revoke all on public.upload_usage, public.member_upload_limits from anon, authenticated;
+revoke all on public.hub_ai_keys from anon, authenticated;
 revoke insert, update, delete, truncate on public.ai_key_help from anon, authenticated;
 revoke all on public.hub_settings, public.creator_access, public.creator_sessions, public.creator_recovery_keys, public.creator_security_events from anon, authenticated;
 revoke all on public.restrictions from anon;
@@ -3856,6 +3996,10 @@ grant execute on function public.creator_security_events_list() to authenticated
 grant execute on function public.get_hub_settings() to authenticated;
 grant execute on function public.set_hub_setting(text, jsonb) to authenticated;
 grant execute on function public.member_upload_limit(uuid) to authenticated;
+grant execute on function public.add_hub_ai_key(text, text, text) to authenticated;
+grant execute on function public.set_hub_ai_key_active(uuid, boolean) to authenticated;
+grant execute on function public.remove_hub_ai_key(uuid) to authenticated;
+grant execute on function public.list_hub_ai_keys() to authenticated;
 grant execute on function public.set_member_upload_limit(uuid, integer, bigint) to authenticated;
 grant execute on function public.my_two_step_status() to authenticated;
 grant execute on function public.set_ai_key_help(text, text[], text, boolean) to authenticated;
