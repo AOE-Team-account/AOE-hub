@@ -97,15 +97,6 @@ export default function HomePage() {
           {t("landing.signupFree")}
         </button>
       </div>
-
-      <div className="site-footer">
-        <div className="row wrap" style={{ gap: 18, justifyContent: "center" }}>
-          <a href="#" className="footer-link">{t("footer.about")}</a>
-          <a href="#" className="footer-link">{t("footer.contact")}</a>
-          <a href="#" className="footer-link">{t("footer.privacy")}</a>
-        </div>
-        <p className="tiny" style={{ textAlign: "center", marginTop: 10 }}>© AOEhub</p>
-      </div>
     </>
   );
 }

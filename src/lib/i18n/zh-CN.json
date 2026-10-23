@@ -940,5 +940,7 @@
   "footer.label": "政策与联系方式",
   "footer.line": "AOEhub（Alpha Omega Education）· 由 AOE Team 运营",
   "game.signInToPlay": "登录后开始玩",
-  "game.error": "抱歉，游戏无法启动，请重试。"
+  "game.error": "抱歉，游戏无法启动，请重试。",
+  "cookie.label": "Cookie 与浏览器存储",
+  "cookie.body": "AOEhub 只使用保证网站运行所需的小型 Cookie 和浏览器存储：用来保持您的登录状态，并记住您的语言、主题和字号。我们不使用广告或跟踪类 Cookie。<a>隐私政策</a>"
 }

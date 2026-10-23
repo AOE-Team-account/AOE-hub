@@ -10,6 +10,7 @@ import { RoleMessageModal } from "./RoleMessageModal";
 import { LanguageSync } from "./LanguageSync";
 import { StandingBanner } from "./StandingBanner";
 import { Footer } from "./Footer";
+import { CookieNotice } from "./CookieNotice";
 import { AiFab } from "@/components/ai/AiFab";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -31,6 +32,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <SignInModal />
       <ReportModal />
       <RoleMessageModal />
+      <CookieNotice />
       <LanguageSync />
     </div>
   );
