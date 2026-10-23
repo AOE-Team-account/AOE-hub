@@ -9,7 +9,6 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { ClickableCard } from "@/components/ui/ClickableCard";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { rich } from "@/lib/i18n/rich";
 import type { UiKey } from "@/lib/i18n/strings";
 import { lookStyle } from "@/lib/profile-look";
 import type { ExperienceCategory, ExperiencePost, User } from "@/lib/types";
@@ -35,15 +34,14 @@ function isWelcomeSituation(v: string | null): v is WelcomeSituation {
   return !!v && (WELCOME_SITUATIONS as string[]).includes(v);
 }
 
-// Draft copy — final wording is a Phase 6b task alongside the marketing page.
-// Four variants so every new member gets a card tuned to their onboarding
-// answer, not just the ones "new" to the whole idea.
-const WELCOME_KEYS: Record<WelcomeSituation, { title: UiKey; body: UiKey }> = {
-  "want-to-know-more": { title: "welcome.exploring.title", body: "welcome.exploring.body" },
-  "new-way-of-learning": { title: "welcome.exploring.title", body: "welcome.exploring.body" },
-  "in-school": { title: "welcome.inSchool.title", body: "welcome.inSchool.body" },
-  homeschooling: { title: "welcome.homeschooling.title", body: "welcome.homeschooling.body" },
-  unschooling: { title: "welcome.unschooling.title", body: "welcome.unschooling.body" },
+// Three welcome cards, worded by the team. Homeschooling and unschooling
+// families share one card; the two "just looking" answers share another.
+const WELCOME_KEYS: Record<WelcomeSituation, UiKey> = {
+  "want-to-know-more": "welcome.exploring.body",
+  "new-way-of-learning": "welcome.exploring.body",
+  "in-school": "welcome.inSchool.body",
+  homeschooling: "welcome.homeschooling.body",
+  unschooling: "welcome.homeschooling.body",
 };
 
 const CATEGORY_LABEL_KEYS: Record<ExperienceCategory, UiKey> = {
@@ -107,8 +105,7 @@ export function ExperienceBoardClient({
 
       {welcomeSituation && (
         <Card style={{ background: "var(--pin-bg)", borderColor: "var(--pin-border)" }}>
-          <p className="title" style={{ marginBottom: 4 }}>{t(WELCOME_KEYS[welcomeSituation].title)}</p>
-          <p className="muted">{rich(t(WELCOME_KEYS[welcomeSituation].body), { b: (c) => <strong>{c}</strong> })}</p>
+          <p className="muted" style={{ margin: 0 }}>{t(WELCOME_KEYS[welcomeSituation])}</p>
         </Card>
       )}
 

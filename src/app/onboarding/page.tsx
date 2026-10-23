@@ -117,14 +117,7 @@ export default function OnboardingPage() {
       <p className="title" style={{ marginBottom: 4 }}>{t("onboarding.welcome")}</p>
       <p className="muted" style={{ marginBottom: 20 }}>{t("onboarding.intro")}</p>
 
-      <p className="field-label" style={{ marginTop: 0 }}>
-        {t("onboarding.regionQuestion")} <span className="tiny">{t("common.required")}</span>
-      </p>
-      <RegionPicker value={region} onChange={(r) => { setRegion(r); setRegionError(false); }} />
-      <p className="tiny" style={{ marginTop: 6 }}>{t("onboarding.regionHint")}</p>
-      {regionError && <p className="tiny" style={{ color: "#b5471f", marginTop: 6 }}>{t("onboarding.regionError")}</p>}
-
-      <p className="field-label">{t("onboarding.q1")}</p>
+      <p className="field-label" style={{ marginTop: 0 }}>{t("onboarding.q1")}</p>
       <ChipRow options={Q1_OPTIONS} value={situation} onChange={setSituation} />
 
       <p className="field-label">{t("onboarding.q2")}</p>
@@ -133,7 +126,14 @@ export default function OnboardingPage() {
       <p className="field-label">{t("onboarding.q3")}</p>
       <ChipRow options={Q3_OPTIONS} value={referral} onChange={setReferral} />
 
-      {/* Draft copy — final wording is decided in Phase 6 with the rest of the sign-up text. */}
+      <p className="field-label">
+        {t("onboarding.regionQuestion")} <span className="tiny">{t("common.required")}</span>
+      </p>
+      <RegionPicker value={region} onChange={(r) => { setRegion(r); setRegionError(false); }} />
+      <p className="tiny" style={{ marginTop: 6 }}>{t("onboarding.regionHint")}</p>
+      {regionError && <p className="tiny" style={{ color: "#b5471f", marginTop: 6 }}>{t("onboarding.regionError")}</p>}
+
+      
       <p className="field-label">{t("onboarding.aiTitle")}</p>
       <p className="tiny" style={{ marginBottom: 8 }}>{t("onboarding.aiBody")}</p>
       <AiKeyForm ref={keyForm} standalone={false} region={region} />

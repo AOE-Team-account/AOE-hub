@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/Button";
+import { useAuth } from "@/contexts/AuthContext";
 
 /**
  * Plays a hosted game inside a sandboxed frame. The game files come from the
@@ -11,19 +12,30 @@ import { Button } from "@/components/ui/Button";
  */
 export function GamePlayer({ assetId }: { assetId: string }) {
   const { t } = useLanguage();
+  const { user, openSignInModal } = useAuth();
   const [src, setSrc] = useState<string | null>(null);
+  const [error, setError] = useState(false);
   const frame = useRef<HTMLIFrameElement>(null);
 
-  function start() {
+  async function start() {
+    // Playing needs a signed-in member: the hub hands out a short-lived signed token.
+    if (!user) return openSignInModal();
+    setError(false);
+    const res = await fetch("/api/game-token", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ assetId }) }).catch(() => null);
+    const data = res?.ok ? await res.json().catch(() => null) : null;
+    if (!data?.token) return setError(true);
     // play.<this site's address>, e.g. play.aoe.name (or play.localhost:3100 in development)
     const host = window.location.host.replace(/^www\./, "");
-    setSrc(`${window.location.protocol}//play.${host}/${assetId}/index.html`);
+    setSrc(`${window.location.protocol}//play.${host}/${assetId}/${data.token}/index.html`);
   }
 
   return (
     <div style={{ marginBottom: 12 }}>
       {!src ? (
-        <Button variant="primary" onClick={start}>▶ {t("game.play")}</Button>
+        <>
+          <Button variant="primary" onClick={start}>▶ {user ? t("game.play") : t("game.signInToPlay")}</Button>
+          {error && <p className="tiny" style={{ marginTop: 6, color: "#b5471f" }}>{t("game.error")}</p>}
+        </>
       ) : (
         <>
           <iframe

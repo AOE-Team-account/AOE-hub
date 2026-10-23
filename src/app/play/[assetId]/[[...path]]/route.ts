@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { getR2Object } from "@/lib/storage/r2";
 import { mimeFor } from "@/lib/games";
+import { verifyGameToken } from "@/lib/game-token";
 
 export const runtime = "nodejs";
 
@@ -21,7 +22,13 @@ export async function GET(request: Request, { params }: RouteContext<"/play/[ass
   const { assetId, path } = await params;
   if (!UUID.test(assetId)) return notFound();
 
-  const segments = (path ?? []).map((s) => decodeURIComponent(s));
+  // The first part of the path is the signed token handed out to signed-in members.
+  const [token, ...rest] = path ?? [];
+  if (!token || !verifyGameToken(assetId, token)) {
+    return new NextResponse("Sign in to AOEhub to play.", { status: 401, headers: { "cache-control": "no-store" } });
+  }
+
+  const segments = rest.map((s) => decodeURIComponent(s));
   if (segments.some((s) => s === ".." || s === "." || s.includes("\\") || s.includes("\0"))) return notFound();
   const rel = segments.length ? segments.join("/") : "index.html";
 
@@ -54,7 +61,7 @@ export async function GET(request: Request, { params }: RouteContext<"/play/[ass
     "x-content-type-options": "nosniff",
     "referrer-policy": "no-referrer",
     "cross-origin-resource-policy": "same-origin",
-    "cache-control": "public, max-age=300",
+    "cache-control": "private, max-age=300",
     // The game can only talk to its own files: no outside scripts, no calling out.
     "content-security-policy": [
       "default-src 'none'",
