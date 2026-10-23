@@ -4115,10 +4115,11 @@ drop policy if exists "members read their own appeals" on public.appeals;
 create policy "members read their own appeals" on public.appeals for select using (auth.uid() = user_id);
 
 -- Appeal messages are translated for the reviewer who reads them (and the
--- translation is removed with the appeal).
+-- translation is removed with the appeal). Policy pages (item_id 'slug@version')
+-- are translated for readers of other languages.
 alter table public.content_translations drop constraint if exists content_translations_item_type_check;
 alter table public.content_translations add constraint content_translations_item_type_check
-  check (item_type in ('experience-post', 'file', 'comment', 'notice', 'notification', 'appeal'));
+  check (item_type in ('experience-post', 'file', 'comment', 'notice', 'notification', 'appeal', 'policy'));
 drop trigger if exists drop_translations_appeal on public.appeals;
 create trigger drop_translations_appeal after delete on public.appeals
   for each row execute function private.drop_translations('appeal');

@@ -9,6 +9,7 @@ import { ReportModal } from "./ReportModal";
 import { RoleMessageModal } from "./RoleMessageModal";
 import { LanguageSync } from "./LanguageSync";
 import { StandingBanner } from "./StandingBanner";
+import { Footer } from "./Footer";
 import { AiFab } from "@/components/ai/AiFab";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -23,6 +24,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <PrimaryTabs />
         <StandingBanner />
         <div className="shell page-body">{children}</div>
+        <div className="shell"><Footer /></div>
       </div>
 
       <AiFab />

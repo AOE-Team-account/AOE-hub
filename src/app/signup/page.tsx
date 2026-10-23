@@ -86,7 +86,14 @@ export default function SignupPage() {
             onChange={(e) => setAgreed(e.target.checked)}
             style={{ width: "auto", marginTop: 3 }}
           />
-          <span className="tiny">{t("signup.agree")}</span>
+          <span className="tiny">
+            {rich(t("signup.agree"), {
+              t: (c) => <Link href="/policy/terms" target="_blank" style={{ color: "var(--accent)" }}>{c}</Link>,
+              c: (c) => <Link href="/policy/content-policy" target="_blank" style={{ color: "var(--accent)" }}>{c}</Link>,
+              s: (c) => <Link href="/policy/safety" target="_blank" style={{ color: "var(--accent)" }}>{c}</Link>,
+              p: (c) => <Link href="/policy/privacy" target="_blank" style={{ color: "var(--accent)" }}>{c}</Link>,
+            })}
+          </span>
         </label>
         {error && (
           <p className="muted" style={{ color: "#b5471f", marginTop: 10 }}>

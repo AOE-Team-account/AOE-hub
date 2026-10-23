@@ -456,7 +456,7 @@ create policy "members read their own appeals" on public.appeals for select usin
 -- translation is removed with the appeal).
 alter table public.content_translations drop constraint if exists content_translations_item_type_check;
 alter table public.content_translations add constraint content_translations_item_type_check
-  check (item_type in ('experience-post', 'file', 'comment', 'notice', 'notification', 'appeal'));
+  check (item_type in ('experience-post', 'file', 'comment', 'notice', 'notification', 'appeal', 'policy'));
 drop trigger if exists drop_translations_appeal on public.appeals;
 create trigger drop_translations_appeal after delete on public.appeals
   for each row execute function private.drop_translations('appeal');
