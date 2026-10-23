@@ -42,7 +42,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Could not remove the stored files. Nothing was deleted; please try again." }, { status: 500 });
   }
 
-  const { error } = await supabase.from(table).delete().eq("id", body.id);
-  if (error) return NextResponse.json({ error: "Could not delete it." }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  // The files are gone, so the post must go too: try again if the connection to the database drops.
+  let lastError: { message: string } | null = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const { error } = await supabase.from(table).delete().eq("id", body.id);
+    if (!error) return NextResponse.json({ ok: true });
+    lastError = error;
+    if (!/fetch failed|ECONNRESET|timeout|network/i.test(error.message)) break;
+    await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+  }
+  console.error("Could not delete a post after removing its files:", lastError?.message);
+  return NextResponse.json({ error: "Could not delete it. Please try again." }, { status: 500 });
 }
