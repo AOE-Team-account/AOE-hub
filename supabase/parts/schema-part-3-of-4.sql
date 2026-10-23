@@ -940,6 +940,7 @@ declare
   v_posts integer;
   v_comments integer;
   v_accounts integer;
+  v_ids uuid[];
 begin
   delete from public.file_posts where deleted_at is not null and deleted_at < v_cutoff;
   get diagnostics v_files = row_count;
@@ -947,10 +948,24 @@ begin
   get diagnostics v_posts = row_count;
   delete from public.comments where deleted_at is not null and deleted_at < v_cutoff;
   get diagnostics v_comments = row_count;
+  -- An account deleted more than p_days ago (by the member or by the Creator) goes
+  -- completely: its warnings, restrictions, reports about it and the activity-log
+  -- entries about it, then the account itself (which takes everything it owns).
+  select array_agg(id) into v_ids from public.profiles where account_status = 'deleted' and account_status_changed_at < v_cutoff;
+  if v_ids is not null then
+    perform set_config('app.purge_ok', 'on', true);
+    delete from public.reports where (target_type in ('user', 'profile-picture') and target_id = any (v_ids))
+       or (target_type = 'file' and target_id in (select id from public.file_posts where author_id = any (v_ids)))
+       or (target_type = 'experience-post' and target_id in (select id from public.experience_posts where author_id = any (v_ids)))
+       or (target_type = 'comment' and target_id in (select id from public.comments where author_id = any (v_ids)));
+    delete from public.warnings where user_id = any (v_ids);
+    delete from public.restrictions where user_id = any (v_ids);
+    delete from public.account_referrals where user_id = any (v_ids);
+    delete from public.activity_log where subject_user_id = any (v_ids) and action <> 'purge';
+    perform set_config('app.purge_ok', 'off', true);
+  end if;
   -- Removing the auth user cascades to the profile and everything it owns.
-  delete from auth.users where id in (
-    select id from public.profiles where account_status = 'deleted' and account_status_changed_at < v_cutoff
-  );
+  delete from auth.users where id = any (coalesce(v_ids, '{}'::uuid[]));
   get diagnostics v_accounts = row_count;
 
   if v_files + v_posts + v_comments + v_accounts > 0 then

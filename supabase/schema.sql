@@ -317,6 +317,8 @@ returns trigger
 language plpgsql
 as $$
 begin
+  -- Only the 30-day purge of an erased account (public.purge_expired) may remove rows.
+  if tg_op = 'DELETE' and current_setting('app.purge_ok', true) = 'on' then return old; end if;
   raise exception 'The activity log is append-only.';
 end;
 $$;
@@ -491,6 +493,7 @@ returns trigger
 language plpgsql
 as $$
 begin
+  if tg_op = 'DELETE' and current_setting('app.purge_ok', true) = 'on' then return old; end if;
   if tg_op in ('DELETE', 'TRUNCATE') then
     raise exception 'Warnings are evidence and cannot be deleted.';
   end if;
@@ -3312,6 +3315,7 @@ declare
   v_posts integer;
   v_comments integer;
   v_accounts integer;
+  v_ids uuid[];
 begin
   delete from public.file_posts where deleted_at is not null and deleted_at < v_cutoff;
   get diagnostics v_files = row_count;
@@ -3319,10 +3323,24 @@ begin
   get diagnostics v_posts = row_count;
   delete from public.comments where deleted_at is not null and deleted_at < v_cutoff;
   get diagnostics v_comments = row_count;
+  -- An account deleted more than p_days ago (by the member or by the Creator) goes
+  -- completely: its warnings, restrictions, reports about it and the activity-log
+  -- entries about it, then the account itself (which takes everything it owns).
+  select array_agg(id) into v_ids from public.profiles where account_status = 'deleted' and account_status_changed_at < v_cutoff;
+  if v_ids is not null then
+    perform set_config('app.purge_ok', 'on', true);
+    delete from public.reports where (target_type in ('user', 'profile-picture') and target_id = any (v_ids))
+       or (target_type = 'file' and target_id in (select id from public.file_posts where author_id = any (v_ids)))
+       or (target_type = 'experience-post' and target_id in (select id from public.experience_posts where author_id = any (v_ids)))
+       or (target_type = 'comment' and target_id in (select id from public.comments where author_id = any (v_ids)));
+    delete from public.warnings where user_id = any (v_ids);
+    delete from public.restrictions where user_id = any (v_ids);
+    delete from public.account_referrals where user_id = any (v_ids);
+    delete from public.activity_log where subject_user_id = any (v_ids) and action <> 'purge';
+    perform set_config('app.purge_ok', 'off', true);
+  end if;
   -- Removing the auth user cascades to the profile and everything it owns.
-  delete from auth.users where id in (
-    select id from public.profiles where account_status = 'deleted' and account_status_changed_at < v_cutoff
-  );
+  delete from auth.users where id = any (coalesce(v_ids, '{}'::uuid[]));
   get diagnostics v_accounts = row_count;
 
   if v_files + v_posts + v_comments + v_accounts > 0 then
@@ -3999,6 +4017,11 @@ as $$
                      and pr.account_status_changed_at < now() - make_interval(days => p_days))
      )
   union all
+  select pr.id, 'r2'::text, pr.avatar_path, null::text
+    from public.profiles pr
+   where pr.avatar_path is not null and pr.account_status = 'deleted'
+     and pr.account_status_changed_at < now() - make_interval(days => p_days)
+  union all
   select m.id, m.storage_backend, m.storage_path, null::text
     from public.post_media m
     left join public.file_posts f on m.owner_type = 'file' and f.id = m.owner_id
@@ -4284,6 +4307,54 @@ begin
 end;
 $$;
 
+-- ============================================================================
+-- "Download my data" (Step 8). Everything the hub holds about the signed-in
+-- member, put together when they ask and never stored. Leaves out secrets
+-- (the member's AI key), the identity of any reviewer, other people's
+-- personal data, and the storage addresses of files.
+-- ============================================================================
+create or replace function public.export_my_data()
+returns jsonb
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+begin
+  if v_uid is null then raise exception 'Sign in required.'; end if;
+  return jsonb_build_object(
+    'about', 'Everything AOEhub holds about your account, put together when you asked. Your AI key is never included. Files you uploaded are not in this file (you already have them); their names and sizes are.',
+    'made_at', now(),
+    'account', (select jsonb_build_object('email', u.email, 'created_at', u.created_at, 'last_sign_in_at', u.last_sign_in_at) from auth.users u where u.id = v_uid),
+    'profile', (select to_jsonb(p) - 'account_status_by' - 'avatar_path' from public.profiles p where p.id = v_uid),
+    'has_profile_picture', (select avatar_path is not null from public.profiles where id = v_uid),
+    'roles', coalesce((select jsonb_agg(r.role) from public.user_roles r where r.user_id = v_uid), '[]'::jsonb),
+    'terms_accepted', coalesce((select jsonb_agg(to_jsonb(t)) from public.terms_acceptances t where t.user_id = v_uid), '[]'::jsonb),
+    'experience_posts', coalesce((select jsonb_agg(jsonb_build_object('id', e.id, 'category', e.category, 'title', e.title, 'body', e.body, 'made_with_ai', e.made_with_ai, 'views', e.views, 'created_at', e.created_at, 'deleted_at', e.deleted_at) order by e.created_at) from public.experience_posts e where e.author_id = v_uid), '[]'::jsonb),
+    'file_posts', coalesce((select jsonb_agg(jsonb_build_object('id', f.id, 'title', f.title, 'description', f.description, 'section', f.section, 'media_type', f.media_type, 'authorship', f.authorship, 'made_with_ai', f.made_with_ai, 'views', f.views, 'created_at', f.created_at, 'deleted_at', f.deleted_at,
+        'files', coalesce((select jsonb_agg(jsonb_build_object('label', a.label, 'type', a.mime_type, 'size_bytes', a.size_bytes, 'downloads', a.downloads, 'link', a.link_url, 'is_game', a.is_game)) from public.file_assets a where a.file_post_id = f.id), '[]'::jsonb)) order by f.created_at) from public.file_posts f where f.author_id = v_uid), '[]'::jsonb),
+    'comments', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'on', c.parent_type, 'on_id', c.parent_id, 'type', c.type, 'body', c.body, 'created_at', c.created_at, 'deleted_at', c.deleted_at) order by c.created_at) from public.comments c where c.author_id = v_uid), '[]'::jsonb),
+    'previews', coalesce((select jsonb_agg(jsonb_build_object('kind', m.kind, 'size_bytes', m.size_bytes, 'on', m.owner_type, 'on_id', m.owner_id, 'created_at', m.created_at)) from public.post_media m
+                           where (m.owner_type = 'file' and exists (select 1 from public.file_posts f where f.id = m.owner_id and f.author_id = v_uid))
+                              or (m.owner_type = 'experience' and exists (select 1 from public.experience_posts e where e.id = m.owner_id and e.author_id = v_uid))), '[]'::jsonb),
+    'following', coalesce((select jsonb_agg(jsonb_build_object('name', coalesce(nullif(p.display_name, ''), p.name), 'since', fo.created_at)) from public.follows fo join public.profiles p on p.id = fo.followee_id where fo.follower_id = v_uid), '[]'::jsonb),
+    'followers_count', (select count(*) from public.follows where followee_id = v_uid),
+    'points', coalesce((select jsonb_agg(jsonb_build_object('points', e.points, 'kind', e.kind, 'created_at', e.created_at) order by e.created_at) from public.points_events e where e.user_id = v_uid), '[]'::jsonb),
+    'notifications', coalesce((select jsonb_agg(jsonb_build_object('body', n.body, 'kind', n.kind, 'read', n.read, 'created_at', n.created_at) order by n.created_at) from public.notifications n where n.user_id = v_uid), '[]'::jsonb),
+    'warnings', coalesce((select jsonb_agg(jsonb_build_object('reason', w.reason_code, 'level', w.level, 'item_kind', w.item_kind, 'content_at_the_time', w.snapshot, 'created_at', w.created_at, 'withdrawn_at', w.undone_at) order by w.created_at) from public.warnings w where w.user_id = v_uid), '[]'::jsonb),
+    'restrictions', coalesce((select jsonb_agg(jsonb_build_object('started_at', x.started_at, 'ends_at', x.ends_at, 'lifted_at', x.lifted_at) order by x.started_at) from public.restrictions x where x.user_id = v_uid), '[]'::jsonb),
+    'appeals', coalesce((select jsonb_agg(jsonb_build_object('kind', a.kind, 'message', a.message, 'status', a.status, 'answer_note', a.decision_note, 'created_at', a.created_at, 'decided_at', a.decided_at) order by a.created_at) from public.appeals a where a.user_id = v_uid), '[]'::jsonb),
+    'reports_you_sent', coalesce((select jsonb_agg(jsonb_build_object('about', r.target_type, 'reason', r.reason, 'details', r.details, 'urgent', r.urgent, 'status', r.status, 'created_at', r.created_at) order by r.created_at) from public.reports r where r.reported_by = v_uid), '[]'::jsonb),
+    'link_site_requests', coalesce((select jsonb_agg(jsonb_build_object('site', q.host, 'note', q.note, 'status', q.status, 'created_at', q.created_at)) from public.link_host_requests q where q.user_id = v_uid), '[]'::jsonb),
+    'pinned', coalesce((select jsonb_agg(jsonb_build_object('board', vp.board, 'item_id', vp.item_id, 'pinned_at', vp.pinned_at)) from public.verified_pins vp where vp.user_id = v_uid), '[]'::jsonb),
+    'ai_settings', (select jsonb_build_object('provider', s.provider, 'model', s.model, 'key_saved', true, 'updated_at', s.updated_at) from public.user_ai_settings s where s.user_id = v_uid),
+    'uploads_last_30_days', coalesce((select jsonb_agg(jsonb_build_object('day', uu.day, 'files', uu.files, 'bytes', uu.bytes) order by uu.day) from public.upload_usage uu where uu.user_id = v_uid and uu.day > current_date - 30), '[]'::jsonb)
+  );
+end;
+$$;
+
 -- Whether the signed-in member has turned on two-step sign-in.
 create or replace function public.my_two_step_status()
 returns jsonb
@@ -4522,6 +4593,7 @@ grant execute on function public.creator_security_events_list() to authenticated
 grant execute on function public.get_hub_settings() to authenticated;
 grant execute on function public.set_hub_setting(text, jsonb) to authenticated;
 grant execute on function public.member_upload_limit(uuid) to authenticated;
+grant execute on function public.export_my_data() to authenticated;
 grant execute on function public.my_standing() to authenticated;
 grant execute on function public.file_appeal(text, uuid, text) to authenticated;
 grant execute on function public.list_appeals() to authenticated;

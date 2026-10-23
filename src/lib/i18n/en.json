@@ -918,5 +918,9 @@
   "staff.done.appealRecommend": "Passed to the Creator with your recommendation.",
   "staff.done.appealOverturn": "Decision overturned. The member was told.",
   "creator.action.appealDecided": "Decided an appeal",
-  "creator.action.pictureRemoved": "Removed a profile picture"
+  "creator.action.pictureRemoved": "Removed a profile picture",
+  "settings.dataTitle": "Download my data",
+  "settings.dataBody": "A file with everything the hub holds about you: your profile, posts, comments, files (names and sizes), points, notifications, record and appeals. It is put together when you press the button and is not stored. Your AI key is never included, and neither is anyone else's personal information.",
+  "settings.dataButton": "Download my data",
+  "profile.deleteFailed": "Could not delete it. Nothing was removed; please try again."
 }

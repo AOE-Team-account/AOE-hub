@@ -319,6 +319,8 @@ returns trigger
 language plpgsql
 as $$
 begin
+  -- Only the 30-day purge of an erased account (public.purge_expired) may remove rows.
+  if tg_op = 'DELETE' and current_setting('app.purge_ok', true) = 'on' then return old; end if;
   raise exception 'The activity log is append-only.';
 end;
 $$;
@@ -493,6 +495,7 @@ returns trigger
 language plpgsql
 as $$
 begin
+  if tg_op = 'DELETE' and current_setting('app.purge_ok', true) = 'on' then return old; end if;
   if tg_op in ('DELETE', 'TRUNCATE') then
     raise exception 'Warnings are evidence and cannot be deleted.';
   end if;

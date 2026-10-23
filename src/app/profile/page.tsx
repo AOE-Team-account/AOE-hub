@@ -128,15 +128,15 @@ export default function ProfilePage() {
 
   async function deleteFile(id: string) {
     if (!confirm(t("profile.confirmDeleteFile"))) return;
-    const supabase = createClient();
-    await supabase.from("file_posts").delete().eq("id", id);
+    const res = await fetch("/api/my-content/delete", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "file", id }) });
+    if (!res.ok) return window.alert(t("profile.deleteFailed"));
     setMyFiles((files) => files.filter((f) => f.id !== id));
   }
 
   async function deletePost(id: string) {
     if (!confirm(t("profile.confirmDeletePost"))) return;
-    const supabase = createClient();
-    await supabase.from("experience_posts").delete().eq("id", id);
+    const res = await fetch("/api/my-content/delete", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "post", id }) });
+    if (!res.ok) return window.alert(t("profile.deleteFailed"));
     setMyPosts((posts) => posts.filter((p) => p.id !== id));
   }
 

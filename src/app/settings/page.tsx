@@ -124,6 +124,14 @@ export default function SettingsPage() {
 
       {status === "authed" && (
         <section className="settings-block">
+          <p className="label">{t("settings.dataTitle")}</p>
+          <p className="tiny" style={{ marginBottom: 10 }}>{t("settings.dataBody")}</p>
+          <a className="btn small" href="/api/my-data" download>{t("settings.dataButton")}</a>
+        </section>
+      )}
+
+      {status === "authed" && (
+        <section className="settings-block">
           <p className="label">{t("settings.deleteTitle")}</p>
           <p className="tiny" style={{ marginBottom: 10 }}>{t("settings.deleteBody")}</p>
           <Button variant="danger" onClick={() => setDeleteOpen(true)}>{t("settings.deleteTitle")}</Button>

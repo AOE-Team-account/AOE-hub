@@ -918,5 +918,9 @@
   "staff.done.appealRecommend": "已连同您的建议转交 Creator。",
   "staff.done.appealOverturn": "决定已撤销，已通知该成员。",
   "creator.action.appealDecided": "处理了一项申诉",
-  "creator.action.pictureRemoved": "移除了一张头像"
+  "creator.action.pictureRemoved": "移除了一张头像",
+  "settings.dataTitle": "下载我的数据",
+  "settings.dataBody": "一个包含本站所保存的您的全部信息的文件：个人资料、帖子、评论、文件（名称和大小）、积分、通知、记录和申诉。它在您点击按钮时即时生成，不会被存储。其中绝不包含您的 AI 密钥，也不包含其他任何人的个人信息。",
+  "settings.dataButton": "下载我的数据",
+  "profile.deleteFailed": "无法删除。没有任何内容被移除，请重试。"
 }
