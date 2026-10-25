@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/Button";
 
@@ -66,8 +67,8 @@ export default function ResetPasswordPage() {
     <form onSubmit={submit}>
       <p className="title" style={{ marginBottom: 4 }}>{t("reset.title")}</p>
       <p className="muted" style={{ marginBottom: 10 }}>{t("reset.help")}</p>
-      <input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={t("reset.newPw")} autoComplete="new-password" />
-      <input type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} placeholder={t("reset.again")} autoComplete="new-password" style={{ marginTop: 8 }} />
+      <PasswordInput value={pw} onChange={(e) => setPw(e.target.value)} placeholder={t("reset.newPw")} autoComplete="new-password" />
+      <PasswordInput value={pw2} onChange={(e) => setPw2(e.target.value)} placeholder={t("reset.again")} autoComplete="new-password" style={{ marginTop: 8 }} />
       {error && <p className="muted" style={{ color: "#b5471f", marginTop: 8 }}>{error}</p>}
       <Button variant="primary" type="submit" style={{ width: "100%", marginTop: 14 }} disabled={busy || !pw}>
         {busy ? t("common.saving") : t("reset.save")}

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { rich } from "@/lib/i18n/rich";
 
@@ -70,8 +71,7 @@ export default function SignupPage() {
         <label className="field-label">{t("login.email")}</label>
         <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
         <label className="field-label">{t("login.password")}</label>
-        <input
-          type="password"
+        <PasswordInput
           required
           minLength={6}
           value={password}

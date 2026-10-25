@@ -942,5 +942,7 @@
   "game.signInToPlay": "Sign in to play",
   "game.error": "Sorry, the game could not start. Please try again.",
   "cookie.label": "Cookies and browser storage",
-  "cookie.body": "AOEhub only uses the small cookies and browser storage it needs to work: to keep you signed in and to remember your language, theme and text size. We do not use advertising or tracking cookies. <a>Privacy Policy</a>"
+  "cookie.body": "AOEhub only uses the small cookies and browser storage it needs to work: to keep you signed in and to remember your language, theme and text size. We do not use advertising or tracking cookies. <a>Privacy Policy</a>",
+  "common.showPassword": "Show password",
+  "common.hidePassword": "Hide password"
 }

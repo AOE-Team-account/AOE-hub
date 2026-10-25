@@ -3,6 +3,7 @@
 import { useEffect, useImperativeHandle, useState, type Ref } from "react";
 import { BYO_PROVIDERS, providersForRegion, type ByoProviderId } from "@/lib/ai/byo-providers";
 import { createClient } from "@/lib/supabase/client";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { rich } from "@/lib/i18n/rich";
 import type { Region } from "@/lib/types";
@@ -124,8 +125,7 @@ export function AiKeyForm({ ref, standalone = true, region = null }: { ref?: Ref
           <option key={id} value={id}>{BYO_PROVIDERS[id].label}</option>
         ))}
       </select>
-      <input
-        type="password"
+      <PasswordInput
         autoComplete="off"
         spellCheck={false}
         placeholder={saved?.hasKey ? t("aiKey.replacePlaceholder") : t("aiKey.pastePlaceholder")}

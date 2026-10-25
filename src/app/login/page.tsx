@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { contactSentence } from "@/lib/site";
 import { Button } from "@/components/ui/Button";
@@ -45,8 +46,7 @@ export default function LoginPage() {
         <label className="field-label" style={{ marginTop: 0 }}>{t("login.email")}</label>
         <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
         <label className="field-label">{t("login.password")}</label>
-        <input
-          type="password"
+        <PasswordInput
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}

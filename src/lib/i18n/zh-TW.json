@@ -942,5 +942,7 @@
   "game.signInToPlay": "登入後開始玩",
   "game.error": "抱歉，遊戲無法啟動，請重試。",
   "cookie.label": "Cookie 與瀏覽器儲存",
-  "cookie.body": "AOEhub 只使用保證網站執行所需的小型 Cookie 和瀏覽器儲存：用來保持您的登入狀態，並記住您的語言、主題和字號。我們不使用廣告或跟蹤類 Cookie。<a>隱私政策</a>"
+  "cookie.body": "AOEhub 只使用保證網站執行所需的小型 Cookie 和瀏覽器儲存：用來保持您的登入狀態，並記住您的語言、主題和字號。我們不使用廣告或跟蹤類 Cookie。<a>隱私政策</a>",
+  "common.showPassword": "顯示密碼",
+  "common.hidePassword": "隱藏密碼"
 }
