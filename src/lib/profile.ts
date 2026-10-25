@@ -13,7 +13,6 @@ export interface ProfileRow {
   name: string;
   display_name: string | null;
   member_since: string;
-  points: number;
   followers_count: number;
   following_count: number;
   files_count: number;
@@ -47,7 +46,6 @@ export function userFromProfileRow(
     language: row.language ?? null,
     restrictedUntil,
     memberSince: row.member_since,
-    points: row.points,
     followers: row.followers_count,
     following: row.following_count,
     filesCount: row.files_count,

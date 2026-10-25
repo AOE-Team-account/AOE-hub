@@ -12,8 +12,8 @@ AOE Team runs AOEhub. Questions about your data: info@aoe.name.
 ## 2. What we hold
 - **Your account:** email address, password (stored scrambled by the sign-in service), name, optional display name, a yes to "I am 13 or older" (not a birth date), and which version of the Terms you accepted and when.
 - **Your answers** to the optional questions when you first sign in, and the region and language you chose.
-- **What you post:** experience posts, comments, files and their labels, previews, your profile picture and look, reports and appeals you send, notifications, who you follow, and points.
-- **Views and downloads** of posts and files, once per person per day, for counts and points.
+- **What you post:** experience posts, comments, files and their labels, previews, your profile picture and look, reports and appeals you send, notifications, and who you follow.
+- **Views and downloads** of posts and files, once per person per day, for counts.
 - **Safety records:** warnings (with a copy of the content at the time), restrictions, who acted and when, kept as evidence.
 - **Your own AI key,** if you add one: stored encrypted and never shown again.
 - **Technical data:** your IP address appears in the logs of our hosting and database companies and is used to limit abuse.

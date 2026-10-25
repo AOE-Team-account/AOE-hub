@@ -453,7 +453,8 @@ drop policy if exists "members read their own appeals" on public.appeals;
 create policy "members read their own appeals" on public.appeals for select using (auth.uid() = user_id);
 
 -- Appeal messages are translated for the reviewer who reads them (and the
--- translation is removed with the appeal).
+-- translation is removed with the appeal). Policy pages (item_id 'slug@version')
+-- are translated for readers of other languages.
 alter table public.content_translations drop constraint if exists content_translations_item_type_check;
 alter table public.content_translations add constraint content_translations_item_type_check
   check (item_type in ('experience-post', 'file', 'comment', 'notice', 'notification', 'appeal', 'policy'));
@@ -679,7 +680,6 @@ begin
                               or (m.owner_type = 'experience' and exists (select 1 from public.experience_posts e where e.id = m.owner_id and e.author_id = v_uid))), '[]'::jsonb),
     'following', coalesce((select jsonb_agg(jsonb_build_object('name', coalesce(nullif(p.display_name, ''), p.name), 'since', fo.created_at)) from public.follows fo join public.profiles p on p.id = fo.followee_id where fo.follower_id = v_uid), '[]'::jsonb),
     'followers_count', (select count(*) from public.follows where followee_id = v_uid),
-    'points', coalesce((select jsonb_agg(jsonb_build_object('points', e.points, 'kind', e.kind, 'created_at', e.created_at) order by e.created_at) from public.points_events e where e.user_id = v_uid), '[]'::jsonb),
     'notifications', coalesce((select jsonb_agg(jsonb_build_object('body', n.body, 'kind', n.kind, 'read', n.read, 'created_at', n.created_at) order by n.created_at) from public.notifications n where n.user_id = v_uid), '[]'::jsonb),
     'warnings', coalesce((select jsonb_agg(jsonb_build_object('reason', w.reason_code, 'level', w.level, 'item_kind', w.item_kind, 'content_at_the_time', w.snapshot, 'created_at', w.created_at, 'withdrawn_at', w.undone_at) order by w.created_at) from public.warnings w where w.user_id = v_uid), '[]'::jsonb),
     'restrictions', coalesce((select jsonb_agg(jsonb_build_object('started_at', x.started_at, 'ends_at', x.ends_at, 'lifted_at', x.lifted_at) order by x.started_at) from public.restrictions x where x.user_id = v_uid), '[]'::jsonb),
@@ -813,8 +813,8 @@ $$;
 -- Write protection (security hardening, 2026-10-11)
 -- Found by testing against the live project: Supabase grants every API role
 -- full write access to every public table and execute on every public
--- function by default, so (a) the earlier "revoke update (points, ...)" did
--- nothing — a member could set their own points; and (b) award_points() was
+-- function by default, so (a) the earlier column revokes did nothing — a
+-- member could set their own counters; and (b) server-only functions were
 -- callable by anyone holding the public key. Row-level security still decided
 -- WHICH rows, but not WHICH COLUMNS or which functions.
 --
@@ -849,7 +849,7 @@ revoke insert, update, delete, truncate on public.ai_key_help from anon, authent
 revoke all on public.hub_settings, public.creator_access, public.creator_sessions, public.creator_recovery_keys, public.creator_security_events from anon, authenticated;
 revoke all on public.restrictions from anon;
 
--- profiles: only the person's own presentation fields. Points, counters,
+-- profiles: only the person's own presentation fields. Counters,
 -- account status and age attestation are changed by functions/triggers only.
 grant update (name, display_name, onboarding_experience, onboarding_reason, referral_source, region, language, profile_frame, profile_background, post_font)
   on public.profiles to authenticated;
@@ -953,6 +953,5 @@ grant execute on function public.pin_my_item(text, uuid) to authenticated;
 grant execute on function public.unpin_my_item(text) to authenticated;
 grant execute on function public.creator_account_queue() to authenticated;
 -- list_expired_storage, purge_expired: server (service role) only.
--- award_points, record_view, record_download, record_account_deletion,
+-- record_view, record_download, record_account_deletion,
 -- get_user_ai_key, match_kb_chunks: server (service role) only.
-

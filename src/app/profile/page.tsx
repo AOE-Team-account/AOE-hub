@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { useAuth, useRequireAuthPage } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { createClient } from "@/lib/supabase/client";
-import { PointsInfoButton } from "@/components/profile/PointsInfoButton";
 import { VerifiedPinsCard } from "@/components/profile/VerifiedPinsCard";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/profile/Avatar";
@@ -207,12 +206,10 @@ export default function ProfilePage() {
       {user.badges.includes("verified") && <VerifiedPinsCard />}
 
       <div className="card row wrap" style={{ gap: 18 }}>
-        <Stat label={t("profile.points")} value={user.points.toLocaleString()} />
         <Stat label={t("profile.files")} value={String(myFiles.length)} />
         <Stat label={t("profile.followers")} value={user.followers.toLocaleString()} />
         <Stat label={t("profile.following")} value={user.following.toLocaleString()} />
       </div>
-      <PointsInfoButton />
       <p className="tiny" style={{ marginBottom: 12 }}><Link href="/appeal" style={{ color: "var(--accent)" }}>{t("appeal.link")}</Link></p>
 
       <p className="label" style={{ fontWeight: 500, margin: "0 0 8px" }}>{t("profile.myFiles")}</p>

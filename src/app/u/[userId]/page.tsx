@@ -30,7 +30,6 @@ export default async function PublicProfilePage({ params }: PageProps<"/u/[userI
             <p className="tiny" style={{ color: "inherit", opacity: 0.8 }}>
               {t("u.memberSince", {
                 date: new Date(user.memberSince).toLocaleDateString(lang, { month: "long", year: "numeric" }),
-                points: user.points.toLocaleString(),
                 followers: user.followers.toLocaleString(),
               })}
             </p>

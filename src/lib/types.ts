@@ -68,7 +68,6 @@ export interface User {
   /** Set while a one-week restriction is in force (ISO time it ends). */
   restrictedUntil?: string;
   memberSince: string; // ISO date
-  points: number;
   followers: number;
   following: number;
   filesCount: number;

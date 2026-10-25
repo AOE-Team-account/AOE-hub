@@ -5,11 +5,8 @@
 -- It is written to be safe to re-run (IF NOT EXISTS everywhere it can be).
 --
 -- Design notes (see "AOEhub memory from chat.md" for the full rationale):
---  - profiles.points is a denormalized honest sum, maintained only by the
---    award_points() function below — never written to directly by clients.
---  - Search-ranking compression (log-scale) happens in application code
---    (src/lib/points.ts), not here — the DB only stores raw point events.
---  - Only File Board + Experience Board activity earns points.
+--  - The hub has no points system (removed 2026-10-25); only plain counters
+--    (views, downloads, followers, files) are kept.
 --  - The hub launches with these tables empty; there is no seed data here
 --    on purpose (see the "launches empty" note in the memory doc).
 
@@ -29,7 +26,6 @@ create table if not exists public.profiles (
   name text not null,
   display_name text,
   member_since timestamptz not null default now(),
-  points integer not null default 0,
   followers_count integer not null default 0,
   following_count integer not null default 0,
   files_count integer not null default 0,
@@ -40,7 +36,6 @@ create table if not exists public.profiles (
 );
 
 comment on table public.profiles is 'Public profile data. Row is created automatically on signup by handle_new_user().';
-comment on column public.profiles.points is 'Honest sum of points_events for this user — only award_points() may change this.';
 
 -- Onboarding Q1 widened from a homeschooling-experience scale to a broader
 -- "what's your situation" question that also fits people who aren't
@@ -1121,47 +1116,11 @@ alter table public.profiles drop column if exists groups_count;
 drop function if exists public.admin_notify_user(uuid, text);
 
 -- ============================================================================
--- Points — raw event ledger + the one function allowed to change balances
+-- View and download counters (there are no points; these are plain counts)
 -- ============================================================================
 
-create table if not exists public.points_events (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.profiles (id) on delete cascade,
-  points integer not null,
-  kind text not null check (kind in ('view', 'download', 'comment_received', 'remix')),
-  target_type text not null,
-  target_id uuid not null,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists points_events_user_id_idx on public.points_events (user_id);
-
--- Exact formula from the memory doc: 1/view, 5/download, 3/comment received,
--- 10/remix. SECURITY DEFINER so it can update profiles.points even though
--- clients never get UPDATE on that column directly (see RLS below).
-create or replace function public.award_points(
-  p_user_id uuid,
-  p_points integer,
-  p_kind text,
-  p_target_type text,
-  p_target_id uuid
-)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  insert into public.points_events (user_id, points, kind, target_type, target_id)
-  values (p_user_id, p_points, p_kind, p_target_type, p_target_id);
-
-  update public.profiles set points = points + p_points where id = p_user_id;
-end;
-$$;
-
--- Dedup table for "1 point per view, rate-limited to once per person per
--- day" — a row here means that viewer already earned the poster a point
--- for that content today.
+-- Dedup table for "one counted view per person per day": a row here means that
+-- viewer already counted for that content today.
 create table if not exists public.post_views (
   target_type text not null,
   target_id uuid not null,
@@ -1171,8 +1130,7 @@ create table if not exists public.post_views (
 );
 
 -- Call this from the app whenever a signed-in user opens a file or
--- experience post. Silently no-ops on a duplicate same-day view or a
--- self-view (you can't earn points from viewing your own content).
+-- experience post. Silently no-ops on a duplicate same-day view.
 create or replace function public.record_view(
   p_target_type text,
   p_target_id uuid,
@@ -1184,14 +1142,10 @@ security definer
 set search_path = public
 as $$
 declare
-  author uuid;
   is_new_view_today boolean;
 begin
-  -- Both the raw view counter AND the point award are gated on this being a
-  -- genuinely new view (this viewer, this content, today) — not just the
-  -- point award. An earlier version of this function incremented the
-  -- counter unconditionally on every call, which would have inflated view
-  -- counts on every page load/refresh, not just once per person per day.
+  -- The counter only moves for a genuinely new view (this viewer, this
+  -- content, today), not on every page load or refresh.
   insert into public.post_views (target_type, target_id, viewer_id)
   values (p_target_type, p_target_id, p_viewer_id)
   on conflict do nothing
@@ -1202,17 +1156,11 @@ begin
   end if;
 
   if p_target_type = 'file' then
-    select author_id into author from public.file_posts where id = p_target_id;
     update public.file_posts set views = views + 1 where id = p_target_id;
   elsif p_target_type = 'experience-post' then
-    select author_id into author from public.experience_posts where id = p_target_id;
     update public.experience_posts set views = views + 1 where id = p_target_id;
   else
     raise exception 'record_view: unsupported target_type %', p_target_type;
-  end if;
-
-  if author is not null and author <> p_viewer_id then
-    perform public.award_points(author, 1, 'view', p_target_type, p_target_id);
   end if;
 end;
 $$;
@@ -1225,12 +1173,10 @@ security definer
 set search_path = public
 as $$
 declare
-  v_file_post_id uuid;
-  author uuid;
   is_new_today boolean;
 begin
   -- One counted download per person per file per day, so scripted repeat
-  -- downloads cannot farm points for an uploader. (Server-only function.)
+  -- downloads cannot inflate the counter. (Server-only function.)
   insert into public.post_views (target_type, target_id, viewer_id)
   values ('download', p_asset_id, p_downloader_id)
   on conflict do nothing
@@ -1239,73 +1185,20 @@ begin
     return;
   end if;
 
-  update public.file_assets set downloads = downloads + 1
-    where id = p_asset_id
-    returning file_post_id into v_file_post_id;
-
-  select author_id into author from public.file_posts where id = v_file_post_id;
-
-  if author is not null and author <> p_downloader_id then
-    perform public.award_points(author, 5, 'download', 'file', v_file_post_id);
-  end if;
+  update public.file_assets set downloads = downloads + 1 where id = p_asset_id;
 end;
 $$;
 
--- Comments and remixes award points via triggers, since those are plain
--- inserts rather than app-invoked RPCs.
-create or replace function public.award_points_for_comment()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  post_author uuid;
-begin
-  if new.parent_type = 'file' then
-    select author_id into post_author from public.file_posts where id = new.parent_id;
-  elsif new.parent_type = 'experience-post' then
-    select author_id into post_author from public.experience_posts where id = new.parent_id;
-  else
-    return new;
-  end if;
-
-  if post_author is not null and post_author <> new.author_id then
-    perform public.award_points(post_author, 3, 'comment_received', new.parent_type, new.parent_id);
-  end if;
-
-  return new;
-end;
-$$;
-
+-- Points were removed from the hub (2026-10-25). On a database that still has
+-- them, take them away: the earning triggers, the functions, the ledger and
+-- the balance column. Nothing here runs on a fresh install.
 drop trigger if exists comments_award_points on public.comments;
-create trigger comments_award_points
-  after insert on public.comments
-  for each row execute function public.award_points_for_comment();
-
-create or replace function public.award_points_for_remix()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  original_author uuid;
-begin
-  if new.remix_of_post_id is not null then
-    select author_id into original_author from public.file_posts where id = new.remix_of_post_id;
-    if original_author is not null and original_author <> new.author_id then
-      perform public.award_points(original_author, 10, 'remix', 'file', new.remix_of_post_id);
-    end if;
-  end if;
-  return new;
-end;
-$$;
-
 drop trigger if exists file_posts_award_remix_points on public.file_posts;
-create trigger file_posts_award_remix_points
-  after insert on public.file_posts
-  for each row execute function public.award_points_for_remix();
+drop function if exists public.award_points_for_comment();
+drop function if exists public.award_points_for_remix();
+drop function if exists public.award_points(uuid, integer, text, text, uuid);
+drop table if exists public.points_events cascade;
+alter table public.profiles drop column if exists points;
 
 -- ============================================================================
 -- Notifications
@@ -1401,14 +1294,13 @@ alter table public.file_assets enable row level security;
 alter table public.experience_posts enable row level security;
 alter table public.comments enable row level security;
 alter table public.reports enable row level security;
-alter table public.points_events enable row level security;
 alter table public.post_views enable row level security;
 alter table public.notifications enable row level security;
 alter table public.kb_documents enable row level security;
 alter table public.kb_chunks enable row level security;
 
 -- profiles: readable by everyone (public profile pages); only the owner
--- can update their own row (points/counters are function/trigger
+-- can update their own row (counters are function/trigger
 -- managed, not client-writable — see the column grants below).
 drop policy if exists "profiles are publicly readable" on public.profiles;
 create policy "profiles are publicly readable" on public.profiles
@@ -1418,7 +1310,7 @@ drop policy if exists "users can update their own profile" on public.profiles;
 create policy "users can update their own profile" on public.profiles
   for update using (auth.uid() = id) with check (auth.uid() = id);
 
-revoke update (points, followers_count, following_count, files_count, member_since)
+revoke update (followers_count, following_count, files_count, member_since)
   on public.profiles from authenticated;
 
 -- follows: readable by everyone; only the follower can create/delete their
@@ -1551,14 +1443,6 @@ create policy "reviewers read reports in their scope" on public.reports
   for select using (private.reviewer_can(auth.uid(), private.report_kind(target_type), 'view'));
 
 drop policy if exists "admins update reports" on public.reports;
-
--- points_events: written only by award_points() (SECURITY DEFINER, runs as
--- the function owner, bypassing RLS) — no direct client insert policy on
--- purpose. Readable by the point recipient (for "how points work"
--- transparency) and the unlocked Creator.
-drop policy if exists "users see their own points history" on public.points_events;
-create policy "users see their own points history" on public.points_events
-  for select using (auth.uid() = user_id or private.creator_unlocked(false));
 
 -- post_views: written only via record_view() (SECURITY DEFINER). No
 -- client-facing policies needed at all.
@@ -2038,6 +1922,8 @@ declare
   v_asker uuid;
   v_category text;
 begin
+  -- A reply to a comment is part of a conversation, not a new answer.
+  if new.parent_comment_id is not null then return new; end if;
   if new.parent_type <> 'experience-post' then return new; end if;
   select author_id, category into v_asker, v_category from public.experience_posts where id = new.parent_id;
   if v_category = 'question' and v_asker is not null and v_asker <> new.author_id then
@@ -2052,6 +1938,63 @@ $$;
 drop trigger if exists comments_question_answered on public.comments;
 create trigger comments_question_answered after insert on public.comments
   for each row execute function private.notify_question_answered();
+
+-- ---- Replies to comments ----
+-- A reply is a comment whose parent_comment_id points at another comment. One
+-- level only: the parent must be a top-level comment on the SAME post or file,
+-- and not deleted. Who may reply is decided by the same insert policy as for
+-- comments (signed in, active, not restricted), so a member who cannot comment
+-- cannot reply either.
+create or replace function private.check_comment_reply()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  p record;
+begin
+  if new.parent_comment_id is null then return new; end if;
+  select parent_type, parent_id, parent_comment_id, deleted_at, type into p
+    from public.comments where id = new.parent_comment_id;
+  if not found or p.deleted_at is not null
+     or p.parent_type <> new.parent_type or p.parent_id <> new.parent_id
+     or p.parent_comment_id is not null then
+    raise exception 'You can only reply to a comment on this post.';
+  end if;
+  new.type := p.type;
+  return new;
+end;
+$$;
+
+drop trigger if exists comments_check_reply on public.comments;
+create trigger comments_check_reply before insert on public.comments
+  for each row execute function private.check_comment_reply();
+
+-- The writer of a comment is told when someone replies to it.
+create or replace function private.notify_comment_reply()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_owner uuid;
+begin
+  if new.parent_comment_id is null then return new; end if;
+  select author_id into v_owner from public.comments where id = new.parent_comment_id;
+  if v_owner is not null and v_owner <> new.author_id and private.author_is_active(v_owner) then
+    insert into public.notifications (user_id, body, kind, data)
+    values (v_owner, 'Someone replied to your comment.', 'comment-reply',
+            jsonb_build_object('post_type', new.parent_type, 'post_id', new.parent_id, 'comment_id', new.id));
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists comments_reply_notify on public.comments;
+create trigger comments_reply_notify after insert on public.comments
+  for each row execute function private.notify_comment_reply();
 
 -- The AI must never quote a community answer that has been deleted, hidden or
 -- is no longer eligible. These remove its copy straight away; the indexer
@@ -4342,7 +4285,6 @@ begin
                               or (m.owner_type = 'experience' and exists (select 1 from public.experience_posts e where e.id = m.owner_id and e.author_id = v_uid))), '[]'::jsonb),
     'following', coalesce((select jsonb_agg(jsonb_build_object('name', coalesce(nullif(p.display_name, ''), p.name), 'since', fo.created_at)) from public.follows fo join public.profiles p on p.id = fo.followee_id where fo.follower_id = v_uid), '[]'::jsonb),
     'followers_count', (select count(*) from public.follows where followee_id = v_uid),
-    'points', coalesce((select jsonb_agg(jsonb_build_object('points', e.points, 'kind', e.kind, 'created_at', e.created_at) order by e.created_at) from public.points_events e where e.user_id = v_uid), '[]'::jsonb),
     'notifications', coalesce((select jsonb_agg(jsonb_build_object('body', n.body, 'kind', n.kind, 'read', n.read, 'created_at', n.created_at) order by n.created_at) from public.notifications n where n.user_id = v_uid), '[]'::jsonb),
     'warnings', coalesce((select jsonb_agg(jsonb_build_object('reason', w.reason_code, 'level', w.level, 'item_kind', w.item_kind, 'content_at_the_time', w.snapshot, 'created_at', w.created_at, 'withdrawn_at', w.undone_at) order by w.created_at) from public.warnings w where w.user_id = v_uid), '[]'::jsonb),
     'restrictions', coalesce((select jsonb_agg(jsonb_build_object('started_at', x.started_at, 'ends_at', x.ends_at, 'lifted_at', x.lifted_at) order by x.started_at) from public.restrictions x where x.user_id = v_uid), '[]'::jsonb),
@@ -4476,8 +4418,8 @@ $$;
 -- Write protection (security hardening, 2026-10-11)
 -- Found by testing against the live project: Supabase grants every API role
 -- full write access to every public table and execute on every public
--- function by default, so (a) the earlier "revoke update (points, ...)" did
--- nothing — a member could set their own points; and (b) award_points() was
+-- function by default, so (a) the earlier column revokes did nothing — a
+-- member could set their own counters; and (b) server-only functions were
 -- callable by anyone holding the public key. Row-level security still decided
 -- WHICH rows, but not WHICH COLUMNS or which functions.
 --
@@ -4512,7 +4454,7 @@ revoke insert, update, delete, truncate on public.ai_key_help from anon, authent
 revoke all on public.hub_settings, public.creator_access, public.creator_sessions, public.creator_recovery_keys, public.creator_security_events from anon, authenticated;
 revoke all on public.restrictions from anon;
 
--- profiles: only the person's own presentation fields. Points, counters,
+-- profiles: only the person's own presentation fields. Counters,
 -- account status and age attestation are changed by functions/triggers only.
 grant update (name, display_name, onboarding_experience, onboarding_reason, referral_source, region, language, profile_frame, profile_background, post_font)
   on public.profiles to authenticated;
@@ -4616,5 +4558,5 @@ grant execute on function public.pin_my_item(text, uuid) to authenticated;
 grant execute on function public.unpin_my_item(text) to authenticated;
 grant execute on function public.creator_account_queue() to authenticated;
 -- list_expired_storage, purge_expired: server (service role) only.
--- award_points, record_view, record_download, record_account_deletion,
+-- record_view, record_download, record_account_deletion,
 -- get_user_ai_key, match_kb_chunks: server (service role) only.

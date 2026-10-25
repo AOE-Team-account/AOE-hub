@@ -108,7 +108,7 @@ async function collectDesiredDocs(db: Db): Promise<DesiredDoc[]> {
       const slice = questionIds.slice(i, i + 100);
       comments.push(
         ...(await pageAll<{ id: string; parent_id: string; author_id: string; body: string }>((from, to) =>
-          db.from("comments").select("id, parent_id, author_id, body").eq("parent_type", "experience-post").is("deleted_at", null).in("parent_id", slice).order("id").range(from, to)
+          db.from("comments").select("id, parent_id, author_id, body").eq("parent_type", "experience-post").is("parent_comment_id", null).is("deleted_at", null).in("parent_id", slice).order("id").range(from, to)
         ))
       );
     }

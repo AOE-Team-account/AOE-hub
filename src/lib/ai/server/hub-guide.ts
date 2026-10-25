@@ -1,7 +1,7 @@
 import "server-only";
 
 // Built-in knowledge so the assistant can explain how the hub itself works.
-// Kept in sync with the project's product decisions (points formula, access
+// Kept in sync with the project's product decisions (access
 // model, languages). Indexed like any other document.
 
 export const HUB_GUIDE_SOURCE_ID = "00000000-0000-4000-8000-0000000a0e01";
@@ -15,7 +15,7 @@ Experience Board: real stories and philosophy discussion in one place. There is 
 
 Logged-out visitors can browse and read the File Board and Experience Board. Downloading, posting, commenting, remixing, following and reporting all need a free account.
 
-Points: 1 point per view (counted once per person per day), 5 points per download, 3 points per comment or question left on your post, and 10 points per remix of your file. You earn points only from File Board and Experience Board activity, never from your own views, downloads or comments on your own content. Search ranking uses a log-compressed version of points so one huge hit does not bury newer good content; your profile total is the plain honest sum.
+Replies: under every comment there is a Reply link. Signed-in members who can comment can reply; replies sit under the comment they answer (one level, so conversations stay easy to read).
 
 Authorship: every upload is marked Original, Remix, or Not my work. A remix links back to the original creator automatically.
 

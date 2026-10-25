@@ -33,9 +33,11 @@ export function nestComments(rows: CommentRow[]): Comment[] {
 
   for (const row of rows) {
     const comment = byId.get(row.id)!;
-    if (row.parent_comment_id && byId.has(row.parent_comment_id)) {
-      const parent = byId.get(row.parent_comment_id)!;
-      parent.replies = [...(parent.replies ?? []), comment];
+    if (row.parent_comment_id) {
+      // A reply goes under its comment. If that comment is gone or hidden,
+      // the reply goes with it (it would make no sense on its own).
+      const parent = byId.get(row.parent_comment_id);
+      if (parent) parent.replies = [...(parent.replies ?? []), comment];
     } else {
       roots.push(comment);
     }

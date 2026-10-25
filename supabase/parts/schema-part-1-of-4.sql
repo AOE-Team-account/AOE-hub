@@ -7,11 +7,8 @@
 -- It is written to be safe to re-run (IF NOT EXISTS everywhere it can be).
 --
 -- Design notes (see "AOEhub memory from chat.md" for the full rationale):
---  - profiles.points is a denormalized honest sum, maintained only by the
---    award_points() function below — never written to directly by clients.
---  - Search-ranking compression (log-scale) happens in application code
---    (src/lib/points.ts), not here — the DB only stores raw point events.
---  - Only File Board + Experience Board activity earns points.
+--  - The hub has no points system (removed 2026-10-25); only plain counters
+--    (views, downloads, followers, files) are kept.
 --  - The hub launches with these tables empty; there is no seed data here
 --    on purpose (see the "launches empty" note in the memory doc).
 
@@ -31,7 +28,6 @@ create table if not exists public.profiles (
   name text not null,
   display_name text,
   member_since timestamptz not null default now(),
-  points integer not null default 0,
   followers_count integer not null default 0,
   following_count integer not null default 0,
   files_count integer not null default 0,
@@ -42,7 +38,6 @@ create table if not exists public.profiles (
 );
 
 comment on table public.profiles is 'Public profile data. Row is created automatically on signup by handle_new_user().';
-comment on column public.profiles.points is 'Honest sum of points_events for this user — only award_points() may change this.';
 
 -- Onboarding Q1 widened from a homeschooling-experience scale to a broader
 -- "what's your situation" question that also fits people who aren't
