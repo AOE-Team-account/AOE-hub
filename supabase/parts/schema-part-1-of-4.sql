@@ -985,7 +985,7 @@ on conflict (host) do nothing;
 
 
 
-comment on column public.file_assets.scan_status is 'Malware scan gate (VirusTotal, Phase 3) — only "clean" assets are ever downloadable.';
+comment on column public.file_assets.scan_status is 'Virus scan gate (ClamAV scanner) — only "clean" assets are ever downloadable.';
 comment on column public.file_assets.storage_backend is 'Which S3-compatible backend actually holds the bytes: Cloudflare R2 (small files) or Internet Archive (large files).';
 
 -- ============================================================================

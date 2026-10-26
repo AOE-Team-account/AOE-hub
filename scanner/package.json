@@ -1,0 +1,11 @@
+{
+  "name": "aoehub-scanner",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ClamAV virus scanner for AOEhub uploads. Runs on Google Cloud Run.",
+  "scripts": { "start": "node server.mjs" },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1000.0"
+  }
+}

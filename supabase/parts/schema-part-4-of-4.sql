@@ -120,7 +120,8 @@ begin
   return jsonb_build_object(
     'override_files', v_ov.files_per_day, 'override_bytes', v_ov.bytes_per_day,
     'limit_files', v_lf, 'limit_bytes', v_lb,
-    'used_files', coalesce(v_use.files, 0), 'used_bytes', coalesce(v_use.bytes, 0));
+    'used_files', coalesce(v_use.files, 0), 'used_bytes', coalesce(v_use.bytes, 0),
+    'one_time_max_file_bytes', v_ov.one_time_max_file_bytes);
 end;
 $$;
 
@@ -146,6 +147,103 @@ begin
   end if;
   perform private.log_activity(auth.uid(), 'setting-changed', 'user', p_user_id, p_user_id, null,
                                jsonb_build_object('key', 'upload_limit', 'files', p_files, 'bytes', p_bytes));
+end;
+$$;
+
+-- ============================================================================
+-- Virus scanner and large uploads (Step 7, scanner)
+-- A file is sent by the browser straight to a private staging bucket, scanned by
+-- the ClamAV service, and only if clean moved to its final place. Until then the
+-- row is hidden from everyone but the uploader and reviewers.
+--   uploading : the file is still being sent
+--   pending   : sent; waiting for (or in) the scan
+--   clean     : safe; downloadable
+--   flagged   : the scanner caught something; the file was deleted
+--   error     : the scanner could not finish; the file was deleted, upload again
+-- ============================================================================
+alter table public.file_assets drop constraint if exists file_assets_scan_status_check;
+alter table public.file_assets add constraint file_assets_scan_status_check
+  check (scan_status in ('uploading', 'pending', 'clean', 'flagged', 'error'));
+alter table public.file_assets add column if not exists staging_key text;
+alter table public.file_assets add column if not exists final_key text;
+alter table public.file_assets add column if not exists final_backend text check (final_backend is null or final_backend in ('r2', 'internet-archive'));
+alter table public.file_assets add column if not exists original_name text;
+alter table public.file_assets add column if not exists scan_signature text;
+alter table public.file_assets add column if not exists scan_attempts integer not null default 0;
+alter table public.file_assets add column if not exists scan_started_at timestamptz;
+alter table public.file_assets add column if not exists scan_finished_at timestamptz;
+alter table public.file_assets add column if not exists multipart_upload_id text;
+create index if not exists file_assets_unfinished_idx on public.file_assets (scan_status) where scan_status in ('uploading', 'pending');
+
+-- The VirusTotal analysis id is no longer used.
+alter table public.file_assets drop column if exists scan_analysis_id;
+
+-- Largest single file a member may upload. The Creator can change the default
+-- and, once, lift it for one member who asks (the lift is used up by the next
+-- upload that needs it). The scanner's own ceiling is just under 2 GB (2047 MB).
+insert into public.hub_settings (key, value) values ('upload_max_file_bytes', '1073741824'::jsonb)
+on conflict (key) do nothing;
+alter table public.member_upload_limits add column if not exists one_time_max_file_bytes bigint
+  check (one_time_max_file_bytes is null or (one_time_max_file_bytes > 0 and one_time_max_file_bytes <= 2146435072));
+
+-- Server only: the largest file this member may send now, and the one-time lift (if any).
+create or replace function public.get_upload_max_file(p_user uuid)
+returns jsonb
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'normal', coalesce((select case when jsonb_typeof(value) = 'number' then (value)::numeric::bigint end from public.hub_settings where key = 'upload_max_file_bytes'), 1073741824),
+    'once', (select one_time_max_file_bytes from public.member_upload_limits where user_id = p_user),
+    'unlimited', private.has_role(p_user, 'creator')
+  );
+$$;
+
+-- Server only: takes one pending file for scanning (atomic, so two triggers cannot
+-- scan the same file at once). Returns nothing when it is already being scanned.
+create or replace function public.claim_scan(p_asset uuid)
+returns setof public.file_assets
+language sql
+security definer
+volatile
+set search_path = public
+as $$
+  update public.file_assets
+     set scan_started_at = now(), scan_attempts = scan_attempts + 1
+   where id = p_asset and scan_status = 'pending'
+     and (scan_started_at is null or scan_started_at < now() - interval '30 minutes')
+  returning *;
+$$;
+
+-- Server only: the lift has been used.
+create or replace function public.consume_one_time_max(p_user uuid)
+returns void
+language sql
+security definer
+volatile
+set search_path = public
+as $$
+  update public.member_upload_limits set one_time_max_file_bytes = null, updated_at = now() where user_id = p_user;
+$$;
+
+-- Creator panel: allow one member a single bigger upload (null takes it back).
+create or replace function public.set_member_one_time_max(p_user_id uuid, p_bytes bigint)
+returns void
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+begin
+  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
+  if not exists (select 1 from public.profiles where id = p_user_id) then raise exception 'No such member.'; end if;
+  if p_bytes is not null and (p_bytes <= 0 or p_bytes > 2146435072) then raise exception 'A one-time lift can be at most 2 GB.'; end if;
+  insert into public.member_upload_limits (user_id, one_time_max_file_bytes) values (p_user_id, p_bytes)
+  on conflict (user_id) do update set one_time_max_file_bytes = excluded.one_time_max_file_bytes, updated_at = now();
+  perform private.log_activity(auth.uid(), 'setting-changed', 'user', p_user_id, p_user_id, null,
+                               jsonb_build_object('key', 'one_time_max_file', 'bytes', p_bytes));
 end;
 $$;
 
@@ -225,11 +323,17 @@ create table if not exists public.post_media (
   mime_type text not null,
   size_bytes bigint not null,
   scan_status text not null default 'pending' check (scan_status in ('pending', 'clean', 'flagged')),
-  scan_analysis_id text,
   sort_order integer not null default 0,
   created_at timestamptz not null default now()
 );
 create index if not exists post_media_owner_idx on public.post_media (owner_type, owner_id, sort_order);
+-- Preview videos wait in the private staging bucket for the virus scanner (see the
+-- scanner section above); the old VirusTotal analysis id is gone.
+alter table public.post_media add column if not exists staging_key text;
+alter table public.post_media add column if not exists final_key text;
+alter table public.post_media add column if not exists scan_attempts integer not null default 0;
+alter table public.post_media add column if not exists scan_started_at timestamptz;
+alter table public.post_media drop column if exists scan_analysis_id;
 alter table public.post_media enable row level security;
 
 drop policy if exists "clean preview media is public" on public.post_media;
@@ -945,6 +1049,7 @@ grant execute on function public.set_hub_ai_key_active(uuid, boolean) to authent
 grant execute on function public.remove_hub_ai_key(uuid) to authenticated;
 grant execute on function public.list_hub_ai_keys() to authenticated;
 grant execute on function public.set_member_upload_limit(uuid, integer, bigint) to authenticated;
+grant execute on function public.set_member_one_time_max(uuid, bigint) to authenticated;
 grant execute on function public.my_two_step_status() to authenticated;
 grant execute on function public.set_ai_key_help(text, text[], text, boolean) to authenticated;
 grant execute on function public.list_ai_key_help() to authenticated;
@@ -952,6 +1057,6 @@ grant execute on function public.ask_for_two_step(uuid) to authenticated;
 grant execute on function public.pin_my_item(text, uuid) to authenticated;
 grant execute on function public.unpin_my_item(text) to authenticated;
 grant execute on function public.creator_account_queue() to authenticated;
--- list_expired_storage, purge_expired: server (service role) only.
+-- list_expired_storage, purge_expired, get_upload_max_file, consume_one_time_max, claim_scan: server (service role) only.
 -- record_view, record_download, record_account_deletion,
 -- get_user_ai_key, match_kb_chunks: server (service role) only.

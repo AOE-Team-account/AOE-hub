@@ -4,7 +4,7 @@ name: Scheduled hub jobs
 # addresses. It does nothing until the repository has two secrets:
 #   SITE_URL     the hub's address, e.g. https://aoe.ai (test) or https://aoe.name
 #   CRON_SECRET  the same value as CRON_SECRET in the hub's settings
-# Jobs: finish malware checks that were still waiting, erase what has been in the
+# Jobs: finish virus checks that were still waiting, erase what has been in the
 # trash or in a deleted account for 30 days, and keep the AI's search data up to date.
 on:
   schedule:
@@ -23,7 +23,7 @@ jobs:
         id: ready
         run: |
           if [ -z "$SITE_URL" ] || [ -z "$CRON_SECRET" ]; then echo "SITE_URL or CRON_SECRET is not set yet; nothing to do."; echo "go=no" >> "$GITHUB_OUTPUT"; else echo "go=yes" >> "$GITHUB_OUTPUT"; fi
-      - name: Finish waiting malware checks and index new content
+      - name: Finish waiting virus checks and index new content
         if: steps.ready.outputs.go == 'yes' && github.event.schedule != '17 3 * * *'
         run: |
           curl -fsS -m 120 -X POST -H "Authorization: Bearer $CRON_SECRET" "$SITE_URL/api/cron/check-pending-scans"

@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import sharp from "sharp";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { uploadFile, deleteFile } from "@/lib/storage/router";
-import { scanFileWithShortPoll } from "@/lib/malware-scan/virustotal";
+import { putStaged, deleteStaged } from "@/lib/storage/staging";
+import { runPreviewScan } from "@/lib/scanner/run";
 import { MEDIA_LIMITS } from "@/lib/media";
 
 export const runtime = "nodejs";
@@ -12,7 +13,7 @@ export const runtime = "nodejs";
 // One optional preview (a picture or a short video) for a post the caller owns.
 // Pictures are decoded and written out again as WebP at a sensible size, so
 // only picture data survives (no hidden code, no camera location). Videos
-// are checked by the malware scanner and stay hidden until it says they are clean.
+// wait in the private staging bucket, are checked by the virus scanner, and stay hidden until it says they are clean.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function looksLikeVideo(buf: Buffer): "mp4" | "webm" | null {
@@ -83,47 +84,37 @@ export async function POST(request: Request) {
   }
 
   const key = `previews/${ownerType}/${ownerId}/${randomUUID()}.${ext}`;
+  // A picture was re-drawn from scratch above, so it is safe as it is. A video
+  // waits in the private staging bucket until the virus scanner has checked it.
   try {
-    await uploadFile("r2", key, outBuffer, mime);
+    if (isVideo) await putStaged(key, outBuffer, mime);
+    else await uploadFile("r2", key, outBuffer, mime);
   } catch (err) {
     console.error("Preview upload failed:", err instanceof Error ? err.message : err);
     await refund();
     return NextResponse.json({ error: "Could not store the preview." }, { status: 500 });
   }
 
-  let scanStatus: "clean" | "flagged" | "pending" = "clean";
-  let analysisId: string | null = null;
-  if (isVideo) {
-    scanStatus = "pending";
-    try {
-      const scan = await scanFileWithShortPoll(outBuffer, `preview.${ext}`);
-      scanStatus = scan.result;
-      analysisId = scan.analysisId;
-    } catch (err) {
-      console.error("Preview scan failed:", err instanceof Error ? err.message : err);
-    }
-    if (scanStatus === "flagged") {
-      try { await deleteFile("r2", key); } catch (err) { console.error("Could not delete flagged preview:", err); }
-    }
-  }
-
+  const scanStatus: "clean" | "pending" = isVideo ? "pending" : "clean";
   const { data: row, error } = await svc.from("post_media").insert({
     owner_type: ownerType,
     owner_id: ownerId,
     kind: isVideo ? "video" : "image",
     storage_backend: "r2",
-    storage_path: scanStatus === "flagged" ? null : key,
+    storage_path: isVideo ? null : key,
+    staging_key: isVideo ? key : null,
+    final_key: isVideo ? key : null,
     mime_type: mime,
     size_bytes: outBuffer.length,
     scan_status: scanStatus,
-    scan_analysis_id: scanStatus === "pending" ? analysisId : null,
     sort_order: images + videos,
   }).select("id").single();
   if (error || !row) {
     console.error("Could not record preview:", error?.message);
-    try { await deleteFile("r2", key); } catch { /* nothing more to do */ }
+    try { if (isVideo) await deleteStaged(key); else await deleteFile("r2", key); } catch { /* nothing more to do */ }
     await refund();
     return NextResponse.json({ error: "Could not save the preview." }, { status: 500 });
   }
+  if (isVideo) after(() => runPreviewScan(row.id).catch((e) => console.error("Preview scan failed to run:", e instanceof Error ? e.message : e)));
   return NextResponse.json({ id: row.id, kind: isVideo ? "video" : "image", scanStatus });
 }

@@ -38,7 +38,7 @@ export interface CreatorData {
   }[];
   names: Record<string, string>;
   keyHelp: KeyHelpRow[];
-  uploads: { files: number; bytes: number };
+  uploads: { files: number; bytes: number; maxFile: number };
   linkHosts: { host: string; name: string }[];
   linkRequests: { id: string; user_id: string; host: string; note: string | null; created_at: string }[];
   security: { requireTwoStepForStaff: boolean; events: { at: string; kind: string }[]; keysLeft: number };
@@ -114,7 +114,8 @@ export function CreatorClient({ data }: { data: CreatorData }) {
   const GB = 1024 * 1024 * 1024;
   const [upFiles, setUpFiles] = useState(String(data.uploads.files));
   const [upGb, setUpGb] = useState(String(Math.round((data.uploads.bytes / GB) * 100) / 100));
-  const [limitFor, setLimitFor] = useState<null | { person: Person; usedFiles: number; usedBytes: number; limitFiles: number | null; limitBytes: number | null; files: string; gb: string }>(null);
+  const [upMaxGb, setUpMaxGb] = useState(String(Math.round((data.uploads.maxFile / GB) * 100) / 100));
+  const [limitFor, setLimitFor] = useState<null | { person: Person; usedFiles: number; usedBytes: number; limitFiles: number | null; limitBytes: number | null; files: string; gb: string; once: number | null; onceGb: string }>(null);
   const [newHost, setNewHost] = useState("");
   const [newHostName, setNewHostName] = useState("");
   const [annTitle, setAnnTitle] = useState("");
@@ -240,11 +241,12 @@ export function CreatorClient({ data }: { data: CreatorData }) {
                     setError(null);
                     const { data: r, error: e } = await supabase.rpc("member_upload_limit", { p_user_id: p.id });
                     if (e) return setError(e.message);
-                    const x = r as { override_files: number | null; override_bytes: number | null; limit_files: number | null; limit_bytes: number | null; used_files: number; used_bytes: number };
+                    const x = r as { override_files: number | null; override_bytes: number | null; limit_files: number | null; limit_bytes: number | null; used_files: number; used_bytes: number; one_time_max_file_bytes?: number | null };
                     setLimitFor({
                       person: p, usedFiles: x.used_files, usedBytes: x.used_bytes, limitFiles: x.limit_files, limitBytes: x.limit_bytes,
                       files: x.override_files == null ? "" : String(x.override_files),
                       gb: x.override_bytes == null ? "" : String(Math.round((x.override_bytes / GB) * 100) / 100),
+                      once: x.one_time_max_file_bytes ?? null, onceGb: "",
                     });
                   }}>{t("creator.people.uploadLimit")}</Button>
                 </div>
@@ -299,6 +301,24 @@ export function CreatorClient({ data }: { data: CreatorData }) {
                   if (ok) setLimitFor(null);
                 }}>{t("creator.limit.useNormal")}</Button>
                 <Button size="small" onClick={() => setLimitFor(null)}>{t("staff.close")}</Button>
+              </div>
+              <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+                <p className="title" style={{ marginBottom: 4, fontSize: 14 }}>{t("creator.limit.onceTitle")}</p>
+                <p className="tiny" style={{ marginBottom: 8 }}>{t("creator.limit.onceHelp")}</p>
+                {limitFor.once !== null && <p className="tiny" style={{ marginBottom: 8, color: "var(--accent)" }}>{t("creator.limit.onceActive", { size: formatBytes(limitFor.once) })}</p>}
+                <div className="row wrap" style={{ gap: 8 }}>
+                  <input style={{ width: 150 }} inputMode="decimal" placeholder={t("creator.limit.oncePh")} value={limitFor.onceGb} onChange={(e) => setLimitFor({ ...limitFor, onceGb: e.target.value.replace(/[^0-9.]/g, "") })} />
+                  <Button variant="primary" size="small" disabled={busy || limitFor.onceGb === "" || isNaN(Number(limitFor.onceGb)) || Number(limitFor.onceGb) <= 0 || Number(limitFor.onceGb) > 2} onClick={async () => {
+                    const ok = await perform(() => supabase.rpc("set_member_one_time_max", { p_user_id: limitFor.person.id, p_bytes: Math.min(2146435072, Math.round(Number(limitFor.onceGb) * GB)) }), t("creator.limit.onceSaved"));
+                    if (ok) setLimitFor(null);
+                  }}>{t("creator.limit.onceSave")}</Button>
+                  {limitFor.once !== null && (
+                    <Button size="small" disabled={busy} onClick={async () => {
+                      const ok = await perform(() => supabase.rpc("set_member_one_time_max", { p_user_id: limitFor.person.id, p_bytes: null }), t("creator.limit.onceCleared"));
+                      if (ok) setLimitFor(null);
+                    }}>{t("creator.limit.onceClear")}</Button>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -495,6 +515,14 @@ export function CreatorClient({ data }: { data: CreatorData }) {
                 const ok1 = await perform(() => supabase.rpc("set_hub_setting", { p_key: "upload_daily_files", p_value: Number(upFiles) }), t("creator.limit.saved"));
                 if (ok1) await perform(() => supabase.rpc("set_hub_setting", { p_key: "upload_daily_bytes", p_value: Math.round(Number(upGb) * GB) }), t("creator.limit.saved"));
               }}>{t("common.save")}</Button>
+            </div>
+            <p className="muted" style={{ margin: "12px 0 6px" }}>{t("creator.hub.maxFileHelp")}</p>
+            <div className="row wrap" style={{ gap: 8 }}>
+              <input style={{ width: 150 }} inputMode="decimal" value={upMaxGb} onChange={(e) => setUpMaxGb(e.target.value.replace(/[^0-9.]/g, ""))} aria-label={t("creator.hub.maxFileLabel")} />
+              <span className="tiny">{t("creator.hub.maxFileUnit")}</span>
+              <Button variant="primary" size="small" disabled={busy || upMaxGb === "" || isNaN(Number(upMaxGb)) || Number(upMaxGb) < 0.001 || Number(upMaxGb) > 2} onClick={() =>
+                perform(() => supabase.rpc("set_hub_setting", { p_key: "upload_max_file_bytes", p_value: Math.min(2146435072, Math.round(Number(upMaxGb) * GB)) }), t("creator.limit.saved"))
+              }>{t("common.save")}</Button>
             </div>
           </div>
           <div className="card">

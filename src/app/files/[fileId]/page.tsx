@@ -17,6 +17,8 @@ import { NoticeBox } from "@/components/review/NoticeBox";
 import { getServerT } from "@/lib/i18n/server";
 import { lookStyle } from "@/lib/profile-look";
 import { getNotices, flattenCommentIds } from "@/lib/data/notices";
+import { ScanWatcher } from "@/components/files/ScanWatcher";
+import { CONTACT_EMAIL } from "@/lib/site";
 import { DownloadButton, RemixButton } from "@/components/files/FileDetailActions";
 
 function collectAuthorIds(comments: Awaited<ReturnType<typeof listFileComments>>): string[] {
@@ -98,10 +100,20 @@ export default async function FileDetailPage({ params }: PageProps<"/files/[file
         <p className="tiny" style={{ marginBottom: 10 }}>
           {t("file.translatedNote")}
         </p>
+        <ScanWatcher active={file.assets.some((a) => a.scanStatus === "uploading" || a.scanStatus === "pending")} />
+        {file.assets.some((a) => a.scanStatus === "uploading" || a.scanStatus === "pending") && (
+          <p className="policy-note" style={{ marginBottom: 10 }}>{t("file.scanBanner")}</p>
+        )}
+        {file.assets.some((a) => a.scanStatus === "flagged") && (
+          <p className="policy-note" style={{ marginBottom: 10 }}>{t("file.scanFlaggedBanner", { email: CONTACT_EMAIL ?? "" })}</p>
+        )}
+        {file.assets.some((a) => a.scanStatus === "error") && (
+          <p className="policy-note" style={{ marginBottom: 10 }}>{t("file.scanErrorBanner", { email: CONTACT_EMAIL ?? "" })}</p>
+        )}
         {file.assets.filter((a) => a.isGame && a.scanStatus === "clean").map((a) => (
           <GamePlayer key={a.id} assetId={a.id} />
         ))}
-        {file.assets.some((a) => a.isGame && a.scanStatus === "pending") && <p className="tiny" style={{ marginBottom: 8 }}>{t("game.checking")}</p>}
+        {file.assets.some((a) => a.isGame && (a.scanStatus === "pending" || a.scanStatus === "uploading")) && <p className="tiny" style={{ marginBottom: 8 }}>{t("game.checking")}</p>}
         {file.assets.map((asset) =>
           asset.isLink && asset.linkUrl ? (
             <div key={asset.id} style={{ padding: "8px 0", borderTop: "1px solid var(--border)" }}>
@@ -124,8 +136,10 @@ export default async function FileDetailPage({ params }: PageProps<"/files/[file
                 <p style={{ fontWeight: 500, fontSize: 14, margin: 0 }}>{asset.label}</p>
                 <p className="tiny">
                   {t("file.downloads", { n: asset.downloads })}
+                  {asset.scanStatus === "uploading" && t("file.uploadingNote")}
                   {asset.scanStatus === "pending" && t("file.pendingNote")}
                   {asset.scanStatus === "flagged" && t("file.flaggedNote")}
+                  {asset.scanStatus === "error" && t("file.errorNote")}
                 </p>
               </div>
               <DownloadButton assetId={asset.id} scanStatus={asset.scanStatus} />

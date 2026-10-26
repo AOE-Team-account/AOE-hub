@@ -78,7 +78,7 @@ export interface User {
   postFont: string;
 }
 
-export type ScanStatus = "pending" | "clean" | "flagged";
+export type ScanStatus = "uploading" | "pending" | "clean" | "flagged" | "error";
 
 export interface FileAsset {
   id: string;

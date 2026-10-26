@@ -65,6 +65,7 @@ export default async function CreatorPage() {
     uploads: {
       files: Number((settingsRes.data as Record<string, unknown> | null)?.upload_daily_files ?? 100),
       bytes: Number((settingsRes.data as Record<string, unknown> | null)?.upload_daily_bytes ?? 1073741824),
+      maxFile: Number((settingsRes.data as Record<string, unknown> | null)?.upload_max_file_bytes ?? 1073741824),
     },
     security: {
       requireTwoStepForStaff: (settingsRes.data as Record<string, unknown> | null)?.require_2fa_staff !== false,

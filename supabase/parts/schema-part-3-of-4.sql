@@ -1277,6 +1277,10 @@ begin
     if jsonb_typeof(p_value) <> 'number' or (p_value)::numeric < 0 or (p_value)::numeric > 10000000000000 or (p_value)::numeric <> trunc((p_value)::numeric) then
       raise exception 'Use a size between 0 and 10 TB.';
     end if;
+  elsif p_key = 'upload_max_file_bytes' then
+    if jsonb_typeof(p_value) <> 'number' or (p_value)::numeric < 1048576 or (p_value)::numeric > 2146435072 or (p_value)::numeric <> trunc((p_value)::numeric) then
+      raise exception 'Use a size between 1 MB and 2 GB (the scanner cannot check more).';
+    end if;
   else
     raise exception 'Unknown setting.';
   end if;

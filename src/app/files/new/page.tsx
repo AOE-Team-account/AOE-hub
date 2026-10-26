@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/Button";
 import { GAME_MAX_BYTES } from "@/lib/games";
 import { PreviewPicker } from "@/components/ui/PreviewPicker";
 import { uploadPreviews } from "@/lib/media-client";
+import { sendFile, type SentPart, type UploadInstruction } from "@/lib/upload-client";
+import { CONTACT_EMAIL } from "@/lib/site";
 import { ChipRow } from "@/components/ui/ChipRow";
 import { Segmented } from "@/components/ui/Segmented";
 import type { Authorship, FileSection, MediaType } from "@/lib/types";
@@ -120,60 +122,86 @@ export default function UploadFilePage() {
     setSubmitting(true);
     setError(null);
     setStatusMessage(t("upload.scanning"));
-
-    const formData = new FormData();
-    formData.set("title", title.trim());
-    formData.set("description", description.trim());
-    formData.set("section", section);
-    formData.set("mediaType", mediaType);
-    formData.set("authorship", authorship);
-    formData.set("labels", JSON.stringify(fileRows.map((r) => r.label || r.file!.name)));
-    fileRows.forEach((r) => formData.append("files", r.file!));
-    formData.set("links", JSON.stringify(linkRows.map((r) => ({ label: r.label, url: r.url.trim() }))));
-    formData.set("madeWithAi", String(madeWithAi));
+    const fail = (message: string) => {
+      setError(message);
+      setSubmitting(false);
+      setStatusMessage(null);
+    };
+    const contactEmail = CONTACT_EMAIL ?? "";
 
     try {
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      const data = await res.json();
+      // 1. Tell the hub what is coming; it checks everything and hands back private upload addresses.
+      const res = await fetch("/api/upload/init", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim(),
+          description: description.trim(),
+          section,
+          mediaType,
+          authorship,
+          madeWithAi,
+          labels: fileRows.map((r) => r.label || r.file!.name),
+          files: fileRows.map((r) => ({ name: r.file!.name, size: r.file!.size, type: r.file!.type })),
+          links: linkRows.map((r) => ({ label: r.label, url: r.url.trim() })),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        if (data.code === "game-too-big") {
-          setError(t("upload.gameTooBig", { size: formatBytes(GAME_MAX_BYTES) }));
-        } else if (data.code === "game-invalid") {
-          setError(t("upload.gameInvalid", { reason: data.error }));
-        } else if (data.code === "link-host") {
-          setError(t("upload.linkBadHost"));
-        } else if (data.code === "link-invalid") {
-          setError(t("upload.linkInvalid"));
-        } else if (data.code === "daily-limit") {
-          setError(
+        if (data.code === "game-too-big") return fail(t("upload.gameTooBig", { size: formatBytes(GAME_MAX_BYTES) }));
+        if (data.code === "blocked-type") return fail(t("upload.blockedType"));
+        if (data.code === "too-big-media") return fail(t("upload.tooBigMedia", { email: contactEmail }));
+        if (data.code === "too-big-document") return fail(t("upload.tooBigDocument", { email: contactEmail }));
+        if (data.code === "link-host") return fail(t("upload.linkBadHost"));
+        if (data.code === "link-invalid") return fail(t("upload.linkInvalid"));
+        if (data.code === "daily-limit") {
+          return fail(
             data.filesLeft > 0 && data.bytesLeft > 0
               ? t("upload.limitReached", { files: data.filesLeft, size: formatBytes(data.bytesLeft) })
               : t("upload.limitNone")
           );
-        } else {
-          setError(data.error || t("upload.failed"));
         }
-        setSubmitting(false);
-        setStatusMessage(null);
-        return;
+        return fail(data.error || t("upload.sendFailed", { email: contactEmail }));
       }
-      const flagged = (data.results as { label: string; scanStatus: string }[]).filter((r) => r.scanStatus === "flagged");
-      if (flagged.length > 0) {
-        setStatusMessage(t("upload.flagged", { labels: flagged.map((f) => f.label).join(", ") }));
+
+      // 2. Send each file straight to private storage.
+      const instructions = data.files as UploadInstruction[];
+      const sentParts: { assetId: string; parts: SentPart[] }[] = [];
+      for (let i = 0; i < instructions.length; i++) {
+        const file = fileRows[i].file!;
+        const parts = await sendFile(file, instructions[i], (bytes) =>
+          setStatusMessage(t("upload.sending", { name: file.name.slice(0, 30), percent: Math.min(100, Math.round((bytes / file.size) * 100)) }))
+        );
+        sentParts.push({ assetId: instructions[i].assetId, parts });
       }
+
+      // 3. Say they have all arrived; the hub starts the virus scan.
+      if (instructions.length > 0) {
+        setStatusMessage(t("upload.scanning"));
+        const done = await fetch("/api/upload/complete", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ postId: data.postId, files: sentParts }),
+        });
+        const doneData = await done.json().catch(() => ({}));
+        const failed = ((doneData.results ?? []) as { status: string; code?: string; error?: string }[]).find((r) => r.status === "failed");
+        if (!done.ok || failed) {
+          if (failed?.code === "game-invalid") return fail(t("upload.gameInvalid", { reason: failed.error ?? "" }));
+          return fail(t("upload.sendFailed", { email: contactEmail }));
+        }
+      }
+
       const previews = [...previewImages, ...previewVideos];
       if (previews.length > 0) {
-        const failed = await uploadPreviews("file", data.postId, previews, (done, total) =>
+        const failedPreviews = await uploadPreviews("file", data.postId, previews, (done, total) =>
           setStatusMessage(t("previews.uploading", { done, total }))
         );
-        if (failed > 0) window.alert(t("previews.failedSome", { n: failed }));
+        if (failedPreviews > 0) window.alert(t("previews.failedSome", { n: failedPreviews }));
       }
       router.push(`/files/${data.postId}`);
       router.refresh();
     } catch {
-      setError(t("upload.wentWrong"));
-      setSubmitting(false);
-      setStatusMessage(null);
+      fail(t("upload.sendFailed", { email: contactEmail }));
     }
   }
 

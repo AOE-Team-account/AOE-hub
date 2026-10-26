@@ -1,94 +1,57 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
-import { checkAnalysis } from "@/lib/malware-scan/virustotal";
-import { deleteFile, type StorageBackend } from "@/lib/storage/router";
-import { deleteFromR2Prefix } from "@/lib/storage/r2";
+import { deleteStaged } from "@/lib/storage/staging";
+import { runScan, runPreviewScan } from "@/lib/scanner/run";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
-// Resolves file_assets stuck at scan_status="pending" — the case where
-// /api/upload's short poll gave up before VirusTotal finished (observed
-// directly during Phase 3 testing: their free tier can leave a scan
-// "queued" for well over a minute). Not wired to an actual scheduler yet —
-// that's a Phase 4 hosting concern (Vercel Cron / Cloudflare Cron Triggers
-// / a GitHub Action on a timer all work). Safe to call by hand or on any
-// schedule in the meantime; each run only touches assets still pending.
-//
-// Protected by a shared secret so this can't be triggered by anyone who
-// finds the URL — set CRON_SECRET in the environment and pass it as
-// `Authorization: Bearer <secret>`.
+// Safety net for the virus scanner, run every few minutes by the scheduled-jobs
+// workflow (protected by CRON_SECRET: `Authorization: Bearer <secret>`):
+//  - files whose scan never finished (the hub restarted, the scanner was down) are sent again;
+//  - uploads that were started but never completed (closed tab) are cleaned up after a day.
 export async function POST(request: Request) {
   const expected = process.env.CRON_SECRET;
-  const authHeader = request.headers.get("authorization");
-  if (!expected || authHeader !== `Bearer ${expected}`) {
+  if (!expected || request.headers.get("authorization") !== `Bearer ${expected}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const db = createServiceRoleClient();
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-  const supabase = createServiceRoleClient();
-  const { data: pending, error } = await supabase
+  // 1. Pending files that nobody is scanning right now.
+  const { data: pending } = await db
     .from("file_assets")
-    .select("id, storage_path, storage_backend, scan_analysis_id, game_prefix")
+    .select("id, created_at, scan_started_at")
     .eq("scan_status", "pending")
-    .not("scan_analysis_id", "is", null);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    .or(`scan_started_at.is.null,scan_started_at.lt.${new Date(Date.now() - 30 * 60 * 1000).toISOString()}`)
+    .limit(20);
+  const retried: string[] = [];
+  for (const a of (pending ?? []) as { id: string; created_at: string }[]) {
+    if (a.created_at > tenMinutesAgo) continue; // just uploaded: its own scan is about to start
+    await runScan(a.id).catch((e) => console.error("Scan retry failed:", e instanceof Error ? e.message : e));
+    retried.push(a.id);
   }
 
-  const resolved: { id: string; result: string }[] = [];
-
-  for (const asset of pending ?? []) {
-    const result = await checkAnalysis(asset.scan_analysis_id as string);
-    if (result === "pending") continue; // still not ready, leave for next run
-
-    if (result === "flagged") {
-      if (asset.storage_backend && asset.storage_path) {
-        try {
-          await deleteFile(asset.storage_backend as StorageBackend, asset.storage_path);
-        } catch (err) {
-          console.error(`Failed to quarantine flagged asset ${asset.id}:`, err);
-        }
-      }
-      if (asset.game_prefix) {
-        try {
-          await deleteFromR2Prefix(asset.game_prefix as string);
-        } catch (err) {
-          console.error(`Failed to remove the unpacked game of ${asset.id}:`, err);
-        }
-      }
-      await supabase
-        .from("file_assets")
-        .update({ scan_status: "flagged", storage_path: null, storage_backend: null, scan_analysis_id: null, is_game: false, game_prefix: null })
-        .eq("id", asset.id);
-    } else {
-      await supabase.from("file_assets").update({ scan_status: "clean", scan_analysis_id: null }).eq("id", asset.id);
-    }
-    resolved.push({ id: asset.id, result });
+  // 2. Preview videos in the same state.
+  const { data: previews } = await db.from("post_media").select("id, created_at").eq("scan_status", "pending").limit(20);
+  for (const p of (previews ?? []) as { id: string; created_at: string }[]) {
+    if (p.created_at > tenMinutesAgo) continue;
+    await runPreviewScan(p.id).catch((e) => console.error("Preview scan retry failed:", e instanceof Error ? e.message : e));
+    retried.push(p.id);
   }
 
-  // Preview videos waiting on the same check.
-  const { data: pendingMedia } = await supabase
-    .from("post_media")
-    .select("id, storage_path, storage_backend, scan_analysis_id")
-    .eq("scan_status", "pending")
-    .not("scan_analysis_id", "is", null);
-  for (const m of pendingMedia ?? []) {
-    const result = await checkAnalysis(m.scan_analysis_id as string);
-    if (result === "pending") continue;
-    if (result === "flagged") {
-      if (m.storage_backend && m.storage_path) {
-        try {
-          await deleteFile(m.storage_backend as StorageBackend, m.storage_path);
-        } catch (err) {
-          console.error(`Failed to quarantine flagged preview ${m.id}:`, err);
-        }
-      }
-      await supabase.from("post_media").update({ scan_status: "flagged", storage_path: null, scan_analysis_id: null }).eq("id", m.id);
-    } else {
-      await supabase.from("post_media").update({ scan_status: "clean", scan_analysis_id: null }).eq("id", m.id);
-    }
-    resolved.push({ id: m.id, result });
+  // 3. Uploads that were never finished.
+  const { data: stale } = await db
+    .from("file_assets")
+    .select("id, staging_key")
+    .eq("scan_status", "uploading")
+    .lt("created_at", dayAgo)
+    .limit(50);
+  for (const a of (stale ?? []) as { id: string; staging_key: string | null }[]) {
+    if (a.staging_key) await deleteStaged(a.staging_key);
+    await db.from("file_assets").update({ scan_status: "error", scan_finished_at: new Date().toISOString() }).eq("id", a.id);
   }
 
-  return NextResponse.json({ checked: (pending?.length ?? 0) + (pendingMedia?.length ?? 0), resolved });
+  return NextResponse.json({ retried: retried.length, abandoned: (stale ?? []).length });
 }

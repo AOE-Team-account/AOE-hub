@@ -28,5 +28,12 @@ export const iaEndpoint = "https://s3.us.archive.org";
 // (bucket) name every AOEhub large-file upload will use.
 export const iaBucketName = process.env.IA_BUCKET_NAME || "aoehub-files";
 
-export const isVirusTotalConfigured = Boolean(process.env.VIRUSTOTAL_API_KEY);
-export const virusTotalApiKey = process.env.VIRUSTOTAL_API_KEY || "";
+// Where uploads wait, privately, while the virus scanner checks them. A separate
+// bucket with a one-day auto-delete rule (see the setup steps).
+export const r2StagingBucketName = process.env.R2_STAGING_BUCKET_NAME || "";
+export const isStagingConfigured = isR2Configured && Boolean(r2StagingBucketName);
+
+// The ClamAV scanner service (Google Cloud Run). The secret is shared with it.
+export const scannerUrl = (process.env.SCANNER_URL || "").replace(/\/+$/, "");
+export const scannerSecret = process.env.SCANNER_SECRET || "";
+export const isScannerConfigured = Boolean(scannerUrl && scannerSecret.length >= 24);

@@ -12,7 +12,7 @@ export function DownloadButton({ assetId, scanStatus }: { assetId: string; scanS
   if (scanStatus !== "clean") {
     return (
       <Button variant="primary" size="small" disabled title={t("dl.checking")}>
-        {scanStatus === "flagged" ? t("dl.unavailable") : t("dl.scanning")}
+        {scanStatus === "flagged" || scanStatus === "error" ? t("dl.unavailable") : t("dl.scanning")}
       </Button>
     );
   }
