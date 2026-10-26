@@ -1,16 +1,11 @@
 {
-  "landing.eyebrow": "AOEhub（Alpha Omega Education）— 无论在家自学、非学校教育还是学校教育的家庭都欢迎",
-  "landing.h1": "教育不是用来复制的。<br />它是用来走的路。",
-  "landing.subhead": "一个免费的家园，分享关于教育的理念、真实的经验和课程 —— 由先走过这条路的家庭分享给刚刚开始的家庭。",
+  "landing.eyebrow": "教育是一段旅程，让我们一起探索。",
+  "landing.h1": "欢迎来到 AOEhub——一个探索、分享并发现全新学习方式的地方。",
+  "landing.subhead": "无论您是在家教育、非学校教育、上学、任教、养育孩子，还是只是对教育感到好奇，这里都有值得探索的内容。",
   "landing.signupFree": "免费注册",
   "common.signUp": "注册",
   "landing.logIn": "登录",
   "common.logIn": "登录",
-  "landing.browsePre": "或者直接",
-  "landing.browseLink": "浏览资源板",
-  "landing.browsePost": "和经验分享板 —— 无需账号即可查看。",
-  "landing.signupPre": "想下载文件、发布内容或留言吗？",
-  "landing.signupStrong": "免费注册或登录。",
   "landing.pullquote": "\"教育是一种氛围、一种纪律、一种生活。\"",
   "landing.taglineSmall": "经验分享板和资源板永远免费 · 由走过这条路、正在走这条路、刚刚开始这条路的人共同建立。",
   "landing.marketplaceNote": "提前告知：我们计划在之后的更新中加入一个市场，成员可以在其中买卖商品。经验分享板和资源板将继续免费。我们会尽力防范诈骗，但无法保证绝不发生。",
@@ -938,5 +933,7 @@
   "common.hidePassword": "隐藏密码",
   "discussion.reply": "回复",
   "discussion.replyPlaceholder": "写下您的回复…",
-  "discussion.replyPost": "发布回复"
+  "discussion.replyPost": "发布回复",
+  "landing.subhead2": "发现真实的经验，交流教育理念，并为儿童、青少年和成年人找到课程、书籍、游戏和学习资源。",
+  "landing.browse": "或者直接浏览<a>经验分享板</a>和<b>资源板</b>——无需账号即可浏览。"
 }

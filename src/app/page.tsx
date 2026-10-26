@@ -34,6 +34,7 @@ export default function HomePage() {
         <p className="tagline">{t("landing.eyebrow")}</p>
         <h1 dangerouslySetInnerHTML={{ __html: t("landing.h1") }} />
         <p>{t("landing.subhead")}</p>
+        <p>{t("landing.subhead2")}</p>
         <div className="landing-cta">
           <button className="btn primary" onClick={() => router.push("/signup")}>
             {t("landing.signupFree")}
@@ -43,14 +44,10 @@ export default function HomePage() {
           </button>
         </div>
         <p className="tiny">
-          <span>{t("landing.browsePre")}</span>{" "}
-          <Link href="/files" style={{ color: "var(--accent)" }}>
-            {t("landing.browseLink")}
-          </Link>
-          <span>{t("landing.browsePost")}</span>
-        </p>
-        <p className="tiny">
-          <span>{t("landing.signupPre")}</span> <strong>{t("landing.signupStrong")}</strong>
+          {rich(t("landing.browse"), {
+            a: (c) => <Link href="/experience" style={{ color: "var(--accent)" }}>{c}</Link>,
+            b: (c) => <Link href="/files" style={{ color: "var(--accent)" }}>{c}</Link>,
+          })}
         </p>
         <Reveal>
           <p className="hero-pullquote">{t("landing.pullquote")}</p>

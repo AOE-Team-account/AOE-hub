@@ -1,16 +1,11 @@
 {
-  "landing.eyebrow": "AOEhub (Alpha Omega Education) — for homeschool, unschool, and school families alike",
-  "landing.h1": "Education isn't something you copy.<br />It's something you walk.",
-  "landing.subhead": "A free home for the philosophy, the honest experience, and the curriculum behind education — shared by families who started the walk before you, for families just starting now.",
+  "landing.eyebrow": "Education Is a Journey. Explore It Together.",
+  "landing.h1": "Welcome to AOEhub — a place to explore, share, and discover new ways of learning.",
+  "landing.subhead": "Whether you homeschool, unschool, attend school, teach, raise children, or are simply curious about education, there's something here to explore.",
   "landing.signupFree": "Sign up free",
   "common.signUp": "Sign up",
   "landing.logIn": "Log in",
   "common.logIn": "Log in",
-  "landing.browsePre": "Or just",
-  "landing.browseLink": "browse the File Board",
-  "landing.browsePost": " and the Experience Board — no account needed to look around.",
-  "landing.signupPre": "Want to download a file, post something, or leave a comment?",
-  "landing.signupStrong": "Sign up or log in — it's free.",
   "landing.pullquote": "\"Education is an atmosphere, a discipline, and a life.\"",
   "landing.taglineSmall": "The Experience Board and File Board are always free · Built by those who've walked this path, are walking it now, and are just starting.",
   "landing.marketplaceNote": "Heads-up: we plan to add a marketplace in a later update, where members can buy and sell. The Experience Board and File Board will stay free. We work hard to prevent scams, but we can't guarantee none will happen.",
@@ -938,5 +933,7 @@
   "common.hidePassword": "Hide password",
   "discussion.reply": "Reply",
   "discussion.replyPlaceholder": "Write a reply…",
-  "discussion.replyPost": "Post reply"
+  "discussion.replyPost": "Post reply",
+  "landing.subhead2": "Discover real experiences, exchange educational ideas, and find curricula, books, games, and learning resources for children, teenagers, and adults.",
+  "landing.browse": "Or simply explore the <a>Experience Board</a> and <b>File Board</b> — no account needed to browse."
 }
