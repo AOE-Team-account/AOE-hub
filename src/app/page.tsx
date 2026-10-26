@@ -49,15 +49,6 @@ export default function HomePage() {
             b: (c) => <Link href="/files" style={{ color: "var(--accent)" }}>{c}</Link>,
           })}
         </p>
-        <Reveal>
-          <p className="hero-pullquote">{t("landing.pullquote")}</p>
-        </Reveal>
-        <Reveal>
-          <p className="hero-tagline-small">{t("landing.taglineSmall")}</p>
-        </Reveal>
-        <Reveal>
-          <p className="hero-tagline-small" style={{ marginTop: 2 }}>{t("landing.marketplaceNote")}</p>
-        </Reveal>
       </div>
 
       <Reveal className="feature-row">
@@ -71,9 +62,7 @@ export default function HomePage() {
         </div>
         <p className="feature-eyebrow">{t("landing.expEyebrow")}</p>
         <h3 className="feature-title">{t("landing.expTitle")}</h3>
-        <p className="feature-desc">
-          {rich(t("landing.expDesc"), { note: (c) => <span className="tiny">{c}</span> })}
-        </p>
+        {t("landing.expDesc").split("\n\n").map((para, i) => <p key={i} className="feature-desc">{para}</p>)}
       </Reveal>
 
       <Reveal className="feature-row">
@@ -86,7 +75,7 @@ export default function HomePage() {
         </div>
         <p className="feature-eyebrow">{t("landing.fileEyebrow")}</p>
         <h3 className="feature-title">{t("landing.fileTitle")}</h3>
-        <p className="feature-desc">{t("landing.fileDesc")}</p>
+        {t("landing.fileDesc").split("\n\n").map((para, i) => <p key={i} className="feature-desc">{para}</p>)}
       </Reveal>
 
       <div className="hero-bottom-cta">

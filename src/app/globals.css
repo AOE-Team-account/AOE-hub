@@ -249,3 +249,4 @@ section.settings-block > p.label { font-weight: 500; margin: 0 0 8px; font-size:
 @media (max-width: 480px) { .cookie-notice { flex-direction: column; align-items: stretch; } }
 .link-btn { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font: inherit; }
 .link-btn:hover { text-decoration: underline; }
+.feature-desc + .feature-desc { margin-top: 12px; }
