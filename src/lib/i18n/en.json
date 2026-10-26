@@ -1,7 +1,7 @@
 {
-  "landing.eyebrow": "Education Is a Journey. Explore It Together.",
-  "landing.h1": "Welcome to AOEhub — a place to explore, share, and discover new ways of learning.",
-  "landing.subhead": "Whether you homeschool, unschool, attend school, teach, raise children, or are simply curious about education, there's something here to explore.",
+  "landing.eyebrow": "Explore. Question. Share. Learn.",
+  "landing.h1": "Education Is a Journey. Explore It Together.",
+  "landing.subhead": "Welcome to AOEhub — a free educational community for sharing knowledge, experiences, ideas, and resources.",
   "landing.signupFree": "Sign up free",
   "common.signUp": "Sign up",
   "landing.logIn": "Log in",
@@ -32,11 +32,11 @@
   "nav.shareExperience": "Share an experience",
   "nav.searchPlaceholder": "Search files and experiences...",
   "landing.expEyebrow": "Experience Board",
-  "landing.expTitle": "Real Experiences. Different Perspectives. Open Conversations.",
-  "landing.expDesc": "What has worked for others? What hasn't? What would they do differently?\n\nExplore personal stories, educational philosophies, questions, and ideas shared by people with different experiences and approaches to learning.\n\nFrom Charlotte Mason and Karl Witte to the Bible and members' own ideas, discover the thinking behind different approaches to education.\n\nRead, question, discuss, and share your own experiences.",
+  "landing.expTitle": "Real Experiences. Different Perspectives.",
+  "landing.expDesc": "Discover personal experiences, educational philosophies, beliefs, and discussions about learning, life, and the world around us. Share what you've learned, ask questions, and explore ideas from different perspectives.",
   "landing.fileEyebrow": "File Board",
-  "landing.fileTitle": "Discover Resources. Share What You've Made. Learn From Others.",
-  "landing.fileDesc": "Explore free curricula, books, worksheets, flashcards, games, and other educational materials shared by the community.\n\nFind something useful, try it out, or contribute a resource of your own.\n\nExplore, download, learn, and share — free of charge.",
+  "landing.fileTitle": "Knowledge Worth Sharing.",
+  "landing.fileDesc": "Explore free curricula, books, worksheets, games, and educational resources for children, teenagers, and adults. Find something useful or contribute something you've created.",
   "footer.about": "About",
   "footer.contact": "Contact",
   "footer.privacy": "Privacy Policy",
@@ -931,6 +931,9 @@
   "discussion.reply": "Reply",
   "discussion.replyPlaceholder": "Write a reply…",
   "discussion.replyPost": "Post reply",
-  "landing.subhead2": "Discover real experiences, exchange educational ideas, and find curricula, books, games, and learning resources for children, teenagers, and adults.",
-  "landing.browse": "Or simply explore the <a>Experience Board</a> and <b>File Board</b> — no account needed to browse."
+  "landing.subhead2": "Whether you homeschool, unschool, attend school, teach, or simply enjoy learning, discover different perspectives and new ways to explore the world.",
+  "landing.browse": "Or simply explore the <a>Experience Board</a> and <b>File Board</b> — no account needed to browse.",
+  "landing.freeTitle": "Free to Explore. Free to Share.",
+  "landing.freeDesc": "The Experience Board and File Board will always be free. Browse without an account, or sign up to download, post, and join discussions.\n\nA marketplace for buying and selling educational materials may be added in the future.",
+  "landing.pullquote": "“Education is an atmosphere, a discipline, and a life.”"
 }

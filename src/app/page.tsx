@@ -78,6 +78,15 @@ export default function HomePage() {
         {t("landing.fileDesc").split("\n\n").map((para, i) => <p key={i} className="feature-desc">{para}</p>)}
       </Reveal>
 
+      <Reveal className="feature-row">
+        <h3 className="feature-title">{t("landing.freeTitle")}</h3>
+        {t("landing.freeDesc").split("\n\n").map((para, i) => <p key={i} className="feature-desc">{para}</p>)}
+      </Reveal>
+
+      <Reveal>
+        <p className="hero-pullquote" style={{ textAlign: "center", margin: "0 auto 8px" }}>{t("landing.pullquote")}</p>
+      </Reveal>
+
       <div className="hero-bottom-cta">
         <button className="btn primary" onClick={() => router.push("/signup")}>
           {t("landing.signupFree")}

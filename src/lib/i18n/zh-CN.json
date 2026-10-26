@@ -1,7 +1,7 @@
 {
-  "landing.eyebrow": "教育是一段旅程，让我们一起探索。",
-  "landing.h1": "欢迎来到 AOEhub——一个探索、分享并发现全新学习方式的地方。",
-  "landing.subhead": "无论您是在家教育、非学校教育、上学、任教、养育孩子，还是只是对教育感到好奇，这里都有值得探索的内容。",
+  "landing.eyebrow": "探索。质疑。分享。学习。",
+  "landing.h1": "教育是一段旅程，让我们一起探索。",
+  "landing.subhead": "欢迎来到 AOEhub——一个免费的教育社区，用来分享知识、经验、想法和资源。",
   "landing.signupFree": "免费注册",
   "common.signUp": "注册",
   "landing.logIn": "登录",
@@ -32,11 +32,11 @@
   "nav.shareExperience": "分享经验",
   "nav.searchPlaceholder": "搜索文件和经验…",
   "landing.expEyebrow": "经验分享板",
-  "landing.expTitle": "真实的经验，不同的视角，开放的交流。",
-  "landing.expDesc": "哪些做法对别人有效？哪些没有？他们会有什么不同的做法？\n\n在这里探索由拥有不同经历、采用不同学习方式的人分享的个人故事、教育理念、问题和想法。\n\n从夏洛特·梅森（Charlotte Mason）、卡尔·维特（Karl Witte）到圣经，再到成员们自己的想法，了解各种教育方式背后的思考。\n\n阅读、提问、讨论，并分享您自己的经验。",
+  "landing.expTitle": "真实的经验，不同的视角。",
+  "landing.expDesc": "在这里发现关于学习、生活和我们周围世界的个人经验、教育理念、信念和讨论。分享您学到的东西，提出问题，并从不同的视角探索各种想法。",
   "landing.fileEyebrow": "资源板",
-  "landing.fileTitle": "发现资源，分享您的作品，向他人学习。",
-  "landing.fileDesc": "探索由社区分享的免费课程、书籍、练习册、记忆卡、游戏和其他教育资料。\n\n找到有用的东西，试一试，或者贡献一份您自己的资源。\n\n探索、下载、学习和分享——完全免费。",
+  "landing.fileTitle": "值得分享的知识。",
+  "landing.fileDesc": "探索面向儿童、青少年和成年人的免费课程、书籍、练习册、游戏和教育资源。找到有用的东西，或贡献您自己创作的内容。",
   "footer.about": "关于",
   "footer.contact": "联系我们",
   "footer.privacy": "隐私政策",
@@ -931,6 +931,9 @@
   "discussion.reply": "回复",
   "discussion.replyPlaceholder": "写下您的回复…",
   "discussion.replyPost": "发布回复",
-  "landing.subhead2": "发现真实的经验，交流教育理念，并为儿童、青少年和成年人找到课程、书籍、游戏和学习资源。",
-  "landing.browse": "或者直接浏览<a>经验分享板</a>和<b>资源板</b>——无需账号即可浏览。"
+  "landing.subhead2": "无论您是在家教育、非学校教育、上学、任教，还是只是喜欢学习，都可以在这里发现不同的视角，以及探索世界的新方式。",
+  "landing.browse": "或者直接浏览<a>经验分享板</a>和<b>资源板</b>——无需账号即可浏览。",
+  "landing.freeTitle": "自由探索，自由分享。",
+  "landing.freeDesc": "经验分享板和资源板将永远免费。无需账号即可浏览，也可以注册后下载、发帖并参与讨论。\n\n日后可能会增加一个买卖教育资料的市集。",
+  "landing.pullquote": "“教育是一种氛围、一种纪律、一种生活。”"
 }
