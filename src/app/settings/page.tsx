@@ -99,7 +99,7 @@ export default function SettingsPage() {
         <section className="settings-block">
           <p className="label">{t("settings.twoStepTitle")}</p>
           <p className="tiny" style={{ marginBottom: 10 }}>{t("settings.twoStepBody")}</p>
-          <Link href="/security" className="btn small">{t("settings.twoStepManage")}</Link>
+          <Link href="/security" className="btn primary small">{t("settings.twoStepManage")}</Link>
         </section>
       )}
 
@@ -126,7 +126,7 @@ export default function SettingsPage() {
         <section className="settings-block">
           <p className="label">{t("settings.dataTitle")}</p>
           <p className="tiny" style={{ marginBottom: 10 }}>{t("settings.dataBody")}</p>
-          <a className="btn small" href="/api/my-data" download>{t("settings.dataButton")}</a>
+          <a className="btn primary small" href="/api/my-data" download>{t("settings.dataButton")}</a>
         </section>
       )}
 
