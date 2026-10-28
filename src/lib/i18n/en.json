@@ -958,5 +958,15 @@
   "creator.limit.onceCleared": "The one-time lift was taken back.",
   "creator.hub.maxFileHelp": "The largest single file anyone can upload (the scanner can check up to 2 GB):",
   "creator.hub.maxFileLabel": "Largest single file in GB",
-  "creator.hub.maxFileUnit": "GB per file"
+  "creator.hub.maxFileUnit": "GB per file",
+  "creator.storage.title": "Storage",
+  "creator.storage.help": "How much the hub's main file storage (Cloudflare R2) holds. Cloudflare gives 10 GB free and then charges about $0.015 per extra GB per month; nothing stops working. You are warned at 8, 9 and 10 GB.",
+  "creator.storage.used": "{used} of {free} free ({pct}%)",
+  "creator.storage.checked": "{objects} files · measured {when}",
+  "creator.storage.never": "Not measured yet. Press “Check now”; after that it is measured every day.",
+  "creator.storage.emailOn": "An email to the hub address is also sent when a level is passed.",
+  "creator.storage.emailOff": "Email alerts are not set up yet (you still get a notification here in the hub).",
+  "creator.storage.checkNow": "Check now",
+  "creator.storage.checking": "Measuring…",
+  "creator.storage.failed": "The check failed. Please try again."
 }

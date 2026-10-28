@@ -958,5 +958,15 @@
   "creator.limit.onceCleared": "已收回一次性放寬。",
   "creator.hub.maxFileHelp": "任何人單個檔案的大小上限（掃描器最多可檢查 2 GB）：",
   "creator.hub.maxFileLabel": "單個檔案最大大小（GB）",
-  "creator.hub.maxFileUnit": "GB / 每個檔案"
+  "creator.hub.maxFileUnit": "GB / 每個檔案",
+  "creator.storage.title": "儲存空間",
+  "creator.storage.help": "本站主檔案儲存（Cloudflare R2）當前的用量。Cloudflare 免費提供 10 GB，超出後每額外 1 GB 每月約收 0.015 美元，不會影響任何功能。用量達到 8、9 和 10 GB 時會提醒您。",
+  "creator.storage.used": "已用 {used}，免費額度 {free}（{pct}%）",
+  "creator.storage.checked": "{objects} 個檔案 · 測量時間 {when}",
+  "creator.storage.never": "尚未測量。請點選“立即檢查”；之後會每天自動測量。",
+  "creator.storage.emailOn": "到達某個提醒值時，也會向本站郵箱傳送郵件。",
+  "creator.storage.emailOff": "郵件提醒尚未設定（您仍會在本站收到通知）。",
+  "creator.storage.checkNow": "立即檢查",
+  "creator.storage.checking": "正在測量…",
+  "creator.storage.failed": "檢查失敗，請重試。"
 }

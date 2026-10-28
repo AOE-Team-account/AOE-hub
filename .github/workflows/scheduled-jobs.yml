@@ -5,7 +5,8 @@ name: Scheduled hub jobs
 #   SITE_URL     the hub's address, e.g. https://aoe.ai (test) or https://aoe.name
 #   CRON_SECRET  the same value as CRON_SECRET in the hub's settings
 # Jobs: finish virus checks that were still waiting, erase what has been in the
-# trash or in a deleted account for 30 days, and keep the AI's search data up to date.
+# trash or in a deleted account for 30 days, keep the AI's search data up to date, and
+# check how full the main storage is (a warning at 8, 9 and 10 GB).
 on:
   schedule:
     - cron: "*/15 * * * *"   # every 15 minutes: pending scans and AI search data
@@ -30,4 +31,6 @@ jobs:
           curl -fsS -m 120 -X POST -H "Authorization: Bearer $CRON_SECRET" "$SITE_URL/api/cron/index-knowledge"
       - name: Erase what is 30 days past deletion
         if: steps.ready.outputs.go == 'yes' && (github.event.schedule == '17 3 * * *' || github.event_name == 'workflow_dispatch')
-        run: curl -fsS -m 300 -X POST -H "Authorization: Bearer $CRON_SECRET" "$SITE_URL/api/cron/purge-trash"
+        run: |
+          curl -fsS -m 300 -X POST -H "Authorization: Bearer $CRON_SECRET" "$SITE_URL/api/cron/purge-trash"
+          curl -fsS -m 120 -X POST -H "Authorization: Bearer $CRON_SECRET" "$SITE_URL/api/cron/storage-check"

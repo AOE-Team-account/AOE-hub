@@ -12,6 +12,7 @@ import { LanguageSelect } from "@/components/ui/LanguageSelect";
 import { reasonText } from "@/lib/i18n/reasons";
 import type { UiKey } from "@/lib/i18n/strings";
 import { KeyPool } from "./KeyPool";
+import { StorageCard } from "./StorageCard";
 import { Modal } from "@/components/ui/Modal";
 import { BackLink } from "@/components/ui/BackLink";
 import { ReviewPanel } from "@/components/review/ReviewPanel";
@@ -482,6 +483,7 @@ export function CreatorClient({ data }: { data: CreatorData }) {
       {tab === "ai" && (
         <>
           <KeyPool />
+          <StorageCard />
           <KnowledgePanel />
         </>
       )}
