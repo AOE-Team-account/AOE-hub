@@ -56,6 +56,7 @@ done
 
 echo "Building and deploying the scanner (the first time takes several minutes)..."
 gcloud run deploy "$SERVICE" \
+  --quiet \
   --source scanner \
   --region "$REGION" \
   --memory 8Gi --cpu 2 \
