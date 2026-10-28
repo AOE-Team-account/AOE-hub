@@ -968,5 +968,6 @@
   "creator.storage.emailOff": "郵件提醒尚未設定（您仍會在本站收到通知）。",
   "creator.storage.checkNow": "立即檢查",
   "creator.storage.checking": "正在測量…",
-  "creator.storage.failed": "檢查失敗，請重試。"
+  "creator.storage.failed": "檢查失敗，請重試。",
+  "creator.storage.banner": "儲存提醒：本站主儲存現在佔用 {used}。Cloudflare 的免費額度是 10 GB，超出部分會收費（每 GB 每月約 0.015 美元）。不會影響任何功能。"
 }

@@ -968,5 +968,6 @@
   "creator.storage.emailOff": "Email alerts are not set up yet (you still get a notification here in the hub).",
   "creator.storage.checkNow": "Check now",
   "creator.storage.checking": "Measuring…",
-  "creator.storage.failed": "The check failed. Please try again."
+  "creator.storage.failed": "The check failed. Please try again.",
+  "creator.storage.banner": "Storage warning: the hub's main storage now holds {used}. Cloudflare's free allowance is 10 GB; beyond it, extra storage is charged (about $0.015 per GB per month). Nothing stops working."
 }

@@ -13,6 +13,7 @@ import { reasonText } from "@/lib/i18n/reasons";
 import type { UiKey } from "@/lib/i18n/strings";
 import { KeyPool } from "./KeyPool";
 import { StorageCard } from "./StorageCard";
+import { StorageBanner } from "./StorageBanner";
 import { Modal } from "@/components/ui/Modal";
 import { BackLink } from "@/components/ui/BackLink";
 import { ReviewPanel } from "@/components/review/ReviewPanel";
@@ -196,6 +197,7 @@ export function CreatorClient({ data }: { data: CreatorData }) {
       </div>
       <p className="tiny" style={{ marginBottom: 6 }}>{t("creator.private")}</p>
       <p className="tiny" style={{ marginBottom: 12 }}>{t("creator.cantPost")}</p>
+      <StorageBanner />
 
       <ChipRow
         options={[
