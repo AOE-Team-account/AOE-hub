@@ -23,12 +23,12 @@ To run your account, show your posts, keep the hub safe, answer questions with t
 
 ## 4. Who else receives data
 - **Supabase** (database and sign-in) holds all account data.
-- **Cloudflare R2** stores uploaded files, pictures and hosted games.
+- **Cloudflare R2** stores uploaded files, pictures and hosted games. A new upload first waits in a private area of R2 while it is checked for viruses, and is removed from there as soon as the check is done (at the latest within about two days).
 - **Internet Archive** stores large files. **Files there are public and permanent and cannot be removed by us.**
 - **Backblaze B2** holds nightly backups of the database.
 - **Google** (Gemini) answers questions and translates text, and makes the search data for the AI. **Groq** does the same when Google is full. You cannot tell which one answered. **On the free plans these companies may use what is sent and people may read it.** Do not put private information into the hub AI. If you add your own AI key, that company receives your questions instead.
 - **Names of languages** you ask for, and text to be translated, are also sent to Google or Groq.
-- **VirusTotal** receives files and videos to check them for malware.
+- **Google Cloud** runs our virus scanner. Each uploaded file and preview video is passed through it once to be checked; it is not kept there. No outside scanning company receives your files.
 - **Brevo** sends our emails (sign-up confirmation, password reset).
 - **Namecheap** hosts the website and domain.
 - [[Add any service added later.]]
@@ -36,6 +36,7 @@ To run your account, show your posts, keep the hub safe, answer questions with t
 ## 5. How long we keep things
 | What | How long |
 |---|---|
+| An upload waiting for its virus check | Removed as soon as the check is done; a file with a virus is deleted straight away |
 | Deleted posts, files and comments | 30 days in the trash, then erased |
 | A deleted account (by you or by the Creator) | Switched off at once, erased after 30 days; until then it can be restored |
 | Warnings, restrictions, reports and safety records about that account | Erased with the account on day 30 |

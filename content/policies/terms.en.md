@@ -31,7 +31,7 @@ The Experience Board and the File Board are free for everyone to read, and free 
 Follow the Community Policy, the Content Policy and the Safety Policy. We may add a notice to a post, warn you, restrict or suspend an account, or delete content that breaks the rules. You will be told privately, with the reason. You can appeal on the "My record and appeals" page.
 
 ## 7. Games, apps and links to other sites
-- A game or app up to 50 MB can be uploaded as a .zip with an index.html inside. It runs in a protected box and plays only after it passes a malware check.
+- A game or app up to 50 MB can be uploaded as a .zip with an index.html inside. It runs in a protected box and plays only after it passes a virus check.
 - A bigger one can be linked to an approved website instead. Anything marked "Hosted outside AOEhub" is on another website. We do not host, scan or control it and cannot promise it is safe or genuine. Open it only if you trust the creator.
 
 ## 8. The AI assistant and translation

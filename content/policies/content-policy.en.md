@@ -39,7 +39,7 @@ AOEhub exists to help parents cultivate a protected, wise and grounded learning 
 
 ## Files, games and links
 - Only upload what you have the right to share. Say whether it is your own work, a remix or not your work.
-- Files are checked for malware and anything unsafe is removed.
+- Every uploaded file is checked for viruses before anyone can download it, and anything unsafe is deleted.
 - A hosted game or app is a .zip of up to 50 MB with an index.html. Bigger ones link to an approved site, labelled "Hosted outside AOEhub".
 
 ## Profile pictures

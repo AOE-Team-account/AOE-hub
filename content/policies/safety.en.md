@@ -19,7 +19,7 @@ Content that endangers or sexualises children is never allowed. The account can 
 Never send money to someone you only know from the hub. Be careful with links and files. Do not share private details about your family or children. Report anything that worries you.
 
 ## Files, games and links
-Uploaded files are checked for malware. Hosted games run in a protected box and cannot see your account. Links to other websites are not checked by us.
+Every uploaded file is checked for viruses before anyone can download it. Hosted games run in a protected box and cannot see your account. Links to other websites are not checked by us.
 
 ## The AI assistant and translation
 They can be wrong. Do not rely on them for safety, medical or legal matters, and do not put private information into the hub AI.
