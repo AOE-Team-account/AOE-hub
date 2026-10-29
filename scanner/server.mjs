@@ -1,5 +1,6 @@
 import http from "node:http";
 import { timingSafeEqual } from "node:crypto";
+import fs from "node:fs";
 import * as clamd from "./clamd.mjs";
 import { readStaging, stagingSize, copyToMain, copyToInternetArchive } from "./storage.mjs";
 
@@ -97,7 +98,15 @@ async function scanOne(job) {
 
 const server = http.createServer(async (req, res) => {
   try {
-    if (req.method === "GET" && req.url === "/healthz") {
+    // (Google's front door keeps "/healthz" for itself on Cloud Run, so the status page is "/status".)
+    if (req.method === "GET" && req.url === "/layers") {
+      if (!authorized(req)) return send(res, 401, { error: "Unauthorized" });
+      // Which signature collections the engine has loaded right now (names only).
+      const files = fs.existsSync("/var/lib/clamav") ? fs.readdirSync("/var/lib/clamav").filter((f) => /\.(cvd|cld|ndb|hdb|hsb|ldb|cdb|ign2|fp|yara|yar|db|ftm|pdb|wdb|mdb|msb|idb)$/.test(f)) : [];
+      const stats = await clamd.command("STATS", 3000).catch(() => null);
+      return send(res, 200, { files: files.sort(), count: files.length, engine: await clamd.command("VERSION", 3000).catch(() => null), stats: stats ? stats.split("\n").slice(0, 8) : null });
+    }
+    if (req.method === "GET" && (req.url === "/status" || req.url === "/healthz")) {
       const ready = await clamd.isReady();
       let version = null;
       if (ready) version = await clamd.command("VERSION", 3000).catch(() => null);

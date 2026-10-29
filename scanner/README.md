@@ -20,6 +20,10 @@ Runs on Google Cloud Run (8 GB memory, scales to zero; you pay only while it wor
 SCANNER_SECRET, R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME,
 R2_STAGING_BUCKET_NAME, IA_ACCESS_KEY, IA_SECRET_KEY, IA_BUCKET_NAME.
 
+## Looking at it
+- `GET /status` shows whether the engine is ready (Google keeps the word "healthz" for itself on Cloud Run, so it is not used).
+- `GET /layers` (with the secret) lists the signature collections the engine has loaded.
+
 ## Deploy
 From the project folder, after `gcloud auth login`:
 
@@ -31,3 +35,7 @@ From the project folder, after `gcloud auth login`:
     curl localhost:8080/healthz
 
 Limits: 2047 MB per file (ClamAV cannot scan 2 GiB or more). The hub's normal limit is 1 GB.
+
+## Updating the scanner later
+    SKIP_SETUP=1 scripts/deploy-scanner.sh YOUR_PROJECT_ID us-central1
+sends only the new code (services, permissions and keys are already in place).

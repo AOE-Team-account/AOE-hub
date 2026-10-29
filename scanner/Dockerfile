@@ -16,6 +16,19 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json server.mjs clamd.mjs storage.mjs ./
 COPY start.sh /app/start.sh
 
+# The Sanesecurity lists are only used when their signature checks out. The key that
+# checks them is fetched and imported HERE, while the scanner is built, so the scanner
+# never depends on downloading it at startup (a failed download there once made every
+# Sanesecurity list get skipped). The build stops if the key cannot be imported.
+RUN set -eux; \
+    G=/var/lib/clamav-unofficial-sigs/gpg-key; mkdir -p "$G"; \
+    curl -fsSL --retry 6 --retry-delay 3 https://www.sanesecurity.com/publickey.gpg -o "$G/publickey.gpg"; \
+    gpg -q --no-options --no-default-keyring --homedir "$G" --keyring "$G/ss-keyring.gpg" --import "$G/publickey.gpg"; \
+    test -s "$G/ss-keyring.gpg"; \
+    gpg --no-options --no-default-keyring --homedir "$G" --keyring "$G/ss-keyring.gpg" --list-keys --with-fingerprint | tee /tmp/ss-key.txt; \
+    grep -q '4E02 5A1C BA90 A065 3F38  D2D8 D691 DED9 31EA 4D9E' /tmp/ss-key.txt; \
+    chown -R clamav:clamav /var/lib/clamav-unofficial-sigs 2>/dev/null || true
+
 # Limits and extra checks for the engine (applied by the base image's init).
 # Files up to 2047 MB (ClamAV cannot scan 2 GiB or more) are scanned in full; anything the engine cannot
 # fully inspect (too big, too deeply nested, encrypted archives) is reported as

@@ -5,13 +5,14 @@ set -u
 engine_pid=$!
 trap 'kill -TERM "$engine_pid" 2>/dev/null; exit 0' TERM INT
 
-# The extra signature sources are downloaded over the internet; if the first
-# download fails (a hiccup), try again a few times instead of waiting hours.
+# The extra signature sources are downloaded over the internet. If a run did not
+# actually load them (judged by the files being there, not by the script's exit
+# code), try again a few times instead of waiting hours.
 (
   for _ in 1 2 3 4 5 6; do
     sleep 90
-    if [ -f /tmp/cus-status ] && [ "$(awk '{print $2}' /tmp/cus-status)" = "0" ]; then exit 0; fi
-    bash /usr/local/sbin/clamav-unofficial-sigs.sh >/dev/null 2>&1 && exit 0
+    if [ -s /var/lib/clamav/phish.ndb ] && [ -s /var/lib/clamav/rfxn.ndb ]; then exit 0; fi
+    bash /usr/local/sbin/clamav-unofficial-sigs.sh >/dev/null 2>&1 || true
   done
 ) &
 

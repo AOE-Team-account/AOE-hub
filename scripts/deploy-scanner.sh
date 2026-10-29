@@ -35,12 +35,29 @@ for k in R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_BUCKET_NAME R2_S
 done
 
 gcloud config set project "$PROJECT" >/dev/null
+
+if [ "${SKIP_SETUP:-}" = "1" ]; then
+  # Update only: send the new scanner code (services, permissions and keys are already in place).
+  echo "Sending the updated scanner (settings, permissions and keys left as they are)..."
+  gcloud run deploy "$SERVICE" --quiet --source scanner --region "$REGION" --memory 8Gi --cpu 2 --timeout 3600 --concurrency 2 --min-instances 0 --max-instances 3 --execution-environment gen2 --allow-unauthenticated
+  echo "Updated."
+  exit 0
+fi
 echo "Turning on the Google services the scanner needs..."
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com >/dev/null
 
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')"
 RUN_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
-gcloud projects add-iam-policy-binding "$PROJECT" --member="serviceAccount:$RUN_SA" --role="roles/secretmanager.secretAccessor" --condition=None >/dev/null
+# The helper account Google uses to build and run the scanner needs a few rights
+# (a new project does not give them by default). Each one is the smallest that does the job:
+#   secretAccessor   read the scanner's own keys when it starts
+#   builds.builder   build the scanner's container
+#   objectViewer     read the uploaded scanner code while building
+#   artifactregistry.writer   save the built container
+#   logWriter        write the scanner's log lines
+for role in roles/secretmanager.secretAccessor roles/cloudbuild.builds.builder roles/storage.objectViewer roles/artifactregistry.writer roles/logging.logWriter; do
+  gcloud projects add-iam-policy-binding "$PROJECT" --member="serviceAccount:$RUN_SA" --role="$role" --condition=None >/dev/null
+done
 
 echo "Saving your keys in Secret Manager (nothing is printed)..."
 SECRETS=""
