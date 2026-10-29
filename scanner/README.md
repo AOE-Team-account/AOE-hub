@@ -39,3 +39,10 @@ Limits: 2047 MB per file (ClamAV cannot scan 2 GiB or more). The hub's normal li
 ## Updating the scanner later
     SKIP_SETUP=1 scripts/deploy-scanner.sh YOUR_PROJECT_ID us-central1
 sends only the new code (services, permissions and keys are already in place).
+
+## Script-in-zip rules switched off
+
+Sanesecurity's `Foxhole.JS_Zip_*` rules flag any zip that contains a `.js` file (made for email).
+Games are zips of scripts, so `ignore-js-zip.sh` lists those rules in `aoehub-js-zip.ign2` at start and
+every 10 minutes (so new rules of that family are covered). The scanner's own check in `inspect.mjs` still
+refuses scripts inside zips for every post that is not a game or app.

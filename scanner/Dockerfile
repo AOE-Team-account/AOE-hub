@@ -14,7 +14,8 @@ COPY --from=deps /usr/local/bin/node /usr/local/bin/node
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json server.mjs clamd.mjs storage.mjs inspect.mjs ./
-COPY start.sh /app/start.sh
+COPY start.sh ignore-js-zip.sh /app/
+RUN chmod +x /app/start.sh /app/ignore-js-zip.sh
 
 # The Sanesecurity lists are only used when their signature checks out. The key that
 # checks them is fetched and imported HERE, while the scanner is built, so the scanner
@@ -38,6 +39,7 @@ RUN set -eux; \
 RUN printf 'user_configuration_complete="yes"\nenable_random="no"\nreload_dbs="yes"\nditekshen_enabled="yes"\n' > /etc/clamav-unofficial-sigs/user.conf; \
     bash /usr/local/sbin/clamav-unofficial-sigs.sh >/tmp/bake.log 2>&1 || true; \
     ls /var/lib/clamav | grep -E '\.(ndb|hdb|hsb|ldb|cdb|yara|ign2|db|fp)$' | wc -l | tee /tmp/baked-count.txt; \
+    bash /app/ignore-js-zip.sh; \
     chown -R clamav:clamav /var/lib/clamav /var/lib/clamav-unofficial-sigs 2>/dev/null || true
 
 # Limits and extra checks for the engine (applied by the base image's init).
