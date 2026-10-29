@@ -1,6 +1,7 @@
 import "server-only";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { deleteStaged } from "@/lib/storage/staging";
+import { deleteFile, type StorageBackend } from "@/lib/storage/router";
 import { deleteFromR2Prefix } from "@/lib/storage/r2";
 import { CONTACT_EMAIL } from "@/lib/site";
 import { scanStagedFile } from "./client";
@@ -26,11 +27,12 @@ export async function runScan(assetId: string, attempt = 0): Promise<void> {
     console.error("Could not take the file for scanning:", error.message);
     return;
   }
-  const asset = (claimed as { id: string; file_post_id: string; label: string; staging_key: string | null; final_key: string | null; final_backend: string | null; size_bytes: number | null; mime_type: string | null; scan_attempts: number; game_prefix: string | null }[] | null)?.[0];
+  const asset = (claimed as { id: string; file_post_id: string; label: string; original_name: string | null; staging_key: string | null; final_key: string | null; final_backend: string | null; size_bytes: number | null; mime_type: string | null; scan_attempts: number; game_prefix: string | null }[] | null)?.[0];
   if (!asset) return; // not pending, or someone else is already scanning it
 
-  const { data: post } = await db.from("file_posts").select("author_id").eq("id", asset.file_post_id).maybeSingle();
+  const { data: post } = await db.from("file_posts").select("author_id, media_type").eq("id", asset.file_post_id).maybeSingle();
   const authorId = (post as { author_id: string } | null)?.author_id;
+  const isGamePost = ["game", "app"].includes((post as { media_type?: string } | null)?.media_type ?? "");
 
   const outcome =
     asset.staging_key && asset.final_key && asset.size_bytes
@@ -41,6 +43,8 @@ export async function runScan(assetId: string, attempt = 0): Promise<void> {
           contentType: asset.mime_type ?? "application/octet-stream",
           finalBackend: (asset.final_backend as "r2" | "internet-archive") ?? "r2",
           finalKey: asset.final_key,
+          name: asset.original_name ?? asset.label,
+          allowScripts: isGamePost,
         })
       : ({ status: "error", code: "bad-request", message: "The file record is incomplete." } as const);
 
@@ -140,4 +144,57 @@ export async function runPreviewScan(mediaId: string): Promise<void> {
     return;
   }
   await db.from("post_media").update({ scan_started_at: null }).eq("id", m.id);
+}
+
+// ---- Weekly re-check of stored files against fresh virus signatures ----
+// Something clean today can be known as bad next week. Each stored file is read again by
+// the scanner where it lives; if it is now caught, it is removed for good and the Creator
+// and the member who shared it are told.
+export async function runRescan(assetId: string): Promise<"clean" | "flagged" | "skipped"> {
+  const db = createServiceRoleClient();
+  const { data } = await db
+    .from("file_assets")
+    .select("id, file_post_id, label, original_name, storage_path, storage_backend, size_bytes, mime_type, scan_status, game_prefix, is_link")
+    .eq("id", assetId)
+    .maybeSingle();
+  const a = data as { id: string; file_post_id: string; label: string; original_name: string | null; storage_path: string | null; storage_backend: string | null; size_bytes: number | null; mime_type: string | null; scan_status: string; game_prefix: string | null; is_link: boolean } | null;
+  if (!a || a.scan_status !== "clean" || a.is_link || !a.storage_path || !a.storage_backend || !a.size_bytes) return "skipped";
+
+  const { data: post } = await db.from("file_posts").select("author_id, media_type").eq("id", a.file_post_id).maybeSingle();
+  const p = post as { author_id: string; media_type: string } | null;
+  const outcome = await scanStagedFile({
+    assetId: a.id,
+    stagingKey: a.storage_path,
+    size: Number(a.size_bytes),
+    contentType: a.mime_type ?? "application/octet-stream",
+    finalBackend: "none",
+    name: a.original_name ?? a.label,
+    allowScripts: ["game", "app"].includes(p?.media_type ?? ""),
+    source: a.storage_backend === "internet-archive" ? "internet-archive" : "main",
+  });
+
+  if (outcome.status === "clean") {
+    await db.from("file_assets").update({ rescanned_at: new Date().toISOString() }).eq("id", a.id);
+    return "clean";
+  }
+  if (outcome.status === "error") {
+    console.error(`Re-check of ${a.id} did not finish: ${outcome.code} ${outcome.message ?? ""}`);
+    return "skipped";
+  }
+
+  // Caught now: remove it for good.
+  try { await deleteFile(a.storage_backend as StorageBackend, a.storage_path); } catch (err) { console.error("Could not delete a flagged stored file:", err instanceof Error ? err.message : err); }
+  if (a.game_prefix) await deleteFromR2Prefix(a.game_prefix).catch(() => undefined);
+  await db
+    .from("file_assets")
+    .update({ scan_status: "flagged", storage_path: null, storage_backend: null, scan_signature: outcome.signature ?? null, scan_finished_at: new Date().toISOString(), rescanned_at: new Date().toISOString(), is_game: false, game_prefix: null })
+    .eq("id", a.id);
+  if (p?.author_id) {
+    await tell(p.author_id, "scan-flagged", `A file you shared, "${a.label}", was checked again with newer virus information and a virus or something harmful was caught. It has been removed. Please contact us at ${contact} if you have questions.`, { post_id: a.file_post_id, asset_id: a.id });
+  }
+  const { data: creators } = await db.from("user_roles").select("user_id").eq("role", "creator");
+  for (const c of (creators ?? []) as { user_id: string }[]) {
+    await db.from("notifications").insert({ user_id: c.user_id, body: `A stored file ("${a.label}") was caught by the weekly virus re-check (${outcome.signature ?? "unknown"}) and removed.`, kind: "scan-flagged", data: { post_id: a.file_post_id, asset_id: a.id } });
+  }
+  return "flagged";
 }

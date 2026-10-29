@@ -17,15 +17,42 @@ const r2 = new S3Client({
   credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID || "", secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || "" },
 });
 
-export async function stagingSize(key) {
-  const head = await r2.send(new HeadObjectCommand({ Bucket: stagingBucket, Key: key }));
+// A file can be read from three places: the private staging bucket (a new upload), the main
+// bucket (a stored file being re-checked) or the Internet Archive (same, for big files).
+const iaUrl = (key) => `https://archive.org/download/${iaBucket}/${encodeURIComponent(key)}`;
+const bucketOf = (source) => (source === "main" ? mainBucket : stagingBucket);
+
+export async function sourceSize(source, key) {
+  if (source === "internet-archive") {
+    const res = await fetch(iaUrl(key), { method: "HEAD", redirect: "follow" });
+    if (res.status === 404) { const e = new Error("NotFound"); e.name = "NotFound"; throw e; }
+    if (!res.ok) throw new Error(`Internet Archive answered ${res.status}`);
+    return Number(res.headers.get("content-length") ?? 0);
+  }
+  const head = await r2.send(new HeadObjectCommand({ Bucket: bucketOf(source), Key: key }));
   return Number(head.ContentLength ?? 0);
 }
 
-/** The staged file as an async iterable of Buffers. */
-export async function readStaging(key) {
-  const res = await r2.send(new GetObjectCommand({ Bucket: stagingBucket, Key: key }));
+/** The file as an async iterable of Buffers. */
+export async function readSource(source, key) {
+  if (source === "internet-archive") {
+    const res = await fetch(iaUrl(key), { redirect: "follow" });
+    if (!res.ok) throw new Error(`Internet Archive answered ${res.status}`);
+    return Readable.fromWeb(res.body);
+  }
+  const res = await r2.send(new GetObjectCommand({ Bucket: bucketOf(source), Key: key }));
   return res.Body; // a Node Readable
+}
+
+/** Bytes start..end (inclusive) of the file, as a Buffer. */
+export async function readSourceRange(source, key, start, end) {
+  if (source === "internet-archive") {
+    const res = await fetch(iaUrl(key), { redirect: "follow", headers: { Range: `bytes=${start}-${end}` } });
+    if (!res.ok && res.status !== 206) throw new Error(`Internet Archive answered ${res.status}`);
+    return Buffer.from(await res.arrayBuffer()).subarray(0, end - start + 1);
+  }
+  const res = await r2.send(new GetObjectCommand({ Bucket: bucketOf(source), Key: key, Range: `bytes=${start}-${end}` }));
+  return Buffer.from(await res.Body.transformToByteArray());
 }
 
 export async function copyToMain(stagingKey, finalKey) {
@@ -42,7 +69,7 @@ export async function copyToMain(stagingKey, finalKey) {
 export async function copyToInternetArchive(stagingKey, finalKey, contentType, size) {
   let lastError = "";
   for (let attempt = 0; attempt < 4; attempt++) {
-    const body = await readStaging(stagingKey);
+    const body = await readSource("staging", stagingKey);
     const res = await fetch(`${iaEndpoint}/${iaBucket}/${encodeURIComponent(finalKey)}`, {
       method: "PUT",
       headers: {

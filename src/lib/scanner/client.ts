@@ -1,5 +1,6 @@
 import "server-only";
 import { scannerUrl, scannerSecret, isScannerConfigured } from "@/lib/storage/config";
+import { scannerTicket } from "./auth";
 
 export interface ScanJob {
   assetId: string;
@@ -8,6 +9,12 @@ export interface ScanJob {
   contentType: string;
   finalBackend: "r2" | "internet-archive" | "none";
   finalKey?: string;
+  /** The file's own name (for the checks that compare a name with what the file really is). */
+  name?: string;
+  /** A game or app may contain scripts; anything else may not. */
+  allowScripts?: boolean;
+  /** Where the file is read from: a new upload (default), or a stored file being re-checked. */
+  source?: "staging" | "main" | "internet-archive";
 }
 
 export interface ScanOutcome {
@@ -30,12 +37,18 @@ export { isScannerConfigured };
 export async function scanStagedFile(job: ScanJob, timeoutMs = 50 * 60 * 1000): Promise<ScanOutcome> {
   if (!isScannerConfigured) return { status: "error", code: "not-configured", message: "The scanner is not set up." };
   try {
+    const ticket = await scannerTicket();
     const res = await fetch(`${scannerUrl}/scan`, {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${scannerSecret}` },
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${scannerSecret}`,
+        ...(ticket ? { "x-serverless-authorization": `Bearer ${ticket}` } : {}),
+      },
       body: JSON.stringify(job),
       signal: AbortSignal.timeout(timeoutMs),
     });
+    if (res.status === 403) return { status: "error", code: "not-allowed", message: "Google refused the hub's ticket for the scanner." };
     if (res.status === 429 || res.status === 503 || res.status === 504) return { status: "error", code: "busy", message: `The scanner is busy (${res.status}).` };
     if (!res.ok) return { status: "error", code: "http-" + res.status, message: `The scanner answered ${res.status}.` };
     const data = (await res.json()) as ScanOutcome;

@@ -9,6 +9,10 @@
 # SCANNER_SECRET) back into .env.local. Safe to run again to deploy an update.
 set -euo pipefail
 
+# The scanner is private by default (only the hub's own Google account may call it; see
+# scripts/lock-scanner.sh). Set SCANNER_PUBLIC=1 only while setting up.
+AUTH_FLAG="--no-allow-unauthenticated"
+[ "${SCANNER_PUBLIC:-}" = "1" ] && AUTH_FLAG="--allow-unauthenticated"
 PROJECT="${1:-}"
 REGION="${2:-us-central1}"
 SERVICE="aoehub-scanner"
@@ -39,7 +43,7 @@ gcloud config set project "$PROJECT" >/dev/null
 if [ "${SKIP_SETUP:-}" = "1" ]; then
   # Update only: send the new scanner code (services, permissions and keys are already in place).
   echo "Sending the updated scanner (settings, permissions and keys left as they are)..."
-  gcloud run deploy "$SERVICE" --quiet --source scanner --region "$REGION" --memory 8Gi --cpu 2 --timeout 3600 --concurrency 2 --min-instances 0 --max-instances 3 --execution-environment gen2 --allow-unauthenticated
+  gcloud run deploy "$SERVICE" --quiet --source scanner --region "$REGION" --memory 8Gi --cpu 2 --timeout 3600 --concurrency 2 --min-instances 0 --max-instances 3 --execution-environment gen2 $AUTH_FLAG
   echo "Updated."
   exit 0
 fi
@@ -81,7 +85,7 @@ gcloud run deploy "$SERVICE" \
   --concurrency 2 \
   --min-instances 0 --max-instances 3 \
   --execution-environment gen2 \
-  --allow-unauthenticated \
+  $AUTH_FLAG \
   --set-env-vars "IA_BUCKET_NAME=$(val IA_BUCKET_NAME)" \
   --set-secrets "$SECRETS"
 

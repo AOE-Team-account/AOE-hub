@@ -13,7 +13,7 @@ USER root
 COPY --from=deps /usr/local/bin/node /usr/local/bin/node
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY package.json server.mjs clamd.mjs storage.mjs ./
+COPY package.json server.mjs clamd.mjs storage.mjs inspect.mjs ./
 COPY start.sh /app/start.sh
 
 # The Sanesecurity lists are only used when their signature checks out. The key that
@@ -35,7 +35,7 @@ RUN set -eux; \
 # them from the first second and the background update only brings what is new.
 # (This step is best-effort: if a download fails during the build, the build still works
 # and the update at startup fills the gap.)
-RUN printf 'user_configuration_complete="yes"\nenable_random="no"\nreload_dbs="yes"\n' > /etc/clamav-unofficial-sigs/user.conf; \
+RUN printf 'user_configuration_complete="yes"\nenable_random="no"\nreload_dbs="yes"\nditekshen_enabled="yes"\n' > /etc/clamav-unofficial-sigs/user.conf; \
     bash /usr/local/sbin/clamav-unofficial-sigs.sh >/tmp/bake.log 2>&1 || true; \
     ls /var/lib/clamav | grep -E '\.(ndb|hdb|hsb|ldb|cdb|yara|ign2|db|fp)$' | wc -l | tee /tmp/baked-count.txt; \
     chown -R clamav:clamav /var/lib/clamav /var/lib/clamav-unofficial-sigs 2>/dev/null || true

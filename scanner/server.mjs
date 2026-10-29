@@ -2,14 +2,16 @@ import http from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
 import * as clamd from "./clamd.mjs";
-import { readStaging, stagingSize, copyToMain, copyToInternetArchive } from "./storage.mjs";
+import { sourceSize, readSource, readSourceRange, copyToMain, copyToInternetArchive } from "./storage.mjs";
+import { sniff, disguisedProgram, inspectZip, pdfTap, pdfVerdict } from "./inspect.mjs";
 
 // The AOEhub virus scanner. The hub asks it to scan one file that is waiting in
 // the private staging bucket; if the file is clean it also moves it to its
 // final place (so the hub never has to carry big files itself).
 //
 //   POST /scan   Authorization: Bearer <SCANNER_SECRET>
-//   { assetId, stagingKey, size, contentType, finalBackend: "r2" | "internet-archive" | "none", finalKey }
+//   { assetId, stagingKey, size, contentType, finalBackend: "r2" | "internet-archive" | "none", finalKey,
+//     name, allowScripts, source: "staging" (default) | "main" | "internet-archive" }  (stagingKey is the key in that source)
 //   -> { status: "clean" | "flagged" | "error", signature?, code?, message?, finalBackend?, finalKey? }
 //   GET /healthz -> engine status
 
@@ -45,6 +47,11 @@ async function readJson(req, limit = 64 * 1024) {
 
 async function scanOne(job) {
   const { assetId, stagingKey, size, contentType, finalBackend, finalKey } = job;
+  // Where to read the file: a new upload waits in staging; a stored file being re-checked
+  // is read where it lives ("main" bucket or "internet-archive").
+  const source = ["main", "internet-archive"].includes(job.source) ? job.source : "staging";
+  const name = typeof job.name === "string" ? job.name.slice(0, 300) : "";
+  const allowScripts = job.allowScripts === true;
   if (!UUID.test(String(assetId)) || typeof stagingKey !== "string" || !stagingKey || stagingKey.includes("..") || stagingKey.length > 700) {
     return { status: "error", code: "bad-request", message: "Invalid request." };
   }
@@ -57,17 +64,17 @@ async function scanOne(job) {
 
   if (!(await clamd.waitUntilReady(150_000))) return { status: "error", code: "engine-not-ready", message: "The scanner engine is not ready yet." };
 
-  // Look at the staged file. Only a clear "not found" means it is missing; any other trouble talking to storage is worth trying again.
+  // Look at the file in storage. Only a clear "not found" means it is missing; any other trouble talking to storage is worth trying again.
   let actual;
   let lastError;
   for (let attempt = 0; attempt < 3 && actual === undefined; attempt++) {
     try {
-      actual = await stagingSize(stagingKey);
+      actual = await sourceSize(source, stagingKey);
     } catch (err) {
       lastError = err;
       const status = err?.$metadata?.httpStatusCode;
       if (status === 404 || err?.name === "NotFound" || err?.name === "NoSuchKey") {
-        return { status: "error", code: "missing", message: "The file is not in staging." };
+        return { status: "error", code: "missing", message: "The file is not there." };
       }
       await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
     }
@@ -76,9 +83,36 @@ async function scanOne(job) {
   if (actual !== size) return { status: "error", code: "size-mismatch", message: `Expected ${size} bytes, found ${actual}.` };
 
   const started = Date.now();
-  const stream = await readStaging(stagingKey);
+  const flagged = (signature) => {
+    log(`scan ${assetId} ${size}B -> flagged ${signature} (our own check) in ${Date.now() - started}ms`);
+    return { status: "flagged", signature };
+  };
+
+  // Our own checks first: they do not need to know the threat in advance.
+  let kind = null;
+  try {
+    const head = await readSourceRange(source, stagingKey, 0, Math.min(size, 4096) - 1);
+    kind = sniff(head);
+    const disguised = disguisedProgram(name, kind);
+    if (disguised) return flagged(disguised);
+    if (kind === "zip") {
+      const z = await inspectZip(size, (a, b) => readSourceRange(source, stagingKey, a, b), { allowScripts });
+      if (z.flagged) return flagged(z.signature);
+    }
+  } catch (err) {
+    // A problem reading storage here is not a verdict; the engine scan below will report it.
+    log(`inspection skipped for ${assetId}:`, err instanceof Error ? err.message : err);
+  }
+
+  const found = {};
+  let stream = await readSource(source, stagingKey);
+  if (kind === "pdf") stream = pdfTap(stream, found);
   const result = await clamd.scanStream(stream);
-  log(`scan ${assetId} ${size}B -> ${result.status}${result.signature ? " " + result.signature : ""} in ${Date.now() - started}ms`);
+  if (result.status === "clean" && kind === "pdf") {
+    const verdict = pdfVerdict(found);
+    if (verdict) return flagged(verdict);
+  }
+  log(`scan ${assetId} ${size}B (${source}) -> ${result.status}${result.signature ? " " + result.signature : ""} in ${Date.now() - started}ms`);
   if (result.status !== "clean") {
     return result.status === "flagged"
       ? { status: "flagged", signature: result.signature }

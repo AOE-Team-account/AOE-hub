@@ -3782,6 +3782,9 @@ alter table public.file_assets add column if not exists scan_attempts integer no
 alter table public.file_assets add column if not exists scan_started_at timestamptz;
 alter table public.file_assets add column if not exists scan_finished_at timestamptz;
 alter table public.file_assets add column if not exists multipart_upload_id text;
+-- When a stored file was last re-checked against fresh virus signatures (weekly job).
+alter table public.file_assets add column if not exists rescanned_at timestamptz;
+create index if not exists file_assets_rescan_idx on public.file_assets (rescanned_at nulls first, scan_finished_at) where scan_status = 'clean' and storage_path is not null;
 create index if not exists file_assets_unfinished_idx on public.file_assets (scan_status) where scan_status in ('uploading', 'pending');
 
 -- The VirusTotal analysis id is no longer used.
