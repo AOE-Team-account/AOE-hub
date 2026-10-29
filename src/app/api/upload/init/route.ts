@@ -57,7 +57,7 @@ export async function POST(request: Request) {
   }
   if (specs.length > MAX_FILES) return NextResponse.json({ error: `At most ${MAX_FILES} files at a time.` }, { status: 400 });
   for (const f of specs) {
-    if (!f.name || !Number.isFinite(f.size) || f.size <= 0) return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
+    if (!f.name || !Number.isInteger(f.size) || f.size <= 0) return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
   }
 
   // Link-outs: https only, no passwords in the address, and only websites the

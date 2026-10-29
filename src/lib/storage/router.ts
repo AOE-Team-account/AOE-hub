@@ -10,7 +10,8 @@ export type StorageBackend = "r2" | "internet-archive";
 // threshold was specified, so this is a tunable default: comfortably
 // covers curriculum PDFs/images/most documents on R2, routes anything
 // video/audio-sized to IA instead.
-const LARGE_FILE_THRESHOLD_BYTES = 50 * 1024 * 1024; // 50MB
+// Can be raised for testing with LARGE_FILE_THRESHOLD_MB (so a test file does not end up in the permanent archive).
+const LARGE_FILE_THRESHOLD_BYTES = Math.max(1, Number(process.env.LARGE_FILE_THRESHOLD_MB) || 50) * 1024 * 1024; // 50MB by default
 
 // Exception to the size rule: Internet Archive's software support is built
 // around emulating legacy/retro software, not serving live modern web
@@ -34,8 +35,8 @@ export async function uploadFile(
   }
 }
 
-export async function getDownloadUrl(backend: StorageBackend, key: string): Promise<string> {
-  return backend === "r2" ? getR2DownloadUrl(key) : getInternetArchiveDownloadUrl(key);
+export async function getDownloadUrl(backend: StorageBackend, key: string, fileName?: string): Promise<string> {
+  return backend === "r2" ? getR2DownloadUrl(key, fileName) : getInternetArchiveDownloadUrl(key);
 }
 
 export async function deleteFile(backend: StorageBackend, key: string): Promise<void> {

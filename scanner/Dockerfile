@@ -29,6 +29,17 @@ RUN set -eux; \
     grep -q '4E02 5A1C BA90 A065 3F38  D2D8 D691 DED9 31EA 4D9E' /tmp/ss-key.txt; \
     chown -R clamav:clamav /var/lib/clamav-unofficial-sigs 2>/dev/null || true
 
+# Bake the extra signature lists in while the scanner is built, too. On Cloud Run the
+# scanner only gets full processor power while it is handling a request, so downloading
+# them in the background after a start is slow; with them already inside, every start has
+# them from the first second and the background update only brings what is new.
+# (This step is best-effort: if a download fails during the build, the build still works
+# and the update at startup fills the gap.)
+RUN printf 'user_configuration_complete="yes"\nenable_random="no"\nreload_dbs="yes"\n' > /etc/clamav-unofficial-sigs/user.conf; \
+    bash /usr/local/sbin/clamav-unofficial-sigs.sh >/tmp/bake.log 2>&1 || true; \
+    ls /var/lib/clamav | grep -E '\.(ndb|hdb|hsb|ldb|cdb|yara|ign2|db|fp)$' | wc -l | tee /tmp/baked-count.txt; \
+    chown -R clamav:clamav /var/lib/clamav /var/lib/clamav-unofficial-sigs 2>/dev/null || true
+
 # Limits and extra checks for the engine (applied by the base image's init).
 # Files up to 2047 MB (ClamAV cannot scan 2 GiB or more) are scanned in full; anything the engine cannot
 # fully inspect (too big, too deeply nested, encrypted archives) is reported as

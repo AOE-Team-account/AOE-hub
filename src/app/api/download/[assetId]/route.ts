@@ -16,7 +16,7 @@ export async function GET(request: Request, { params }: RouteContext<"/api/downl
 
   const { data: asset } = await supabase
     .from("file_assets")
-    .select("id, storage_path, storage_backend, scan_status")
+    .select("id, storage_path, storage_backend, scan_status, original_name, label")
     .eq("id", assetId)
     .single();
 
@@ -24,11 +24,10 @@ export async function GET(request: Request, { params }: RouteContext<"/api/downl
     return NextResponse.json({ error: "This file isn't available for download." }, { status: 404 });
   }
 
-  const url = await getDownloadUrl(asset.storage_backend as StorageBackend, asset.storage_path);
+  const url = await getDownloadUrl(asset.storage_backend as StorageBackend, asset.storage_path, asset.original_name || asset.label);
 
-  // Fire-and-forget: increments the download counter and awards the
-  // the download counter (see record_download() in schema.sql). Not blocking
-  // the redirect on this — a slow points update shouldn't slow downloads.
+  // Fire-and-forget: counts the download (see record_download() in schema.sql).
+  // Not blocking the redirect on this, so a slow count never slows a download.
   createServiceRoleClient().rpc("record_download", { p_asset_id: assetId, p_downloader_id: user.id }).then(({ error }) => {
     if (error) console.error("record_download failed:", error);
   });

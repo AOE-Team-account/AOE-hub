@@ -16,8 +16,16 @@ export async function uploadToR2(key: string, body: Buffer, contentType: string)
   );
 }
 
-export async function getR2DownloadUrl(key: string): Promise<string> {
-  const command = new GetObjectCommand({ Bucket: r2BucketName, Key: key });
+export async function getR2DownloadUrl(key: string, fileName?: string): Promise<string> {
+  // Always handed to the browser as a download, never opened as a page: a file a member
+  // uploaded must not be able to run as a web page, even on the storage address.
+  const safe = (fileName || key.split("/").pop() || "file").replace(/[\r\n"\\]/g, "_");
+  const command = new GetObjectCommand({
+    Bucket: r2BucketName,
+    Key: key,
+    ResponseContentDisposition: `attachment; filename="${safe.replace(/[^\x20-\x7e]/g, "_")}"; filename*=UTF-8''${encodeURIComponent(safe)}`,
+    ResponseContentType: "application/octet-stream",
+  });
   return getSignedUrl(client, command, { expiresIn: 300 });
 }
 
