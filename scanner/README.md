@@ -46,3 +46,10 @@ Sanesecurity's `Foxhole.JS_Zip_*` rules flag any zip that contains a `.js` file 
 Games are zips of scripts, so `ignore-js-zip.sh` lists those rules in `aoehub-js-zip.ign2` at start and
 every 10 minutes (so new rules of that family are covered). The scanner's own check in `inspect.mjs` still
 refuses scripts inside zips for every post that is not a game or app.
+
+## Wrong-secret lockout and lazy engine start
+
+- An address that sends the wrong secret 5 times in 10 minutes gets an instant 429 for 30 minutes (kept in memory only).
+- `start.sh` starts only the Node service at boot. The ClamAV engine starts when the first request with the right
+  secret arrives (the service writes `/tmp/engine-wanted`). A stranger who wakes the scanner costs about a second.
+- The scanner stays public to Google (a service-account key is blocked by the default organization policy); the secret is its lock.

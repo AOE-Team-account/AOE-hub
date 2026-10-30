@@ -22,10 +22,53 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
-function authorized(req) {
+// Wrong-secret guard. An address that sends the wrong secret 5 times within 10 minutes is refused for
+// 30 minutes with an instant answer (no work, no engine start). Kept in memory only; never written anywhere.
+const MAX_WRONG = 5;
+const WRONG_WINDOW_MS = 10 * 60 * 1000;
+const BLOCK_MS = 30 * 60 * 1000;
+const wrongTries = new Map(); // address -> { count, first, blockedUntil }
+
+function clientAddress(req) {
+  // Cloud Run puts the real caller last in X-Forwarded-For (anything before it can be faked by the caller).
+  const parts = String(req.headers["x-forwarded-for"] || "").split(",").map((x) => x.trim()).filter(Boolean);
+  return parts[parts.length - 1] || req.socket.remoteAddress || "unknown";
+}
+
+function isBlocked(req) {
+  const e = wrongTries.get(clientAddress(req));
+  return !!e && e.blockedUntil > Date.now();
+}
+
+function noteWrongSecret(req) {
+  const now = Date.now();
+  if (wrongTries.size > 5000) for (const [k, v] of wrongTries) if (v.blockedUntil < now && now - v.first > WRONG_WINDOW_MS) wrongTries.delete(k);
+  const ip = clientAddress(req);
+  let e = wrongTries.get(ip);
+  if (!e || (e.blockedUntil < now && now - e.first > WRONG_WINDOW_MS)) e = { count: 0, first: now, blockedUntil: 0 };
+  e.count += 1;
+  if (e.count >= MAX_WRONG) { e.blockedUntil = now + BLOCK_MS; e.count = 0; e.first = now; log(`address blocked for 30 min after repeated wrong secrets: ${ip}`); }
+  wrongTries.set(ip, e);
+}
+
+// The ClamAV engine is only started once someone with the right secret asks (see start.sh), so a stranger
+// poking the scanner costs a second of a tiny start-up, not 20 seconds of the full engine.
+let engineRequested = false;
+function wakeEngine() {
+  if (engineRequested) return;
+  engineRequested = true;
+  try { fs.writeFileSync("/tmp/engine-wanted", "1"); } catch (err) { log("could not wake the engine:", err instanceof Error ? err.message : err); }
+}
+
+// Returns true when the request carries the right secret. Otherwise it has already answered (401 or 429).
+function checkAccess(req, res) {
+  if (isBlocked(req)) { send(res, 429, { error: "Too many wrong tries. Try again later." }); return false; }
   const given = Buffer.from(String(req.headers.authorization || ""));
   const want = Buffer.from(`Bearer ${SECRET}`);
-  return SECRET.length >= 24 && given.length === want.length && timingSafeEqual(given, want);
+  if (SECRET.length >= 24 && given.length === want.length && timingSafeEqual(given, want)) { wakeEngine(); return true; }
+  noteWrongSecret(req);
+  send(res, 401, { error: "Unauthorized" });
+  return false;
 }
 
 function send(res, status, body) {
@@ -134,7 +177,7 @@ const server = http.createServer(async (req, res) => {
   try {
     // (Google's front door keeps "/healthz" for itself on Cloud Run, so the status page is "/status".)
     if (req.method === "GET" && req.url === "/layers") {
-      if (!authorized(req)) return send(res, 401, { error: "Unauthorized" });
+      if (!checkAccess(req, res)) return;
       // Which signature collections the engine has loaded right now (names only).
       const files = fs.existsSync("/var/lib/clamav") ? fs.readdirSync("/var/lib/clamav").filter((f) => /\.(cvd|cld|ndb|hdb|hsb|ldb|cdb|ign2|fp|yara|yar|db|ftm|pdb|wdb|mdb|msb|idb)$/.test(f)) : [];
       const stats = await clamd.command("STATS", 3000).catch(() => null);
@@ -147,7 +190,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, ready ? 200 : 503, { ok: ready, engine: version });
     }
     if (req.method === "POST" && req.url === "/scan") {
-      if (!authorized(req)) return send(res, 401, { error: "Unauthorized" });
+      if (!checkAccess(req, res)) return;
       let job;
       try { job = await readJson(req); } catch { return send(res, 400, { status: "error", code: "bad-request", message: "Invalid request." }); }
       const out = await scanOne(job).catch((err) => {
