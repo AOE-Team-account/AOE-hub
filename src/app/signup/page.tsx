@@ -76,11 +76,12 @@ export default function SignupPage() {
         <label className="field-label">{t("login.password")}</label>
         <PasswordInput
           required
-          minLength={6}
+          minLength={8}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="new-password"
         />
+        <p className="tiny" style={{ margin: "4px 0 0" }}>{t("signup.passwordHint")}</p>
         <label className="row" style={{ gap: 8, marginTop: 14, alignItems: "flex-start", cursor: "pointer" }}>
           <input
             type="checkbox"

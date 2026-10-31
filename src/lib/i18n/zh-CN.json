@@ -986,5 +986,6 @@
   "policyUpdate.error": "无法保存，请重试。",
   "policyUpdate.decline": "如果您不同意，可以退出登录，或在“设置”中下载您的数据或删除账号。",
   "policyUpdate.settings": "前往设置",
-  "a11y.skip": "跳到主要内容"
+  "a11y.skip": "跳到主要内容",
+  "signup.passwordHint": "至少 8 个字符。"
 }
