@@ -987,5 +987,6 @@
   "policyUpdate.decline": "If you don't agree, you can sign out, or download your data or delete your account in Settings.",
   "policyUpdate.settings": "Go to Settings",
   "a11y.skip": "Skip to main content",
-  "signup.passwordHint": "At least 8 characters."
+  "signup.passwordHint": "At least 8 characters.",
+  "turnstile.failed": "The safety check could not load. Check your connection or ad blocker, or try another network. Still stuck? Write to {email}."
 }

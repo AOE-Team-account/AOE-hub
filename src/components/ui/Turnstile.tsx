@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { CONTACT_EMAIL } from "@/lib/site";
 
 // Cloudflare Turnstile: a free, privacy-friendly "are you a person?" check
 // (usually invisible; it only asks when it is unsure). It protects sign-up,
@@ -35,7 +37,10 @@ function loadScript(): Promise<void> {
  *  (a token works only once). When no site key is set, everything is a no-op. */
 export function useTurnstile(): { enabled: boolean; ready: boolean; token: string | undefined; reset: () => void; widget: ReactNode } {
   const enabled = SITE_KEY !== "";
+  const { t } = useLanguage();
   const [token, setToken] = useState<string | undefined>(undefined);
+  // True when the check could not load or errored (blocked network, ad blocker, offline).
+  const [failed, setFailed] = useState(false);
   const box = useRef<HTMLDivElement | null>(null);
   const id = useRef<string | null>(null);
 
@@ -46,11 +51,11 @@ export function useTurnstile(): { enabled: boolean; ready: boolean; token: strin
       if (gone || !box.current || !window.turnstile || id.current) return;
       id.current = window.turnstile.render(box.current, {
         sitekey: SITE_KEY,
-        callback: (t: string) => setToken(t),
+        callback: (tok: string) => { setFailed(false); setToken(tok); },
         "expired-callback": () => setToken(undefined),
-        "error-callback": () => setToken(undefined),
+        "error-callback": () => { setToken(undefined); setFailed(true); },
       });
-    }).catch(() => { /* blocked or offline: the form stays disabled until it works */ });
+    }).catch(() => setFailed(true)); // blocked or offline: say so, the form stays disabled until it works
     return () => {
       gone = true;
       if (id.current && window.turnstile) window.turnstile.remove(id.current);
@@ -63,6 +68,11 @@ export function useTurnstile(): { enabled: boolean; ready: boolean; token: strin
     if (id.current && window.turnstile) window.turnstile.reset(id.current);
   }, []);
 
-  const widget = enabled ? <div ref={box} style={{ marginTop: 14, minHeight: 4 }} /> : null;
+  const widget = enabled ? (
+    <>
+      <div ref={box} style={{ marginTop: 14, minHeight: 4 }} />
+      {failed && !token && <p className="muted" role="alert" style={{ color: "#b5471f", marginTop: 8 }}>{t("turnstile.failed", { email: CONTACT_EMAIL ?? "" })}</p>}
+    </>
+  ) : null;
   return { enabled, ready: !enabled || token !== undefined, token, reset, widget };
 }

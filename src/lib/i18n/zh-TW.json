@@ -987,5 +987,6 @@
   "policyUpdate.decline": "如果您不同意，可以退出登入，或在“設定”中下載您的資料或刪除賬號。",
   "policyUpdate.settings": "前往設定",
   "a11y.skip": "跳到主要內容",
-  "signup.passwordHint": "至少 8 個字元。"
+  "signup.passwordHint": "至少 8 個字元。",
+  "turnstile.failed": "安全驗證無法載入。請檢查網路連線或廣告攔截器，或換一個網路再試。仍然不行？請寫信到 {email}。"
 }
