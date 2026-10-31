@@ -29,7 +29,7 @@ export default async function ModPanelPage() {
     <>
       <BackLink href="/profile" label={t("staff.backToProfile")} />
       <div className="row between wrap" style={{ gap: 8, margin: "0 0 2px" }}>
-        <p className="title" style={{ margin: 0 }}>{isWatcher ? t("staff.watcherPanel") : t("staff.deaconPanel")}</p>
+        <p role="heading" aria-level={2} className="title" style={{ margin: 0 }}>{isWatcher ? t("staff.watcherPanel") : t("staff.deaconPanel")}</p>
         <LanguageSelect style={{ width: "auto", padding: "6px 10px", fontSize: 13 }} />
       </div>
       <p className="tiny" style={{ marginBottom: 8 }}>

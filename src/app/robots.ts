@@ -14,7 +14,7 @@ export default function robots(): MetadataRoute.Robots {
       userAgent: "*",
       allow: "/",
       // Pages that need an account, and the machine-only addresses.
-      disallow: ["/api/", "/creator", "/mod", "/settings", "/profile", "/security", "/appeal", "/onboarding", "/reset-password", "/forgot-password", "/auth/"],
+      disallow: ["/api/", "/creator", "/mod", "/settings", "/profile", "/security", "/appeal", "/onboarding", "/policies-update", "/reset-password", "/forgot-password", "/auth/"],
     },
     ...(base ? { sitemap: `${base}/sitemap.xml` } : {}),
   };

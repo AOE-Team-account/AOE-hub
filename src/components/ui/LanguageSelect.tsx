@@ -98,7 +98,7 @@ export function LanguageSelect({ style }: { style?: React.CSSProperties }) {
         <option value={ADD}>{t("lang.add")}</option>
       </select>
       <Modal open={open} onClose={() => !busy && close()}>
-        <p className="title">{t("lang.addTitle")}</p>
+        <p role="heading" aria-level={2} className="title">{t("lang.addTitle")}</p>
         <p className="muted" style={{ marginBottom: 10 }}>{t("lang.addHelp")}</p>
         <input
           value={name}

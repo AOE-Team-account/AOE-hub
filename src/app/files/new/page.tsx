@@ -208,7 +208,7 @@ export default function UploadFilePage() {
   return (
     <>
       <BackLink href="/files" label={t("common.cancel")} />
-      <p className="title" style={{ marginBottom: 14 }}>{t("upload.title")}</p>
+      <p role="heading" aria-level={2} className="title" style={{ marginBottom: 14 }}>{t("upload.title")}</p>
 
       <label className="field-label">{t("upload.titleLabel")}</label>
       <input placeholder={t("upload.titlePlaceholder")} value={title} onChange={(e) => setTitle(e.target.value)} />

@@ -41,7 +41,7 @@ export function KeyHelpEditor({ rows }: { rows: KeyHelpRow[] }) {
 
   return (
     <div className="card">
-      <p className="title" style={{ marginBottom: 4 }}>{t("creator.keyhelp.title")}</p>
+      <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("creator.keyhelp.title")}</p>
       <p className="muted" style={{ marginBottom: 10 }}>
         {t("creator.keyhelp.help")}
       </p>

@@ -12,7 +12,7 @@ export function SignInModal() {
 
   return (
     <Modal open={isSignInModalOpen} onClose={closeSignInModal}>
-      <p className="title">{t("signin.title")}</p>
+      <p role="heading" aria-level={2} className="title">{t("signin.title")}</p>
       <p className="muted">{t("signin.body")}</p>
       <div className="row" style={{ gap: 8 }}>
         <button

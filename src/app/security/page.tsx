@@ -18,7 +18,7 @@ function SecurityContent() {
   return (
     <>
       <BackLink href="/settings" label={t("twoStep.back")} />
-      <p className="title" style={{ marginBottom: 6 }}>{t("twoStep.title")}</p>
+      <p role="heading" aria-level={2} className="title" style={{ marginBottom: 6 }}>{t("twoStep.title")}</p>
       <div className="card">
         <TwoStepPanel
           onVerified={() => {

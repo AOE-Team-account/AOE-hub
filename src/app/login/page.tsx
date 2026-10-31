@@ -9,6 +9,7 @@ import { PasswordInput } from "@/components/ui/PasswordInput";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { contactSentence } from "@/lib/site";
 import { Button } from "@/components/ui/Button";
+import { useTurnstile } from "@/components/ui/Turnstile";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,14 +19,16 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const ts = useTurnstile();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
     const supabase = createClient();
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password, options: { captchaToken: ts.token } });
     setLoading(false);
+    ts.reset();
     if (signInError) {
       // A suspended or deleted account is blocked at sign-in by the auth service.
       setError(
@@ -41,7 +44,7 @@ export default function LoginPage() {
 
   return (
     <>
-      <p className="title" style={{ marginBottom: 14 }}>{t("login.title")}</p>
+      <p role="heading" aria-level={1} className="title" style={{ marginBottom: 14 }}>{t("login.title")}</p>
       <form onSubmit={handleSubmit}>
         <label className="field-label" style={{ marginTop: 0 }}>{t("login.email")}</label>
         <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
@@ -57,7 +60,8 @@ export default function LoginPage() {
             {error}
           </p>
         )}
-        <Button variant="primary" type="submit" style={{ width: "100%", marginTop: 18 }} disabled={loading}>
+        {ts.widget}
+        <Button variant="primary" type="submit" style={{ width: "100%", marginTop: 18 }} disabled={loading || !ts.ready}>
           {loading ? t("login.submitting") : t("login.submit")}
         </Button>
       </form>

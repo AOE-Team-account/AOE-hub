@@ -96,13 +96,13 @@ export function UnlockClient() {
     <>
       <BackLink href="/profile" label={t("staff.backToProfile")} />
       <div className="row between wrap" style={{ gap: 8, marginBottom: 6 }}>
-        <p className="title" style={{ margin: 0 }}>{t("creator.unlock.title")}</p>
+        <p role="heading" aria-level={2} className="title" style={{ margin: 0 }}>{t("creator.unlock.title")}</p>
         <LanguageSelect style={{ width: "auto", padding: "6px 10px", fontSize: 13 }} />
       </div>
 
       {showKeys ? (
         <div className="card">
-          <p className="title" style={{ marginBottom: 4 }}>{t("creator.unlock.saveKeys")}</p>
+          <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("creator.unlock.saveKeys")}</p>
           <p className="muted">
             {t("creator.unlock.saveKeysHelp")}
           </p>
@@ -111,7 +111,7 @@ export function UnlockClient() {
         </div>
       ) : useKey ? (
         <div className="card">
-          <p className="title" style={{ marginBottom: 4 }}>{t("creator.unlock.useKeyTitle")}</p>
+          <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("creator.unlock.useKeyTitle")}</p>
           <p className="muted">{t("creator.unlock.useKeyHelp")}</p>
           <input value={key} onChange={(e) => setKey(e.target.value)} placeholder="AOE-RK-XXXX-XXXX-XXXX" autoComplete="off" />
           <div className="row" style={{ gap: 8 }}>
@@ -121,7 +121,7 @@ export function UnlockClient() {
         </div>
       ) : !status.aal2 ? (
         <div className="card">
-          <p className="title" style={{ marginBottom: 4 }}>{t("creator.unlock.step1")}</p>
+          <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("creator.unlock.step1")}</p>
           <TwoStepPanel onVerified={load} />
           {status.has_factor && (
             <p className="tiny" style={{ marginTop: 12 }}>
@@ -132,7 +132,7 @@ export function UnlockClient() {
         </div>
       ) : !status.has_code ? (
         <div className="card">
-          <p className="title" style={{ marginBottom: 4 }}>{t("creator.unlock.step2Choose")}</p>
+          <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("creator.unlock.step2Choose")}</p>
           <p className="muted">
             {t("creator.unlock.codeHelp")}
           </p>
@@ -142,7 +142,7 @@ export function UnlockClient() {
         </div>
       ) : (
         <div className="card">
-          <p className="title" style={{ marginBottom: 4 }}>{t("creator.unlock.step2Code")}</p>
+          <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("creator.unlock.step2Code")}</p>
           {status.locked && (
             <p className="muted" style={{ color: "#b5471f" }}>
               {t("creator.unlock.locked", { time: status.locked_until ? new Date(status.locked_until).toLocaleTimeString(lang) : t("creator.unlock.15min") })}

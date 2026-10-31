@@ -10,5 +10,5 @@ export function isPrivateSite(): boolean {
 
 // The public address of the hub, without a trailing slash (used by the sitemap).
 export function siteUrl(): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL ?? "").trim().replace(/\/+$/, "");
+  return (process.env.SITE_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? "").trim().replace(/\/+$/, "");
 }

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
+import { useTurnstile } from "@/components/ui/Turnstile";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { rich } from "@/lib/i18n/rich";
@@ -19,6 +20,7 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [needsEmailConfirmation, setNeedsEmailConfirmation] = useState(false);
+  const ts = useTurnstile();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -32,9 +34,10 @@ export default function SignupPage() {
       // attestation and acceptance of the current terms and policies.
       // The link in the confirmation email signs the person in and opens the first-time questions
       // on whichever address this page is on (test or real).
-      options: { data: { name, age_attested_min: 13, accepted_terms: true }, emailRedirectTo: `${window.location.origin}/auth/confirm?next=/onboarding` },
+      options: { captchaToken: ts.token, data: { name, age_attested_min: 13, accepted_terms: true }, emailRedirectTo: `${window.location.origin}/auth/confirm?next=/onboarding` },
     });
     setLoading(false);
+    ts.reset();
     if (signUpError) {
       setError(signUpError.message);
       return;
@@ -52,7 +55,7 @@ export default function SignupPage() {
   if (needsEmailConfirmation) {
     return (
       <>
-        <p className="title" style={{ marginBottom: 8 }}>{t("signup.checkEmail")}</p>
+        <p role="heading" aria-level={1} className="title" style={{ marginBottom: 8 }}>{t("signup.checkEmail")}</p>
         <p className="muted">{rich(t("signup.confirmationSent", { email }), { b: (c) => <strong>{c}</strong> })}</p>
         <Button variant="primary" style={{ marginTop: 18 }} onClick={() => router.push("/login")}>
           {t("signup.goToLogin")}
@@ -63,7 +66,7 @@ export default function SignupPage() {
 
   return (
     <>
-      <p className="title" style={{ marginBottom: 4 }}>{t("signup.title")}</p>
+      <p role="heading" aria-level={1} className="title" style={{ marginBottom: 4 }}>{t("signup.title")}</p>
       <p className="muted" style={{ marginBottom: 14 }}>{t("signup.freeLine")}</p>
       <form onSubmit={handleSubmit}>
         <label className="field-label" style={{ marginTop: 0 }}>{t("signup.name")}</label>
@@ -102,7 +105,8 @@ export default function SignupPage() {
             {error}
           </p>
         )}
-        <Button variant="primary" type="submit" style={{ width: "100%", marginTop: 18 }} disabled={loading || !agreed}>
+        {ts.widget}
+        <Button variant="primary" type="submit" style={{ width: "100%", marginTop: 18 }} disabled={loading || !agreed || !ts.ready}>
           {loading ? t("signup.submitting") : t("common.signUpFree")}
         </Button>
       </form>

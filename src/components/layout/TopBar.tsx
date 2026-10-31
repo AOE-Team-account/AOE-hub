@@ -70,7 +70,7 @@ export function TopBar() {
   }, [user]);
 
   return (
-    <div className="topbar" ref={containerRef}>
+    <div className="topbar" role="banner" ref={containerRef}>
       <div className="topbar-inner">
         <Link href={status === "authed" ? "/experience" : "/"} className="brand">
           AOEhub

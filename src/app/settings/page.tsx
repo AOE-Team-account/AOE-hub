@@ -139,7 +139,7 @@ export default function SettingsPage() {
       )}
 
       <Modal open={deleteOpen} onClose={() => setDeleteOpen(false)}>
-        <p className="title">{t("settings.deleteConfirmTitle")}</p>
+        <p role="heading" aria-level={2} className="title">{t("settings.deleteConfirmTitle")}</p>
         <p className="muted">{rich(t("settings.deleteConfirmBody"), { b: (c) => <strong>{c}</strong> })}</p>
         <input value={confirmText} onChange={(e) => setConfirmText(e.target.value)} placeholder="DELETE" autoComplete="off" />
         {deleteError && <p className="muted" style={{ color: "#b5471f", marginTop: 8 }}>{deleteError}</p>}

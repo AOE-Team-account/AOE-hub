@@ -110,7 +110,7 @@ export default function OnboardingPage() {
 
   return (
     <>
-      <p className="title" style={{ marginBottom: 4 }}>{t("onboarding.welcome")}</p>
+      <p role="heading" aria-level={1} className="title" style={{ marginBottom: 4 }}>{t("onboarding.welcome")}</p>
       <p className="muted" style={{ marginBottom: 20 }}>{t("onboarding.intro")}</p>
 
       <p className="field-label" style={{ marginTop: 0 }}>{t("onboarding.q1")}</p>

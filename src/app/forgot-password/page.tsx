@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/Button";
+import { useTurnstile } from "@/components/ui/Turnstile";
 import { CONTACT_EMAIL } from "@/lib/site";
 
 export default function ForgotPasswordPage() {
@@ -26,6 +27,7 @@ function ForgotPassword() {
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const ts = useTurnstile();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -33,8 +35,10 @@ function ForgotPassword() {
     setError(null);
     const { error: err } = await createClient().auth.resetPasswordForEmail(email.trim(), {
       redirectTo: `${window.location.origin}/auth/confirm?next=/reset-password`,
+      captchaToken: ts.token,
     });
     setBusy(false);
+    ts.reset();
     // Only a rate limit is worth telling; every other outcome looks like success.
     if (err && /rate limit|too many|seconds/i.test(err.message)) return setError(t("forgot.slowDown"));
     setSent(true);
@@ -42,11 +46,11 @@ function ForgotPassword() {
 
   return (
     <>
-      <p className="title" style={{ marginBottom: 4 }}>{t("forgot.title")}</p>
+      <p role="heading" aria-level={1} className="title" style={{ marginBottom: 4 }}>{t("forgot.title")}</p>
       {expired && !sent && <p className="muted" style={{ color: "#b5471f", marginBottom: 10 }}>{t("forgot.expired")}</p>}
       {sent ? (
         <div className="card">
-          <p className="title" style={{ marginBottom: 4 }}>{t("forgot.checkEmail")}</p>
+          <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("forgot.checkEmail")}</p>
           <p className="muted">{t("forgot.sent")}</p>
           <p className="tiny" style={{ marginTop: 10 }}>
             <Link href="/login" style={{ color: "var(--accent)" }}>{t("forgot.backToLogin")}</Link>
@@ -58,7 +62,8 @@ function ForgotPassword() {
           <label className="field-label" style={{ marginTop: 0 }}>{t("login.email")}</label>
           <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
           {error && <p className="muted" style={{ color: "#b5471f", marginTop: 8 }}>{error}</p>}
-          <Button variant="primary" type="submit" style={{ width: "100%", marginTop: 14 }} disabled={busy || !email.trim()}>
+          {ts.widget}
+          <Button variant="primary" type="submit" style={{ width: "100%", marginTop: 14 }} disabled={busy || !email.trim() || !ts.ready}>
             {busy ? t("forgot.sending") : t("forgot.send")}
           </Button>
           <p className="tiny" style={{ marginTop: 14 }}>

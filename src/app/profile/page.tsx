@@ -145,7 +145,7 @@ export default function ProfilePage() {
         <div className="row" style={{ gap: 14 }}>
           <Avatar userId={user.id} initials={user.initials} avatarV={user.avatarV} frame={user.frame} />
           <div>
-            <p className="title" style={{ margin: 0, color: "inherit" }}>{user.name}</p>
+            <p role="heading" aria-level={2} className="title" style={{ margin: 0, color: "inherit" }}>{user.name}</p>
             <p className="tiny" style={{ color: "inherit", opacity: 0.8 }}>
               {t("profile.memberSince", { date: new Date(user.memberSince).toLocaleDateString(lang, { month: "long", year: "numeric" }) })}
             </p>
@@ -253,7 +253,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="stat-block">
       <p className="tiny" style={{ margin: 0 }}>{label}</p>
-      <p className="title" style={{ margin: 0 }}>{value}</p>
+      <p role="heading" aria-level={2} className="title" style={{ margin: 0 }}>{value}</p>
     </div>
   );
 }

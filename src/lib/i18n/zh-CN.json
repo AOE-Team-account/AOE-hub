@@ -68,7 +68,7 @@
   "login.newHere": "第一次来？",
   "login.banned": "此账号已被暂停或已被删除。",
   "signup.title": "注册",
-  "signup.freeLine": "永远免费——经验分享板和资源板。",
+  "signup.freeLine": "免费加入，免费使用——经验分享板和资源板。",
   "signup.name": "您的名字",
   "signup.agree": "我已年满13岁（如果未满13岁，应由父母或监护人创建账号），并同意<t>服务条款</t>、<c>内容政策</c>、<m>社区守则</m>、<s>安全政策</s>、<y>版权政策</y>和<p>隐私政策</p>。",
   "signup.submitting": "正在注册…",
@@ -978,5 +978,13 @@
   "errorPage.retry": "再试一次",
   "errorPage.home": "回到首页",
   "errorPage.browseExperience": "浏览经验分享板",
-  "errorPage.browseFiles": "浏览资源板"
+  "errorPage.browseFiles": "浏览资源板",
+  "policyUpdate.title": "请查看我们更新后的政策",
+  "policyUpdate.body": "我们发布了下列政策的新版本。请阅读并同意后继续使用 AOEhub。",
+  "policyUpdate.version": "版本 {version}",
+  "policyUpdate.agree": "我已阅读并同意",
+  "policyUpdate.error": "无法保存，请重试。",
+  "policyUpdate.decline": "如果您不同意，可以退出登录，或在“设置”中下载您的数据或删除账号。",
+  "policyUpdate.settings": "前往设置",
+  "a11y.skip": "跳到主要内容"
 }

@@ -14,7 +14,7 @@ export function RulesButton() {
     <>
       <Button size="small" onClick={() => setOpen(true)}>{t("staff.rules.title")}</Button>
       <Modal open={open} onClose={() => setOpen(false)}>
-        <p className="title">{t("staff.rules.title")}</p>
+        <p role="heading" aria-level={2} className="title">{t("staff.rules.title")}</p>
         <ol className="muted" style={{ paddingLeft: 18, margin: "8px 0" }}>
           <li>{t("staff.rules.r1")}</li>
           <li>{t("staff.rules.r2")}</li>

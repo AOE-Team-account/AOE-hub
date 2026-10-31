@@ -46,7 +46,7 @@ export function RoleMessageModal() {
 
   return (
     <Modal open={Boolean(current)} onClose={dismiss}>
-      <p className="title">{t("roleMessage.title")}</p>
+      <p role="heading" aria-level={2} className="title">{t("roleMessage.title")}</p>
       <p className="muted">{current?.body}</p>
       <div className="row"><Button variant="primary" onClick={dismiss}>{t("common.gotIt")}</Button></div>
     </Modal>

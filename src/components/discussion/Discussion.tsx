@@ -83,7 +83,7 @@ export function Discussion({
 
   return (
     <div className="card">
-      <p className="title" style={{ marginBottom: 12 }}>{t("discussion.title")}</p>
+      <p role="heading" aria-level={2} className="title" style={{ marginBottom: 12 }}>{t("discussion.title")}</p>
       {comments.length === 0 && <p className="muted">{t("discussion.none")}</p>}
       {sortedComments.map((comment) => (
         <CommentRow key={comment.id} comment={comment} authors={authors} postAuthorId={postAuthorId} notices={notices} parentType={parentType} parentId={parentId} />

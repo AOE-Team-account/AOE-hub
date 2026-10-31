@@ -68,7 +68,7 @@
   "login.newHere": "New here?",
   "login.banned": "This account is suspended or has been deleted.",
   "signup.title": "Sign up",
-  "signup.freeLine": "Free, always — the Experience Board and File Board.",
+  "signup.freeLine": "Free to join and use — the Experience Board and File Board.",
   "signup.name": "Your name",
   "signup.agree": "I am 13 or older (if you are younger, a parent or guardian should create the account), and I agree to the <t>Terms of Service</t>, the <c>Content Policy</c>, the <m>Community Policy</m>, the <s>Safety Policy</s>, the <y>Copyright Policy</y> and the <p>Privacy Policy</p>.",
   "signup.submitting": "Signing up…",
@@ -978,5 +978,13 @@
   "errorPage.retry": "Try again",
   "errorPage.home": "Go to the home page",
   "errorPage.browseExperience": "Read the Experience Board",
-  "errorPage.browseFiles": "Browse the File Board"
+  "errorPage.browseFiles": "Browse the File Board",
+  "policyUpdate.title": "Please review our updated policies",
+  "policyUpdate.body": "We've published new versions of the policies below. Please read them and agree to keep using AOEhub.",
+  "policyUpdate.version": "Version {version}",
+  "policyUpdate.agree": "I have read and agree",
+  "policyUpdate.error": "We couldn't save that. Please try again.",
+  "policyUpdate.decline": "If you don't agree, you can sign out, or download your data or delete your account in Settings.",
+  "policyUpdate.settings": "Go to Settings",
+  "a11y.skip": "Skip to main content"
 }

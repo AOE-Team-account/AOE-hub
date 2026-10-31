@@ -63,7 +63,7 @@ export function ReportModal() {
 
   return (
     <Modal open={Boolean(target)} onClose={closeReport}>
-      <p className="title">{isPicture ? t("report.pictureTitle") : t("report.title")}</p>
+      <p role="heading" aria-level={2} className="title">{isPicture ? t("report.pictureTitle") : t("report.title")}</p>
       <p className="muted" style={{ marginBottom: 10 }}>
         {isPicture ? t("report.pictureHelp") : t("report.whatIssue")}
       </p>

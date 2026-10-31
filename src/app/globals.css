@@ -14,7 +14,7 @@
   --card: #FFFFFF;
   --text: #2B2B27;
   --text-secondary: #6B6D63;
-  --text-muted: #97998E;
+  --text-muted: #6C6E64;
   --border: #E1E3D9;
   --accent: #3F6B4F;
   --accent-text: #FFFFFF;
@@ -38,7 +38,7 @@
   --card: #26271F;
   --text: #F0F0EA;
   --text-secondary: #ADAF9F;
-  --text-muted: #767869;
+  --text-muted: #909282;
   --border: #3A3B31;
   --pin-bg: #332C15;
   --pin-border: #5C4C1C;
@@ -250,3 +250,8 @@ section.settings-block > p.label { font-weight: 500; margin: 0 0 8px; font-size:
 .link-btn { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font: inherit; }
 .link-btn:hover { text-decoration: underline; }
 .feature-desc + .feature-desc { margin-top: 12px; }
+
+/* Keyboard users: a link that appears on focus and jumps past the menu. */
+.skip-link { position: absolute; left: 8px; top: -60px; z-index: 1000; background: var(--accent); color: var(--accent-text, #fff); padding: 8px 14px; border-radius: 8px; text-decoration: none; font-size: 14px; }
+.skip-link:focus { top: 8px; }
+#main-content:focus { outline: none; }

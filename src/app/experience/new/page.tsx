@@ -66,7 +66,7 @@ export default function NewExperiencePostPage() {
   return (
     <>
       <BackLink href="/experience" label={t("common.cancel")} />
-      <p className="title" style={{ marginBottom: 14 }}>{t("xnew.title")}</p>
+      <p role="heading" aria-level={2} className="title" style={{ marginBottom: 14 }}>{t("xnew.title")}</p>
 
       <label className="field-label">{t("xnew.kind")}</label>
       <select value={category} onChange={(e) => setCategory(e.target.value as ExperienceCategory)}>

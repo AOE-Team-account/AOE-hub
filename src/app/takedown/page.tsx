@@ -45,7 +45,7 @@ function TakedownForm() {
       <>
         <BackLink href="/" label={t("common.back")} />
         <div className="card">
-          <p className="title" style={{ marginBottom: 4 }}>{t("takedown.thanksTitle")}</p>
+          <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("takedown.thanksTitle")}</p>
           <p className="muted">{t("takedown.thanks")}</p>
         </div>
       </>
@@ -55,7 +55,7 @@ function TakedownForm() {
   return (
     <>
       <BackLink href="/" label={t("common.back")} />
-      <p className="title" style={{ marginBottom: 4 }}>{t("takedown.title")}</p>
+      <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("takedown.title")}</p>
       <p className="muted" style={{ marginBottom: 12 }}>{t("takedown.intro")}</p>
       <form onSubmit={submit}>
         <label className="field-label" style={{ marginTop: 0 }}>{t("takedown.name")} {t("common.required")}</label>

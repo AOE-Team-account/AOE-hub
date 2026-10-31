@@ -9,14 +9,22 @@ import { AppShell } from "@/components/layout/AppShell";
 import { getRequestLanguage } from "@/lib/i18n/server";
 import { isStaticLanguage, textDirection } from "@/lib/i18n/strings";
 import { getUiStrings } from "@/lib/translate/ui-languages";
-import { isPrivateSite } from "@/lib/site-private";
+import { isPrivateSite, siteUrl } from "@/lib/site-private";
 
 // On the test site (SITE_PRIVATE) every page tells search engines not to list it.
 export function generateMetadata(): Metadata {
+  const title = "AOEhub — Alpha Omega Education";
+  const description =
+    "A free education hub for homeschool, unschool, and school families: real experience, shared philosophy, and free curriculum.";
+  const base = siteUrl();
   return {
-    title: "AOEhub — Alpha Omega Education",
-    description:
-      "A free education hub for homeschool, unschool, and school families: real experience, shared philosophy, and free curriculum.",
+    title,
+    description,
+    // The address that the share picture's link is built from.
+    ...(base ? { metadataBase: new URL(base) } : {}),
+    // What shows when a link to the hub is shared (the picture itself is src/app/opengraph-image.png).
+    openGraph: { title, description, siteName: "AOEhub", type: "website" },
+    twitter: { card: "summary_large_image", title, description },
     ...(isPrivateSite() ? { robots: { index: false, follow: false, nocache: true } } : {}),
   };
 }

@@ -46,7 +46,7 @@ export default function ResetPasswordPage() {
   if (state === "nolink") {
     return (
       <div className="card">
-        <p className="title" style={{ marginBottom: 4 }}>{t("reset.title")}</p>
+        <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("reset.title")}</p>
         <p className="muted">{t("reset.noLink")}</p>
         <p style={{ marginTop: 10 }}><Link href="/forgot-password" className="btn small">{t("reset.askAgain")}</Link></p>
       </div>
@@ -56,7 +56,7 @@ export default function ResetPasswordPage() {
   if (state === "done") {
     return (
       <div className="card">
-        <p className="title" style={{ marginBottom: 4 }}>{t("reset.doneTitle")}</p>
+        <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("reset.doneTitle")}</p>
         <p className="muted">{t("reset.done")}</p>
         <Button variant="primary" style={{ marginTop: 10 }} onClick={() => router.push("/experience")}>{t("reset.continue")}</Button>
       </div>
@@ -65,7 +65,7 @@ export default function ResetPasswordPage() {
 
   return (
     <form onSubmit={submit}>
-      <p className="title" style={{ marginBottom: 4 }}>{t("reset.title")}</p>
+      <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("reset.title")}</p>
       <p className="muted" style={{ marginBottom: 10 }}>{t("reset.help")}</p>
       <PasswordInput value={pw} onChange={(e) => setPw(e.target.value)} placeholder={t("reset.newPw")} autoComplete="new-password" />
       <PasswordInput value={pw2} onChange={(e) => setPw2(e.target.value)} placeholder={t("reset.again")} autoComplete="new-password" style={{ marginTop: 8 }} />

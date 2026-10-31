@@ -96,7 +96,7 @@ export default async function FileDetailPage({ params }: PageProps<"/files/[file
       </div>
 
       <div className="card">
-        <p className="title" style={{ marginBottom: 4 }}>{t("file.filesInPost")}</p>
+        <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("file.filesInPost")}</p>
         <p className="tiny" style={{ marginBottom: 10 }}>
           {t("file.translatedNote")}
         </p>

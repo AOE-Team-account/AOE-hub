@@ -68,7 +68,7 @@
   "login.newHere": "第一次來？",
   "login.banned": "此賬號已被暫停或已被刪除。",
   "signup.title": "註冊",
-  "signup.freeLine": "永遠免費——經驗分享板和資源板。",
+  "signup.freeLine": "免費加入、免費使用——經驗分享板和資源板。",
   "signup.name": "您的名字",
   "signup.agree": "我已年滿13歲（如果未滿13歲，應由父母或監護人建立賬號），並同意<t>服務條款</t>、<c>內容政策</c>、<m>社群守則</m>、<s>安全政策</s>、<y>版權政策</y>和<p>隱私政策</p>。",
   "signup.submitting": "正在註冊…",
@@ -978,5 +978,13 @@
   "errorPage.retry": "再試一次",
   "errorPage.home": "回到首頁",
   "errorPage.browseExperience": "瀏覽經驗分享板",
-  "errorPage.browseFiles": "瀏覽資源板"
+  "errorPage.browseFiles": "瀏覽資源板",
+  "policyUpdate.title": "請檢視我們更新後的政策",
+  "policyUpdate.body": "我們釋出了下列政策的新版本。請閱讀並同意後繼續使用 AOEhub。",
+  "policyUpdate.version": "版本 {version}",
+  "policyUpdate.agree": "我已閱讀並同意",
+  "policyUpdate.error": "無法儲存，請重試。",
+  "policyUpdate.decline": "如果您不同意，可以退出登入，或在“設定”中下載您的資料或刪除賬號。",
+  "policyUpdate.settings": "前往設定",
+  "a11y.skip": "跳到主要內容"
 }

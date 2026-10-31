@@ -52,7 +52,7 @@ You can see and correct your data, delete your account, and download a copy in S
 You must be 13 or older. A younger child's account should be created and managed by a parent or guardian. Please do not use a photo of a child as a profile picture.
 
 ## 8. Cookies and similar storage
-We use cookies for your sign-in and for your chosen language (`aoehub.lang`), and your browser's storage for theme, text size and a one-time welcome card. We do not use advertising or tracking cookies. [[Lawyer: whether a consent banner is needed.]]
+We use cookies for your sign-in and for your chosen language (`aoehub.lang`), and your browser's storage for theme, text size and a one-time welcome card. We do not use advertising or tracking cookies.
 
 ## 9. Changes
 The version and date are shown on each page. If we change this policy in a way that matters, we will tell you.

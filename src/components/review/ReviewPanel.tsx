@@ -316,7 +316,7 @@ export function ReviewPanel({ data, isCreator, canSuspend }: { data: ReviewData;
           <Modal open={appealAction !== null} onClose={() => setAppealAction(null)}>
             {appealAction && (
               <>
-                <p className="title">{t(`staff.appealTitle.${appealAction.decision}` as UiKey)}</p>
+                <p role="heading" aria-level={2} className="title">{t(`staff.appealTitle.${appealAction.decision}` as UiKey)}</p>
                 <p className="muted">{t("staff.appealNoteHelp")}</p>
                 <textarea value={appealNote} onChange={(e) => setAppealNote(e.target.value)} maxLength={500} />
                 {error && <p className="muted" style={{ color: "#b5471f", marginTop: 8 }}>{error}</p>}
@@ -354,7 +354,7 @@ export function ReviewPanel({ data, isCreator, canSuspend }: { data: ReviewData;
       <Modal open={pending !== null} onClose={close}>
         {pending && (
           <>
-            <p className="title">{title[pending.type]}</p>
+            <p role="heading" aria-level={2} className="title">{title[pending.type]}</p>
             {pending.type === "notice" && (
               <>
                 <p className="muted">

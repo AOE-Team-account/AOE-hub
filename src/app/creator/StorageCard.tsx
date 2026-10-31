@@ -41,7 +41,7 @@ export function StorageCard() {
 
   return (
     <div className="card">
-      <p className="title" style={{ marginBottom: 4 }}>{t("creator.storage.title")}</p>
+      <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("creator.storage.title")}</p>
       <p className="muted" style={{ marginBottom: 10 }}>{t("creator.storage.help")}</p>
       {state ? (
         <>

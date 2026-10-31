@@ -192,7 +192,7 @@ export function CreatorClient({ data }: { data: CreatorData }) {
     <>
       <BackLink href="/profile" label={t("staff.backToProfile")} />
       <div className="row between wrap" style={{ gap: 8, margin: "0 0 2px" }}>
-        <p className="title" style={{ margin: 0 }}>{t("creator.panelTitle")}</p>
+        <p role="heading" aria-level={2} className="title" style={{ margin: 0 }}>{t("creator.panelTitle")}</p>
         <LanguageSelect style={{ width: "auto", padding: "6px 10px", fontSize: 13 }} />
       </div>
       <p className="tiny" style={{ marginBottom: 6 }}>{t("creator.private")}</p>
@@ -283,7 +283,7 @@ export function CreatorClient({ data }: { data: CreatorData }) {
 
           {limitFor && (
             <div className="card" style={{ marginTop: 10 }}>
-              <p className="title" style={{ marginBottom: 4 }}>{t("creator.limit.for", { name: limitFor.person.name })}</p>
+              <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("creator.limit.for", { name: limitFor.person.name })}</p>
               <p className="tiny" style={{ marginBottom: 8 }}>
                 {limitFor.limitFiles === null ? t("creator.limit.none") : t("creator.limit.now", { files: limitFor.limitFiles.toLocaleString(lang), size: formatBytes(limitFor.limitBytes ?? 0) })}{" "}
                 {t("creator.limit.used", { files: limitFor.usedFiles.toLocaleString(lang), size: formatBytes(limitFor.usedBytes) })}
@@ -306,7 +306,7 @@ export function CreatorClient({ data }: { data: CreatorData }) {
                 <Button size="small" onClick={() => setLimitFor(null)}>{t("staff.close")}</Button>
               </div>
               <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
-                <p className="title" style={{ marginBottom: 4, fontSize: 14 }}>{t("creator.limit.onceTitle")}</p>
+                <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4, fontSize: 14 }}>{t("creator.limit.onceTitle")}</p>
                 <p className="tiny" style={{ marginBottom: 8 }}>{t("creator.limit.onceHelp")}</p>
                 {limitFor.once !== null && <p className="tiny" style={{ marginBottom: 8, color: "var(--accent)" }}>{t("creator.limit.onceActive", { size: formatBytes(limitFor.once) })}</p>}
                 <div className="row wrap" style={{ gap: 8 }}>
@@ -493,7 +493,7 @@ export function CreatorClient({ data }: { data: CreatorData }) {
       {tab === "hub" && (
         <>
           <div className="card">
-            <p className="title" style={{ marginBottom: 4 }}>{t("creator.hub.annTitle")}</p>
+            <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("creator.hub.annTitle")}</p>
             <p className="muted" style={{ marginBottom: 10 }}>{t("creator.hub.annHelp")}</p>
             <input value={annTitle} onChange={(e) => setAnnTitle(e.target.value)} placeholder={t("creator.hub.annTitlePh")} maxLength={200} />
             <textarea value={annBody} onChange={(e) => setAnnBody(e.target.value)} placeholder={t("creator.hub.annBodyPh")} style={{ marginTop: 8 }} />
@@ -506,7 +506,7 @@ export function CreatorClient({ data }: { data: CreatorData }) {
             </Button>
           </div>
           <div className="card">
-            <p className="title" style={{ marginBottom: 4 }}>{t("creator.hub.limitTitle")}</p>
+            <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("creator.hub.limitTitle")}</p>
             <p className="muted" style={{ marginBottom: 10 }}>
               {t("creator.hub.limitHelp")}
             </p>
@@ -530,7 +530,7 @@ export function CreatorClient({ data }: { data: CreatorData }) {
             </div>
           </div>
           <div className="card">
-            <p className="title" style={{ marginBottom: 4 }}>{t("creator.hub.linksTitle")}</p>
+            <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("creator.hub.linksTitle")}</p>
             <p className="muted" style={{ marginBottom: 10 }}>
               {t("creator.hub.linksHelp")}
             </p>
@@ -565,12 +565,12 @@ export function CreatorClient({ data }: { data: CreatorData }) {
           </div>
           <KeyHelpEditor rows={data.keyHelp} />
           <div className="card">
-            <p className="title" style={{ marginBottom: 4 }}>{t("staff.rules.title")}</p>
+            <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("staff.rules.title")}</p>
             <p className="muted" style={{ marginBottom: 10 }}>{t("creator.hub.rulesHelp")}</p>
             <RulesButton />
           </div>
           <div className="card">
-            <p className="title" style={{ marginBottom: 4 }}>{t("creator.hub.signinTitle")}</p>
+            <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("creator.hub.signinTitle")}</p>
             <p className="muted" style={{ marginBottom: 8 }}>
               {t("creator.hub.recoveryHelp", { n: data.security.keysLeft })}
             </p>
@@ -612,7 +612,7 @@ export function CreatorClient({ data }: { data: CreatorData }) {
             ))}
           </div>
           <div className="card">
-            <p className="title" style={{ marginBottom: 4 }}>{t("creator.hub.twoStepTitle")}</p>
+            <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("creator.hub.twoStepTitle")}</p>
             <p className="muted" style={{ marginBottom: 8 }}>
               {t("creator.hub.twoStepHelp")}
             </p>
@@ -628,7 +628,7 @@ export function CreatorClient({ data }: { data: CreatorData }) {
       <Modal open={confirm !== null} onClose={() => setConfirm(null)}>
         {confirm && (
           <>
-            <p className="title">{confirm.title}</p>
+            <p role="heading" aria-level={2} className="title">{confirm.title}</p>
             <p className="muted">{confirm.body}</p>
             {confirm.reasonFor && (
               <select value={reason} onChange={(e) => setReason(e.target.value)}>

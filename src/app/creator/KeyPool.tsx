@@ -79,7 +79,7 @@ export function KeyPool() {
 
   return (
     <div className="card">
-      <p className="title" style={{ marginBottom: 4 }}>{t("creator.pool.title")}</p>
+      <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("creator.pool.title")}</p>
       <p className="muted" style={{ marginBottom: 8 }}>
         {t("creator.pool.summary", { total, file: fileRows.length, added: rows.length })}
         {checkedAt ? ` ${t("creator.pool.workingNow", { n: working, time: checkedAt.toLocaleTimeString() })}` : ` ${t("creator.pool.pressTest")}`}

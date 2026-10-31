@@ -31,7 +31,9 @@ export function buildCsp(nonce: string, host: string, proto: string): string {
   // database/sign-in service, and the private file store (members upload
   // straight into it with a short-lived signed address).
   const store = fileStoreOrigins();
-  const connect = ["'self'", sb, sbWs, ...store, dev ? "ws:" : null].filter(Boolean);
+  // The "are you a person?" check (Cloudflare Turnstile) is only allowed once it is switched on.
+  const turnstile = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ? "https://challenges.cloudflare.com" : null;
+  const connect = ["'self'", sb, sbWs, ...store, turnstile, dev ? "ws:" : null].filter(Boolean);
   const directives = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}`,
@@ -42,7 +44,7 @@ export function buildCsp(nonce: string, host: string, proto: string): string {
     "font-src 'self' data:",
     `connect-src ${connect.join(" ")}`,
     // Hosted games are shown from the separate "play." address.
-    isPlainHost(host) && (proto === "http" || proto === "https") ? `frame-src 'self' ${proto}://play.${host}` : "frame-src 'self'",
+    `frame-src 'self'${turnstile ? ` ${turnstile}` : ""}${isPlainHost(host) && (proto === "http" || proto === "https") ? ` ${proto}://play.${host}` : ""}`,
     "worker-src 'self' blob:",
     "manifest-src 'self'",
     "object-src 'none'",

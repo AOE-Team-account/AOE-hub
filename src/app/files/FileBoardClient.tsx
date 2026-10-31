@@ -72,7 +72,7 @@ function FileBoardContent({ files, authors }: { files: FilePost[]; authors: Reco
       {!query && (
         <div className="start-here">
           <div>
-            <p className="title" style={{ margin: "0 0 2px", fontSize: 14.5 }}>{t("files.startHere")}</p>
+            <p role="heading" aria-level={2} className="title" style={{ margin: "0 0 2px", fontSize: 14.5 }}>{t("files.startHere")}</p>
             <p className="tiny">{t("files.startHereBody")}</p>
           </div>
           <button className="btn">{t("files.browse")}</button>
@@ -85,7 +85,7 @@ function FileBoardContent({ files, authors }: { files: FilePost[]; authors: Reco
       <ChipRow options={mediaTypeOptions} value={mediaType} onChange={setMediaType} />
 
       <div className="row between" style={{ marginBottom: 12 }}>
-        <p className="title" style={{ margin: 0 }}>{query ? t("files.resultsFor", { query }) : t("files.recommended")}</p>
+        <p role="heading" aria-level={2} className="title" style={{ margin: 0 }}>{query ? t("files.resultsFor", { query }) : t("files.recommended")}</p>
         <select>
           <option>{t("files.sort.relevant")}</option>
           <option>{t("files.sort.newest")}</option>
