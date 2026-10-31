@@ -6,7 +6,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 
 // The strict rules every reviewer follows (memory doc chat6, "Strict rules for
-// reviewers" — a draft the Creator edits). Shown from both panels.
+// reviewers"). Shown from both panels.
 export function RulesButton() {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);

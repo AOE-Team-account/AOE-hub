@@ -3,6 +3,7 @@ import { createServiceRoleClient } from "@/lib/supabase/service";
 import { getR2Object } from "@/lib/storage/r2";
 import { mimeFor } from "@/lib/games";
 import { verifyGameToken } from "@/lib/game-token";
+import { isPlainHost } from "@/lib/security-headers";
 
 export const runtime = "nodejs";
 
@@ -12,8 +13,17 @@ export const runtime = "nodejs";
 // signed in. Only games that passed the malware check are served.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Plain answers (not found / sign in) carry the same safety headers as the games.
+const PLAIN_HEADERS = {
+  "cache-control": "no-store",
+  "content-type": "text/plain; charset=utf-8",
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "no-referrer",
+  "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+};
+
 function notFound() {
-  return new NextResponse("Not found", { status: 404, headers: { "cache-control": "no-store" } });
+  return new NextResponse("Not found", { status: 404, headers: PLAIN_HEADERS });
 }
 
 export async function GET(request: Request, { params }: RouteContext<"/play/[assetId]/[[...path]]">) {
@@ -25,7 +35,7 @@ export async function GET(request: Request, { params }: RouteContext<"/play/[ass
   // The first part of the path is the signed token handed out to signed-in members.
   const [token, ...rest] = path ?? [];
   if (!token || !verifyGameToken(assetId, token)) {
-    return new NextResponse("Sign in to AOEhub to play.", { status: 401, headers: { "cache-control": "no-store" } });
+    return new NextResponse("Sign in to AOEhub to play.", { status: 401, headers: PLAIN_HEADERS });
   }
 
   const segments = rest.map((s) => decodeURIComponent(s));
@@ -55,7 +65,9 @@ export async function GET(request: Request, { params }: RouteContext<"/play/[ass
 
   // Where the hub itself lives (play.example.com -> example.com): only it may frame the game.
   const proto = request.headers.get("x-forwarded-proto") ?? (host.includes("localhost") ? "http" : "https");
-  const hubOrigin = `${proto}://${host.replace(/^play\./, "")}`;
+  const hubHost = host.replace(/^play\./, "");
+  // Only a plain address may be copied into the policy; anything odd means nobody may frame the game.
+  const hubOrigin = isPlainHost(hubHost) && (proto === "http" || proto === "https") ? `${proto}://${hubHost}` : "'none'";
   const headers = new Headers({
     "content-type": mimeFor(rel),
     "x-content-type-options": "nosniff",

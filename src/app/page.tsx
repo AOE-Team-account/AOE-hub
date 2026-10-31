@@ -32,7 +32,7 @@ export default function HomePage() {
       <div className="landing-hero">
         <Logo />
         <p className="tagline">{t("landing.eyebrow")}</p>
-        <h1 dangerouslySetInnerHTML={{ __html: t("landing.h1") }} />
+        <h1>{t("landing.h1")}</h1>
         <p>{t("landing.subhead")}</p>
         <p>{t("landing.subhead2")}</p>
         <div className="landing-cta">

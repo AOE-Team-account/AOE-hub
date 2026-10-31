@@ -22,10 +22,6 @@ type Reason = "curriculum" | "community" | "philosophy" | "notsure";
 // way Q2 already uses "notsure" as its no-real-answer default.
 type Referral = "friend" | "web-search" | "social-media" | "youtube" | "other" | "unspecified";
 
-// Q1/Q3 copy below is a first-pass draft, not final — the project owner
-// wants exact wording decided together with the marketing page rewrite in
-// Phase 6, not invented in isolation here. Functionally correct and fine to
-// ship in the meantime; expect these strings to change.
 const Q1_KEYS: { value: Situation; label: UiKey }[] = [
   { value: "homeschooling", label: "onboarding.q1.homeschooling" },
   { value: "in-school", label: "onboarding.q1.inSchool" },

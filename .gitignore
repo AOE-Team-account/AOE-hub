@@ -40,3 +40,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# private working documents (kept on Clara's computer only, never on GitHub)
+/RECOVERY.md
+/MARKETPLACE-UPDATE.md
+/hub-prototype2.html
+/AOEhub *.md
+/policy-review/

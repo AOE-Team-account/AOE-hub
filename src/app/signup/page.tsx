@@ -90,7 +90,9 @@ export default function SignupPage() {
             {rich(t("signup.agree"), {
               t: (c) => <Link href="/policy/terms" target="_blank" style={{ color: "var(--accent)" }}>{c}</Link>,
               c: (c) => <Link href="/policy/content-policy" target="_blank" style={{ color: "var(--accent)" }}>{c}</Link>,
+              m: (c) => <Link href="/policy/community" target="_blank" style={{ color: "var(--accent)" }}>{c}</Link>,
               s: (c) => <Link href="/policy/safety" target="_blank" style={{ color: "var(--accent)" }}>{c}</Link>,
+              y: (c) => <Link href="/policy/copyright" target="_blank" style={{ color: "var(--accent)" }}>{c}</Link>,
               p: (c) => <Link href="/policy/privacy" target="_blank" style={{ color: "var(--accent)" }}>{c}</Link>,
             })}
           </span>

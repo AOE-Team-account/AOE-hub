@@ -56,7 +56,7 @@ function ForgotPassword() {
         <form onSubmit={submit}>
           <p className="muted" style={{ marginBottom: 10 }}>{t("forgot.help")}</p>
           <label className="field-label" style={{ marginTop: 0 }}>{t("login.email")}</label>
-          <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" placeholder="you@example.com" />
+          <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
           {error && <p className="muted" style={{ color: "#b5471f", marginTop: 8 }}>{error}</p>}
           <Button variant="primary" type="submit" style={{ width: "100%", marginTop: 14 }} disabled={busy || !email.trim()}>
             {busy ? t("forgot.sending") : t("forgot.send")}
