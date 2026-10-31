@@ -19,6 +19,7 @@ for (const path of ["/", "/login", "/policy/terms", "/no-such-page-xyz", "/api/m
   const csp = h("content-security-policy");
   ok(/max-age=\d{7,}/.test(h("strict-transport-security")), "Strict-Transport-Security (HTTPS only)", h("strict-transport-security"));
   ok(/frame-ancestors 'none'/.test(csp), "CSP: nobody may frame the hub");
+  ok(/img-src [^;]*r2\.cloudflarestorage\.com/.test(csp) && /connect-src [^;]*r2\.cloudflarestorage\.com/.test(csp), "CSP: pictures, videos and uploads may use our own file store");
   ok(/script-src [^;]*'nonce-[A-Za-z0-9+/=]+'/.test(csp) && !/script-src[^;]*'unsafe-inline'/.test(csp) && !/script-src[^;]*'unsafe-eval'/.test(csp), "CSP: scripts need a one-time nonce (no unsafe-inline / unsafe-eval)");
   ok(/object-src 'none'/.test(csp) && /base-uri 'self'/.test(csp) && /form-action 'self'/.test(csp), "CSP: no plugins, fixed base address, forms only to ourselves");
   ok(/default-src 'self'/.test(csp), "CSP: default is ourselves only");
