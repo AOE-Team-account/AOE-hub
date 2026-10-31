@@ -31,6 +31,7 @@ export const outfit = localFont({
   ],
   variable: "--font-outfit",
   display: "swap",
+  preload: false,
 });
 
 export const plusJakartaSans = localFont({
@@ -39,6 +40,7 @@ export const plusJakartaSans = localFont({
   ],
   variable: "--font-plus-jakarta-sans",
   display: "swap",
+  preload: false,
 });
 
 export const architectsDaughter = localFont({
@@ -47,6 +49,7 @@ export const architectsDaughter = localFont({
   ],
   variable: "--font-architects-daughter",
   display: "swap",
+  preload: false,
 });
 
 export const cormorantGaramond = localFont({
@@ -55,6 +58,7 @@ export const cormorantGaramond = localFont({
   ],
   variable: "--font-cormorant-garamond",
   display: "swap",
+  preload: false,
 });
 
 export const quicksand = localFont({
@@ -63,6 +67,7 @@ export const quicksand = localFont({
   ],
   variable: "--font-quicksand",
   display: "swap",
+  preload: false,
 });
 
 export const jua = localFont({
@@ -71,6 +76,7 @@ export const jua = localFont({
   ],
   variable: "--font-jua",
   display: "swap",
+  preload: false,
 });
 
 export const dmSerifDisplay = localFont({
@@ -79,6 +85,7 @@ export const dmSerifDisplay = localFont({
   ],
   variable: "--font-dm-serif-display",
   display: "swap",
+  preload: false,
 });
 
 export const dmSans = localFont({
@@ -87,6 +94,7 @@ export const dmSans = localFont({
   ],
   variable: "--font-dm-sans",
   display: "swap",
+  preload: false,
 });
 
 export const robotoCondensed = localFont({
@@ -95,6 +103,7 @@ export const robotoCondensed = localFont({
   ],
   variable: "--font-roboto-condensed",
   display: "swap",
+  preload: false,
 });
 
 export const instrumentSans = localFont({
@@ -103,6 +112,7 @@ export const instrumentSans = localFont({
   ],
   variable: "--font-instrument-sans",
   display: "swap",
+  preload: false,
 });
 
 export const sourceSerif4 = localFont({
@@ -111,6 +121,7 @@ export const sourceSerif4 = localFont({
   ],
   variable: "--font-source-serif-4",
   display: "swap",
+  preload: false,
 });
 
 export const albertSans = localFont({
@@ -119,6 +130,7 @@ export const albertSans = localFont({
   ],
   variable: "--font-albert-sans",
   display: "swap",
+  preload: false,
 });
 
 export const manrope = localFont({
@@ -127,6 +139,7 @@ export const manrope = localFont({
   ],
   variable: "--font-manrope",
   display: "swap",
+  preload: false,
 });
 
 export const allFontVariables = [

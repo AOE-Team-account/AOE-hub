@@ -88,7 +88,7 @@ export async function GET(request: Request, { params }: RouteContext<"/play/[ass
       "base-uri 'self'",
       "form-action 'none'",
       `frame-ancestors ${hubOrigin}`,
-      "sandbox allow-scripts allow-same-origin allow-pointer-lock allow-fullscreen allow-modals",
+      "sandbox allow-scripts allow-same-origin allow-pointer-lock allow-modals",
     ].join("; "),
   });
   if (object.ContentLength !== undefined) headers.set("content-length", String(object.ContentLength));

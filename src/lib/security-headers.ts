@@ -13,12 +13,14 @@ function origin(url: string): string | null {
 // (letters, digits, dots, hyphens and a port) may be copied into the policy.
 export const isPlainHost = (host: string) => /^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?(:[0-9]{1,5})?$/i.test(host);
 
-// The private file store's address: pictures and videos in posts are sent
+// The private file store's addresses: pictures and videos in posts are sent
 // there by a short-lived link, and uploads go straight to it. Exactly our own
-// account when known, so a bucket belonging to someone else is never allowed.
-function fileStoreOrigin(): string {
+// account (its address and the bucket addresses under it), so a bucket
+// belonging to someone else is never allowed.
+function fileStoreOrigins(): string[] {
   const id = (process.env.R2_ACCOUNT_ID ?? "").trim();
-  return /^[a-z0-9]{8,64}$/i.test(id) ? `https://${id}.r2.cloudflarestorage.com` : "https://*.r2.cloudflarestorage.com";
+  if (!/^[a-z0-9]{8,64}$/i.test(id)) return ["https://*.r2.cloudflarestorage.com"];
+  return [`https://${id}.r2.cloudflarestorage.com`, `https://*.${id}.r2.cloudflarestorage.com`];
 }
 
 export function buildCsp(nonce: string, host: string, proto: string): string {
@@ -28,15 +30,15 @@ export function buildCsp(nonce: string, host: string, proto: string): string {
   // The only addresses the hub's own pages may be asked to call: itself, the
   // database/sign-in service, and the private file store (members upload
   // straight into it with a short-lived signed address).
-  const store = fileStoreOrigin();
-  const connect = ["'self'", sb, sbWs, store, dev ? "ws:" : null].filter(Boolean);
+  const store = fileStoreOrigins();
+  const connect = ["'self'", sb, sbWs, ...store, dev ? "ws:" : null].filter(Boolean);
   const directives = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${dev ? " 'unsafe-eval'" : ""}`,
     `style-src 'self' 'nonce-${nonce}'`,
     "style-src-attr 'unsafe-inline'",
-    `img-src 'self' data: blob: ${store}`,
-    `media-src 'self' blob: ${store}`,
+    `img-src 'self' data: blob: ${store.join(" ")}`,
+    `media-src 'self' blob: ${store.join(" ")}`,
     "font-src 'self' data:",
     `connect-src ${connect.join(" ")}`,
     // Hosted games are shown from the separate "play." address.

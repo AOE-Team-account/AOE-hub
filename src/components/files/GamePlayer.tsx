@@ -42,7 +42,7 @@ export function GamePlayer({ assetId }: { assetId: string }) {
             ref={frame}
             src={src}
             title="game"
-            sandbox="allow-scripts allow-same-origin allow-pointer-lock allow-fullscreen allow-modals"
+            sandbox="allow-scripts allow-same-origin allow-pointer-lock allow-modals"
             allow="fullscreen; gamepad; autoplay"
             referrerPolicy="no-referrer"
             style={{ width: "100%", height: "70vh", minHeight: 320, border: "1px solid var(--border)", borderRadius: 10, background: "#000" }}

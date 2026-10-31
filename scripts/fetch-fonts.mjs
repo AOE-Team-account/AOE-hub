@@ -86,7 +86,9 @@ for (const f of out) {
   const byFile = new Map();
   for (const w of f.weights) byFile.set(f.files[w], [...(byFile.get(f.files[w]) ?? []), w]);
   const src = [...byFile].map(([file, ws]) => `    { path: "../fonts/${f.folder}/${file}", weight: "${ws.length > 1 ? `${Math.min(...ws)} ${Math.max(...ws)}` : ws[0]}", style: "normal" }`).join(",\n");
-  lines.push(`export const ${f.name} = localFont({\n  src: [\n${src},\n  ],\n  variable: "${f.variable}",\n  display: "swap",\n});`, "");
+  // Only the default theme's fonts are preloaded; the other themes' fonts load when a theme uses them.
+  const preload = ["lora", "inter"].includes(f.name) ? "" : "\n  preload: false,";
+  lines.push(`export const ${f.name} = localFont({\n  src: [\n${src},\n  ],\n  variable: "${f.variable}",\n  display: "swap",${preload}\n});`, "");
 }
 lines.push("export const allFontVariables = [", ...out.map((f) => `  ${f.name}.variable,`), '].join(" ");', "");
 fs.writeFileSync(path.join(root, "src", "lib", "fonts.ts"), lines.join("\n"));
