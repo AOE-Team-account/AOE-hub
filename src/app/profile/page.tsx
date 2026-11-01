@@ -210,7 +210,7 @@ export default function ProfilePage() {
         <Stat label={t("profile.followers")} value={user.followers.toLocaleString()} />
         <Stat label={t("profile.following")} value={user.following.toLocaleString()} />
       </div>
-      <p className="tiny" style={{ marginBottom: 12 }}><Link href="/appeal" style={{ color: "var(--accent)" }}>{t("appeal.link")}</Link></p>
+      <p className="tiny" style={{ marginBottom: 12 }}><Link href="/appeal" style={{ color: "var(--accent-link)" }}>{t("appeal.link")}</Link></p>
 
       <p className="label" style={{ fontWeight: 500, margin: "0 0 8px" }}>{t("profile.myFiles")}</p>
       {myFiles.length === 0 && <p className="muted">{t("profile.noFiles")}</p>}

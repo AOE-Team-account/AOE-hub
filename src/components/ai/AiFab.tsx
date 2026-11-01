@@ -203,7 +203,7 @@ export function AiFab() {
                   {m.sources.map((src, i) => (
                     <span key={i}>
                       {i > 0 && ", "}
-                      {src.href ? <Link href={src.href} style={{ color: "var(--accent)" }}>{src.title}</Link> : src.title}
+                      {src.href ? <Link href={src.href} style={{ color: "var(--accent-link)" }}>{src.title}</Link> : src.title}
                     </span>
                   ))}
                 </div>
@@ -215,7 +215,7 @@ export function AiFab() {
               )}
               {m.postHref && (
                 <div className="tiny" style={{ marginTop: 6 }}>
-                  <Link href={m.postHref} style={{ color: "var(--accent)" }}>{t("ai.seeQuestion")}</Link>
+                  <Link href={m.postHref} style={{ color: "var(--accent-link)" }}>{t("ai.seeQuestion")}</Link>
                 </div>
               )}
             </div>

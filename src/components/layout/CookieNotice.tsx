@@ -30,7 +30,7 @@ export function CookieNotice() {
   return (
     <div className="cookie-notice" role="region" aria-label={t("cookie.label")}>
       <p style={{ margin: 0 }}>
-        {rich(t("cookie.body"), { a: (c) => <Link href="/policy/privacy" style={{ color: "var(--accent)" }}>{c}</Link> })}
+        {rich(t("cookie.body"), { a: (c) => <Link href="/policy/privacy" style={{ color: "var(--accent-link)" }}>{c}</Link> })}
       </p>
       <button type="button" className="btn small primary" onClick={close}>{t("common.gotIt")}</button>
     </div>

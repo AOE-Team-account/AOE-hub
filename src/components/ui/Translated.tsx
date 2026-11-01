@@ -71,7 +71,7 @@ export function Translated({
           <button
             type="button"
             onClick={(e) => { stop(e); toggleOriginal(`${type}:${id}`); }}
-            style={{ background: "none", border: 0, padding: 0, color: "var(--accent)", cursor: "pointer", font: "inherit" }}
+            style={{ background: "none", border: 0, padding: 0, color: "var(--accent-link)", cursor: "pointer", font: "inherit" }}
           >
             {showOriginal ? t("translate.showTranslation") : t("translate.showOriginal")}
           </button>

@@ -101,7 +101,7 @@ export function KeyPool() {
         }}>{busy ? t("creator.pool.checking") : t("creator.pool.checkAdd")}</Button>
       </div>
       <p className="tiny" style={{ marginTop: 6 }}>{t(SERVICES.find((s) => s.id === provider)!.help)}</p>
-      {message && <p className="tiny" style={{ marginTop: 6, color: "var(--accent)" }}>{message}</p>}
+      {message && <p className="tiny" style={{ marginTop: 6, color: "var(--accent-link)" }}>{message}</p>}
       {error && <p className="tiny" style={{ marginTop: 6, color: "#b5471f" }}>{error}</p>}
 
       <p className="label" style={{ fontWeight: 500, margin: "14px 0 6px" }}>{t("creator.pool.list")}</p>

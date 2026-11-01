@@ -60,7 +60,7 @@ export default function PoliciesUpdatePage() {
             return (
               <li key={p.kind + p.version} style={{ margin: "6px 0" }}>
                 {slug ? (
-                  <Link href={`/policy/${slug}`} target="_blank" style={{ color: "var(--accent)" }}>{t(POLICY_NAME_KEYS[slug])}</Link>
+                  <Link href={`/policy/${slug}`} target="_blank" style={{ color: "var(--accent-link)" }}>{t(POLICY_NAME_KEYS[slug])}</Link>
                 ) : p.kind}
                 {" "}<span className="tiny">({t("policyUpdate.version", { version: p.version })})</span>
               </li>
@@ -74,7 +74,7 @@ export default function PoliciesUpdatePage() {
         </div>
         <p className="tiny" style={{ marginTop: 12 }}>
           {t("policyUpdate.decline")}{" "}
-          <Link href="/settings" style={{ color: "var(--accent)" }}>{t("policyUpdate.settings")}</Link>
+          <Link href="/settings" style={{ color: "var(--accent-link)" }}>{t("policyUpdate.settings")}</Link>
         </p>
       </div>
     </>

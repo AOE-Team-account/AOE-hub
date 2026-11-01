@@ -84,7 +84,7 @@ export function ReportModal() {
       />
       {!isPicture && reason === "copyright" && (
         <p className="tiny" style={{ marginTop: 6 }}>
-          <a href={`/takedown?url=${encodeURIComponent(typeof window !== "undefined" ? window.location.href : "")}`} style={{ color: "var(--accent)" }}>{t("report.copyrightOwner")}</a>
+          <a href={`/takedown?url=${encodeURIComponent(typeof window !== "undefined" ? window.location.href : "")}`} style={{ color: "var(--accent-link)" }}>{t("report.copyrightOwner")}</a>
         </p>
       )}
       <label className="check-item" style={{ alignItems: "flex-start", marginTop: 8 }}>

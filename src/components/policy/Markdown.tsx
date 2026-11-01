@@ -20,8 +20,8 @@ function inline(text: string, keyBase: string): ReactNode[] {
     else if (m[3] != null) out.push(<code key={key}>{m[3]}</code>);
     else {
       const href = m[5];
-      if (/^\/[^/]/.test(href) || href === "/") out.push(<Link key={key} href={href} style={{ color: "var(--accent)" }}>{m[4]}</Link>);
-      else if (/^https:\/\//.test(href)) out.push(<a key={key} href={href} rel="noopener noreferrer" target="_blank" style={{ color: "var(--accent)" }}>{m[4]}</a>);
+      if (/^\/[^/]/.test(href) || href === "/") out.push(<Link key={key} href={href} style={{ color: "var(--accent-link)" }}>{m[4]}</Link>);
+      else if (/^https:\/\//.test(href)) out.push(<a key={key} href={href} rel="noopener noreferrer" target="_blank" style={{ color: "var(--accent-link)" }}>{m[4]}</a>);
       else out.push(m[4]);
     }
     last = m.index + m[0].length;
@@ -32,7 +32,7 @@ function inline(text: string, keyBase: string): ReactNode[] {
     typeof part !== "string"
       ? [part]
       : part.split(/([A-Za-z0-9._-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/).map((seg, j) =>
-          j % 2 === 1 ? <a key={`${keyBase}-m${i}-${j}`} href={`mailto:${seg}`} style={{ color: "var(--accent)" }}>{seg}</a> : <Fragment key={`${keyBase}-t${i}-${j}`}>{seg}</Fragment>
+          j % 2 === 1 ? <a key={`${keyBase}-m${i}-${j}`} href={`mailto:${seg}`} style={{ color: "var(--accent-link)" }}>{seg}</a> : <Fragment key={`${keyBase}-t${i}-${j}`}>{seg}</Fragment>
         )
   );
 }

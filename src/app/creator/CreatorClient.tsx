@@ -308,7 +308,7 @@ export function CreatorClient({ data }: { data: CreatorData }) {
               <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
                 <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4, fontSize: 14 }}>{t("creator.limit.onceTitle")}</p>
                 <p className="tiny" style={{ marginBottom: 8 }}>{t("creator.limit.onceHelp")}</p>
-                {limitFor.once !== null && <p className="tiny" style={{ marginBottom: 8, color: "var(--accent)" }}>{t("creator.limit.onceActive", { size: formatBytes(limitFor.once) })}</p>}
+                {limitFor.once !== null && <p className="tiny" style={{ marginBottom: 8, color: "var(--accent-link)" }}>{t("creator.limit.onceActive", { size: formatBytes(limitFor.once) })}</p>}
                 <div className="row wrap" style={{ gap: 8 }}>
                   <input style={{ width: 150 }} inputMode="decimal" placeholder={t("creator.limit.oncePh")} value={limitFor.onceGb} onChange={(e) => setLimitFor({ ...limitFor, onceGb: e.target.value.replace(/[^0-9.]/g, "") })} />
                   <Button variant="primary" size="small" disabled={busy || limitFor.onceGb === "" || isNaN(Number(limitFor.onceGb)) || Number(limitFor.onceGb) <= 0 || Number(limitFor.onceGb) > 2} onClick={async () => {

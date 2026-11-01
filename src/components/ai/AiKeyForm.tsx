@@ -163,7 +163,7 @@ export function AiKeyForm({ ref, standalone = true, region = null }: { ref?: Ref
                     {h.steps.map((s, i) => <li key={i} style={{ marginBottom: 3 }}>{s}</li>)}
                   </ol>
                   {h.note && <span>{h.note} </span>}
-                  {h.link_url && <a href={h.link_url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>{t("aiKey.openSite")}</a>}
+                  {h.link_url && <a href={h.link_url} target="_blank" rel="noreferrer" style={{ color: "var(--accent-link)" }}>{t("aiKey.openSite")}</a>}
                 </div>
               ))}
           {showHelp && help.filter((h) => h.region === region).length === 0 && <p style={{ marginTop: 8 }}>{t("aiKey.noInstructions")}</p>}
@@ -171,7 +171,7 @@ export function AiKeyForm({ ref, standalone = true, region = null }: { ref?: Ref
       )}
       <p className="tiny" style={{ marginTop: 6 }}>
         {t("aiKey.alreadyHave")}{" "}
-        <a href={info.keyHelpUrl} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>{info.label.replace(" (free key available)", "").replace(" (free plan available)", "")} ↗</a>
+        <a href={info.keyHelpUrl} target="_blank" rel="noreferrer" style={{ color: "var(--accent-link)" }}>{info.label.replace(" (free key available)", "").replace(" (free plan available)", "")} ↗</a>
       </p>
       <div className="row" style={{ gap: 8, marginTop: 8 }}>
         {standalone && (

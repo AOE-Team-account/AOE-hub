@@ -92,12 +92,12 @@ export default function SignupPage() {
           />
           <span className="tiny">
             {rich(t("signup.agree"), {
-              t: (c) => <Link href="/policy/terms" target="_blank" style={{ color: "var(--accent)" }}>{c}</Link>,
-              c: (c) => <Link href="/policy/content-policy" target="_blank" style={{ color: "var(--accent)" }}>{c}</Link>,
-              m: (c) => <Link href="/policy/community" target="_blank" style={{ color: "var(--accent)" }}>{c}</Link>,
-              s: (c) => <Link href="/policy/safety" target="_blank" style={{ color: "var(--accent)" }}>{c}</Link>,
-              y: (c) => <Link href="/policy/copyright" target="_blank" style={{ color: "var(--accent)" }}>{c}</Link>,
-              p: (c) => <Link href="/policy/privacy" target="_blank" style={{ color: "var(--accent)" }}>{c}</Link>,
+              t: (c) => <Link href="/policy/terms" target="_blank" style={{ color: "var(--accent-link)" }}>{c}</Link>,
+              c: (c) => <Link href="/policy/content-policy" target="_blank" style={{ color: "var(--accent-link)" }}>{c}</Link>,
+              m: (c) => <Link href="/policy/community" target="_blank" style={{ color: "var(--accent-link)" }}>{c}</Link>,
+              s: (c) => <Link href="/policy/safety" target="_blank" style={{ color: "var(--accent-link)" }}>{c}</Link>,
+              y: (c) => <Link href="/policy/copyright" target="_blank" style={{ color: "var(--accent-link)" }}>{c}</Link>,
+              p: (c) => <Link href="/policy/privacy" target="_blank" style={{ color: "var(--accent-link)" }}>{c}</Link>,
             })}
           </span>
         </label>
@@ -113,7 +113,7 @@ export default function SignupPage() {
       </form>
       <p className="tiny" style={{ marginTop: 14 }}>
         {t("signup.haveAccount")}{" "}
-        <Link href="/login" style={{ color: "var(--accent)" }}>
+        <Link href="/login" style={{ color: "var(--accent-link)" }}>
           {t("login.submit")}
         </Link>
       </p>

@@ -22,7 +22,7 @@ interface StoredTheme {
   textZoom: TextZoom;
 }
 
-const CSS_VAR_NAMES = ["--bg", "--card", "--text", "--text-secondary", "--text-muted", "--border", "--accent", "--accent-text"] as const;
+const CSS_VAR_NAMES = ["--bg", "--card", "--text", "--text-secondary", "--text-muted", "--border", "--accent", "--accent-link", "--accent-text"] as const;
 
 function applyThemeToDom(themeKey: string, dark: boolean) {
   const root = document.getElementById("app-root");
@@ -43,6 +43,7 @@ function applyThemeToDom(themeKey: string, dark: boolean) {
   root.style.setProperty("--text-muted", palette.textMuted);
   root.style.setProperty("--border", palette.border);
   root.style.setProperty("--accent", palette.accent);
+  root.style.setProperty("--accent-link", palette.accentLink);
   root.style.setProperty("--accent-text", palette.accentText);
   root.style.fontFamily = preset.font;
 }

@@ -53,7 +53,7 @@ function ForgotPassword() {
           <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("forgot.checkEmail")}</p>
           <p className="muted">{t("forgot.sent")}</p>
           <p className="tiny" style={{ marginTop: 10 }}>
-            <Link href="/login" style={{ color: "var(--accent)" }}>{t("forgot.backToLogin")}</Link>
+            <Link href="/login" style={{ color: "var(--accent-link)" }}>{t("forgot.backToLogin")}</Link>
           </p>
         </div>
       ) : (
@@ -67,7 +67,7 @@ function ForgotPassword() {
             {busy ? t("forgot.sending") : t("forgot.send")}
           </Button>
           <p className="tiny" style={{ marginTop: 14 }}>
-            <Link href="/login" style={{ color: "var(--accent)" }}>{t("forgot.backToLogin")}</Link>
+            <Link href="/login" style={{ color: "var(--accent-link)" }}>{t("forgot.backToLogin")}</Link>
           </p>
           {CONTACT_EMAIL && <p className="tiny" style={{ marginTop: 6 }}>{t("forgot.lostEmail", { email: CONTACT_EMAIL })}</p>}
         </form>

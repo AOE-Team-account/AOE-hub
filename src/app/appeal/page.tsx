@@ -80,7 +80,7 @@ export default function AppealPage() {
       <BackLink href="/profile" label={t("common.back")} />
       <p role="heading" aria-level={2} className="title" style={{ marginBottom: 4 }}>{t("appeal.title")}</p>
       <p className="muted" style={{ marginBottom: 12 }}>{t("appeal.intro")}</p>
-      {message && <p className="tiny" style={{ color: "var(--accent)", marginBottom: 8 }}>{message}</p>}
+      {message && <p className="tiny" style={{ color: "var(--accent-link)", marginBottom: 8 }}>{message}</p>}
       {!s && <p className="muted">{t("common.loading")}</p>}
 
       {s?.restriction && (

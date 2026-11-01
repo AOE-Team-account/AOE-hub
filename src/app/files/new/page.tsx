@@ -299,7 +299,7 @@ export default function UploadFilePage() {
         <div style={{ marginTop: 10 }}>
           <p className="tiny">{t("upload.linkHelp", { sites: hosts.map((h) => h.name).join(", ") || "—" })}</p>
           {!askSent && (
-            <button type="button" className="tiny" onClick={() => setAskOpen((v) => !v)} style={{ background: "none", border: 0, padding: 0, color: "var(--accent)", cursor: "pointer", font: "inherit", fontSize: 12 }}>
+            <button type="button" className="tiny" onClick={() => setAskOpen((v) => !v)} style={{ background: "none", border: 0, padding: 0, color: "var(--accent-link)", cursor: "pointer", font: "inherit", fontSize: 12 }}>
               {t("upload.linkAsk")}
             </button>
           )}
@@ -309,7 +309,7 @@ export default function UploadFilePage() {
               <Button size="small" onClick={sendAsk} disabled={!askText.trim()}>{t("upload.linkAskSend")}</Button>
             </div>
           )}
-          {askSent && <p className="tiny" style={{ color: "var(--accent)" }}>{t("upload.linkAskSent")}</p>}
+          {askSent && <p className="tiny" style={{ color: "var(--accent-link)" }}>{t("upload.linkAskSent")}</p>}
         </div>
       )}
 

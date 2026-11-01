@@ -28,9 +28,9 @@ export function ErrorPanel({ kind, onRetry }: { kind: "notFound" | "error"; onRe
       </div>
       {notFound && (
         <p className="tiny">
-          <Link href="/experience" style={{ color: "var(--accent)" }}>{t("errorPage.browseExperience")}</Link>
+          <Link href="/experience" style={{ color: "var(--accent-link)" }}>{t("errorPage.browseExperience")}</Link>
           {" · "}
-          <Link href="/files" style={{ color: "var(--accent)" }}>{t("errorPage.browseFiles")}</Link>
+          <Link href="/files" style={{ color: "var(--accent-link)" }}>{t("errorPage.browseFiles")}</Link>
         </p>
       )}
     </div>

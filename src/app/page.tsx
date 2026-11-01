@@ -45,8 +45,8 @@ export default function HomePage() {
         </div>
         <p className="tiny">
           {rich(t("landing.browse"), {
-            a: (c) => <Link href="/experience" style={{ color: "var(--accent)" }}>{c}</Link>,
-            b: (c) => <Link href="/files" style={{ color: "var(--accent)" }}>{c}</Link>,
+            a: (c) => <Link href="/experience" style={{ color: "var(--accent-link)" }}>{c}</Link>,
+            b: (c) => <Link href="/files" style={{ color: "var(--accent-link)" }}>{c}</Link>,
           })}
         </p>
       </div>
