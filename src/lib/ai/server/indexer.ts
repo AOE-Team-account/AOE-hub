@@ -89,7 +89,7 @@ async function collectDesiredDocs(db: Db): Promise<DesiredDoc[]> {
       source_type: "experience-post",
       source_id: p.id,
       title,
-      content: `${title}\nExperience Board${p.category ? ` — ${p.category}` : ""}.\n\n${p.body}`,
+      content: `${title}\nAOE Experience Board${p.category ? ` — ${p.category}` : ""}.\n\n${p.body}`,
     });
   }
   // Community answers: comments by a CURRENT Answerer or Verified member on a
@@ -137,7 +137,7 @@ async function collectDesiredDocs(db: Db): Promise<DesiredDoc[]> {
         source_id: c.id,
         title: (q.title?.trim() || q.body).slice(0, 120),
         content:
-          `Community answer on the Experience Board (written by a ${r.has("verified") ? "Verified member" : "Answerer"}).\n\n` +
+          `Community answer on the AOE Experience Board (written by a ${r.has("verified") ? "Verified member" : "Answerer"}).\n\n` +
           `Question: ${questionText}\n\nAnswer: ${c.body}`,
       });
     }
