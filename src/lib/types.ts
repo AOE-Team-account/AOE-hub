@@ -34,7 +34,14 @@ export type ExperienceCategory =
   | "struggles"
   | "curriculum-reviews"
   | "reflections"
-  | "just-sharing";
+  | "just-sharing"
+  | "videos";
+
+/** The three tabs of the Buzzora Board. */
+export type BuzzKind = "news" | "law" | "regulation";
+/** Where a "Videos" pick lives. The hub only links to it; the video is never hosted here. */
+export type VideoPlatform = "youtube" | "bilibili" | "tiktok" | "xiaohongshu" | "wechat" | "facebook";
+export interface BuzzSource { title: string; url: string; publisher: string; published?: string }
 
 export type CommentType = "question" | "suggestion" | "sharing";
 
@@ -137,6 +144,16 @@ export interface ExperiencePost {
   madeWithAi?: boolean;
   /** The picture of the post, if it has one. */
   imageId?: string;
+  /** 'experience' (default) or 'buzzora'. */
+  board?: "experience" | "buzzora";
+  buzzKind?: BuzzKind;
+  country?: string;
+  sources?: BuzzSource[];
+  /** Collected and summarised by the AI (shown with a label). */
+  isAi?: boolean;
+  /** For "Videos" picks: the address of the video on its own platform. */
+  linkUrl?: string;
+  linkPlatform?: VideoPlatform;
 }
 
 export interface NotificationItem {

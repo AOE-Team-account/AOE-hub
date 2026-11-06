@@ -81,7 +81,7 @@ async function collectDesiredDocs(db: Db): Promise<DesiredDoc[]> {
   }
 
   const posts = await pageAll<{ id: string; title: string | null; body: string; category: string | null }>((from, to) =>
-    db.from("experience_posts").select("id, title, body, category").is("deleted_at", null).order("id").range(from, to)
+    db.from("experience_posts").select("id, title, body, category").eq("board", "experience").eq("is_ai", false).is("deleted_at", null).order("id").range(from, to)
   );
   for (const p of posts) {
     const title = p.title?.trim() || "Experience post";

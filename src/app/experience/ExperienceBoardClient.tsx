@@ -9,6 +9,8 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { ClickableCard } from "@/components/ui/ClickableCard";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { VideoLink } from "@/components/video/VideoLink";
+import { VideoLinkTool } from "@/components/buzzora/StaffTools";
 import type { UiKey } from "@/lib/i18n/strings";
 import { lookStyle } from "@/lib/profile-look";
 import type { ExperienceCategory, ExperiencePost, User } from "@/lib/types";
@@ -22,6 +24,7 @@ const CATEGORY_OPTION_KEYS: { value: ExperienceCategory | "all"; key: UiKey }[] 
   { value: "struggles", key: "exp.cat.struggles" },
   { value: "curriculum-reviews", key: "exp.cat.curriculumReviews" },
   { value: "reflections", key: "exp.cat.reflections" },
+  { value: "videos", key: "exp.cat.videos" },
 ];
 
 // Mirrors the Situation type in src/app/onboarding/page.tsx — kept as a
@@ -53,6 +56,7 @@ const CATEGORY_LABEL_KEYS: Record<ExperienceCategory, UiKey> = {
   "curriculum-reviews": "exp.cat.curriculumReviews",
   reflections: "exp.cat.reflections",
   "just-sharing": "exp.cat.justSharing",
+  videos: "exp.cat.videos",
 };
 
 export function ExperienceBoardClient({
@@ -110,6 +114,7 @@ export function ExperienceBoardClient({
       )}
 
       <ChipRow options={categoryOptions} value={filter} onChange={setFilter} />
+      {(filter === "videos" || filter === "all") && <VideoLinkTool />}
 
       {feed.length === 0 && (
         <p className="muted">
@@ -122,7 +127,7 @@ export function ExperienceBoardClient({
         return (
           <ClickableCard key={post.id} href={`/experience/${post.id}`} style={author && !post.isAnnouncement ? lookStyle(author) : undefined}>
             <div className="row wrap" style={{ gap: 6, marginBottom: 6 }}>
-              {post.isAnnouncement ? <span style={{ fontWeight: 500, fontSize: 13 }}>AOEhub</span> : author && <AuthorLink userId={author.id} name={author.name} badges={author.badges} />}
+              {post.isAnnouncement || post.linkUrl ? <span style={{ fontWeight: 500, fontSize: 13 }}>AOEhub</span> : author && <AuthorLink userId={author.id} name={author.name} badges={author.badges} />}
               {post.isAnnouncement ? <Badge>{t("exp.fromAoehub")}</Badge> : post.category && <Badge>{t(CATEGORY_LABEL_KEYS[post.category])}</Badge>}
               {isAnswerer(post.authorId) && <Badge variant="neutral">{t("exp.pinned")}</Badge>}
               {post.madeWithAi && <Badge variant="neutral">{t("badge.madeWithAi")}</Badge>}
@@ -135,6 +140,7 @@ export function ExperienceBoardClient({
               <img src={`/api/media/${post.imageId}`} alt="" loading="lazy" style={{ maxWidth: "100%", maxHeight: 260, borderRadius: 10, margin: "4px 0 8px", display: "block" }} />
             )}
             <Translated type="experience-post" id={post.id} field="body" text={post.body} className="muted" note />
+            {post.linkUrl && post.linkPlatform && <VideoLink url={post.linkUrl} platform={post.linkPlatform} aiPicked={!!post.isAi} />}
             <p className="tiny">{t("exp.viewsReplies", { views: post.views, replies: post.replyCount })}</p>
           </ClickableCard>
         );

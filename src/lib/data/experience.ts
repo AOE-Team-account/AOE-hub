@@ -2,7 +2,7 @@
 // `experience_posts` and `comments` tables.
 
 import { createClient } from "@/lib/supabase/server";
-import type { ExperiencePost, Comment } from "@/lib/types";
+import type { ExperiencePost, Comment, BuzzKind, BuzzSource, VideoPlatform } from "@/lib/types";
 import { mediaFor } from "./media";
 import { nestComments, type CommentRow } from "./comments";
 
@@ -17,6 +17,13 @@ interface ExperiencePostRow {
   is_announcement: boolean;
   created_at: string;
   made_with_ai: boolean | null;
+  board?: "experience" | "buzzora" | null;
+  buzz_kind?: BuzzKind | null;
+  country?: string | null;
+  sources?: BuzzSource[] | null;
+  is_ai?: boolean | null;
+  link_url?: string | null;
+  link_platform?: VideoPlatform | null;
 }
 
 function fromRow(row: ExperiencePostRow, replyCount: number): ExperiencePost {
@@ -32,6 +39,13 @@ function fromRow(row: ExperiencePostRow, replyCount: number): ExperiencePost {
     pinned: row.pinned,
     isAnnouncement: row.is_announcement,
     madeWithAi: row.made_with_ai ?? false,
+    board: row.board ?? "experience",
+    buzzKind: row.buzz_kind ?? undefined,
+    country: row.country ?? undefined,
+    sources: Array.isArray(row.sources) ? row.sources : undefined,
+    isAi: row.is_ai ?? false,
+    linkUrl: row.link_url ?? undefined,
+    linkPlatform: row.link_platform ?? undefined,
   };
 }
 
@@ -56,6 +70,7 @@ export async function listExperiencePosts(): Promise<ExperiencePost[]> {
   const { data } = await supabase
     .from("experience_posts")
     .select("*")
+    .eq("board", "experience")
     .order("pinned", { ascending: false })
     .order("created_at", { ascending: false });
 
@@ -63,6 +78,15 @@ export async function listExperiencePosts(): Promise<ExperiencePost[]> {
   const ids = rows.map((r) => r.id);
   const [counts, media] = await Promise.all([replyCountsFor(ids), mediaFor("experience", ids)]);
   return rows.map((row) => ({ ...fromRow(row, counts[row.id] ?? 0), imageId: media[row.id]?.find((m) => m.kind === "image")?.id }));
+}
+
+/** The Buzzora Board: newest first. Tabs and the country filter are applied in the page. */
+export async function listBuzzoraPosts(): Promise<ExperiencePost[]> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("experience_posts").select("*").eq("board", "buzzora").order("pinned", { ascending: false }).order("created_at", { ascending: false }).limit(300);
+  const rows = (data ?? []) as ExperiencePostRow[];
+  const counts = await replyCountsFor(rows.map((r) => r.id));
+  return rows.map((row) => fromRow(row, counts[row.id] ?? 0));
 }
 
 export async function getExperiencePostById(id: string): Promise<ExperiencePost | undefined> {

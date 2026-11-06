@@ -13,6 +13,7 @@ import type { UiKey } from "@/lib/i18n/strings";
 const TABS = [
   { href: "/experience", label: "tabs.experience" as UiKey, hideWhenLoggedOut: false },
   { href: "/files", label: "tabs.files" as UiKey, hideWhenLoggedOut: false },
+  { href: "/buzzora", label: "tabs.buzzora" as UiKey, hideWhenLoggedOut: false },
 ];
 
 export function PrimaryTabs() {

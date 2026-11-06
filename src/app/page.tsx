@@ -79,6 +79,19 @@ export default function HomePage() {
       </Reveal>
 
       <Reveal className="feature-row">
+        <div className="feature-icon-wrap">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+            <path d="M4 5h12a2 2 0 0 1 2 2v12H6a2 2 0 0 1-2-2V5z" />
+            <path d="M18 9h2a0 0 0 0 1 0 0v8a2 2 0 0 1-2 2" />
+            <path d="M8 9h6M8 13h6M8 16h3" />
+          </svg>
+        </div>
+        <p className="feature-eyebrow">{t("landing.buzzEyebrow")}</p>
+        <h3 className="feature-title">{t("landing.buzzTitle")}</h3>
+        {t("landing.buzzDesc").split("\n\n").map((para, i) => <p key={i} className="feature-desc">{para}</p>)}
+      </Reveal>
+
+      <Reveal className="feature-row">
         <h3 className="feature-title">{t("landing.freeTitle")}</h3>
         {t("landing.freeDesc").split("\n\n").map((para, i) => <p key={i} className="feature-desc">{para}</p>)}
       </Reveal>

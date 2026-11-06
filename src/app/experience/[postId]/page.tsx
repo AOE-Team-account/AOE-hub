@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getExperiencePostById, listExperienceComments } from "@/lib/data/experience";
 import { getUserById } from "@/lib/data/users";
 import { createClient } from "@/lib/supabase/server";
@@ -10,6 +10,7 @@ import { BackLink } from "@/components/ui/BackLink";
 import { AuthorLink } from "@/components/ui/AuthorLink";
 import { Badge } from "@/components/ui/Badge";
 import { Translated } from "@/components/ui/Translated";
+import { VideoLink } from "@/components/video/VideoLink";
 import { Discussion } from "@/components/discussion/Discussion";
 import { NoticeBox } from "@/components/review/NoticeBox";
 import { getServerT } from "@/lib/i18n/server";
@@ -30,6 +31,7 @@ export default async function ExperiencePostPage({ params }: PageProps<"/experie
   const { postId } = await params;
   const post = await getExperiencePostById(postId);
   if (!post) notFound();
+  if (post.board === "buzzora") redirect(`/buzzora/${post.id}`);
 
   const [author, comments] = await Promise.all([
     getUserById(post.authorId),
@@ -66,7 +68,7 @@ export default async function ExperiencePostPage({ params }: PageProps<"/experie
       <div className="card" style={author && !post.isAnnouncement ? lookStyle(author) : undefined}>
         <div className="row wrap" style={{ gap: 8, marginBottom: 8 }}>
           {/* Hub announcements read as coming from AOEhub, never from a person. */}
-          {post.isAnnouncement ? <span style={{ fontWeight: 500 }}>AOEhub</span> : author && <AuthorLink userId={author.id} name={author.name} badges={author.badges} />}
+          {post.isAnnouncement || post.linkUrl ? <span style={{ fontWeight: 500 }}>AOEhub</span> : author && <AuthorLink userId={author.id} name={author.name} badges={author.badges} />}
           <span className="tiny">
             {new Date(post.createdAt).toLocaleDateString(lang)} · {t("files.views", { n: post.views })}
           </span>
@@ -76,7 +78,9 @@ export default async function ExperiencePostPage({ params }: PageProps<"/experie
           // eslint-disable-next-line @next/next/no-img-element
           <img src={`/api/media/${post.imageId}`} alt="" style={{ maxWidth: "100%", maxHeight: 420, borderRadius: 10, margin: "4px 0 10px", display: "block" }} />
         )}
+        {post.linkUrl && post.title && <Translated type="experience-post" id={post.id} field="title" text={post.title} className="title" style={{ margin: "0 0 6px" }} />}
         <Translated type="experience-post" id={post.id} field="body" text={post.body} className="muted" note noteWhenPaused />
+        {post.linkUrl && post.linkPlatform && <VideoLink url={post.linkUrl} platform={post.linkPlatform} aiPicked={!!post.isAi} />}
       </div>
 
       <Discussion
