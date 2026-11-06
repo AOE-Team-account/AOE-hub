@@ -53,7 +53,7 @@ export function BuzzoraBoardClient({ posts }: { posts: ExperiencePost[] }) {
             <ReportButton targetType="experience-post" targetId={post.id} />
           </div>
           {post.title && <Translated type="experience-post" id={post.id} field="title" text={post.title} className="title" style={{ margin: "0 0 4px" }} />}
-          <Translated type="experience-post" id={post.id} field="body" text={post.body} className="muted" note />
+          <Translated type="experience-post" id={post.id} field="body" text={post.body} className="muted" style={{ whiteSpace: "pre-line" }} note />
           {post.sources && <BuzzSources sources={post.sources} />}
           <p className="tiny" style={{ margin: "2px 0" }}>{post.isAi ? t("buzz.aiLabel") : t("buzz.staffLabel")}</p>
           <p className="tiny">{t("exp.viewsReplies", { views: post.views, replies: post.replyCount })}</p>

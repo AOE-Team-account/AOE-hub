@@ -52,7 +52,7 @@ export default async function BuzzoraPostPage({ params }: { params: Promise<{ po
           <span className="tiny">{new Date(post.createdAt).toLocaleDateString(lang)} · {t("files.views", { n: post.views })}</span>
         </div>
         {post.title && <Translated type="experience-post" id={post.id} field="title" text={post.title} className="title" style={{ margin: "0 0 6px" }} />}
-        <Translated type="experience-post" id={post.id} field="body" text={post.body} className="muted" note noteWhenPaused />
+        <Translated type="experience-post" id={post.id} field="body" text={post.body} className="muted" style={{ whiteSpace: "pre-line" }} note noteWhenPaused />
         {post.sources && <BuzzSources sources={post.sources} />}
         <p className="tiny" style={{ margin: "6px 0 0" }}>{post.isAi ? t("buzz.aiLabel") : t("buzz.staffLabel")}</p>
       </div>

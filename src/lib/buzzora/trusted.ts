@@ -26,6 +26,18 @@ const MAJOR_NEWS = [
   "koreaherald.com", "koreatimes.co.kr", "yna.co.kr", "chinadaily.com.cn", "xinhuanet.com", "news.cn", "thepaper.cn", "caixin.com", "people.com.cn",
   "hindustantimes.com", "thehindu.com", "indianexpress.com", "timesofindia.indiatimes.com", "ndtv.com",
   "edweek.org", "chalkbeat.org", "the74million.org", "hechingerreport.org", "k12dive.com", "ednc.org", "yahoo.com",
+  // US regional papers and state news services
+  "ctmirror.org", "nj.com", "pennlive.com", "courierpostonline.com", "latimes.com", "chicagotribune.com", "bostonglobe.com", "seattletimes.com",
+  "texastribune.org", "tennessean.com", "courant.com", "dallasnews.com", "houstonchronicle.com", "azcentral.com", "denverpost.com", "startribune.com",
+  "oregonlive.com", "al.com", "ajc.com", "orlandosentinel.com", "tampabay.com", "miamiherald.com", "baltimoresun.com", "post-gazette.com",
+  "inquirer.com", "cleveland.com", "dispatch.com", "freep.com", "jsonline.com", "kansascity.com", "statesnewsroom.org", "stateline.org", "govtech.com",
+  "edsource.org", "educationnext.org", "insidehighered.com", "foxnews.com", "msnbc.com", "newsday.com", "nypost.com", "nydailynews.com", "sfchronicle.com",
+  "oklahoman.com", "tulsaworld.com", "arkansasonline.com", "idahoednews.org", "deseret.com", "sltrib.com", "kansascity.com", "courier-journal.com",
+  // other English-language outlets around the world
+  "irishexaminer.com", "independent.ie", "stuff.co.nz", "1news.co.nz", "thenational.scot", "heraldscotland.com", "walesonline.co.uk", "belfasttelegraph.co.uk",
+  "gulfnews.com", "khaleejtimes.com", "arabnews.com", "dawn.com", "thedailystar.net", "bangkokpost.com", "malaymail.com", "thestar.com.my",
+  "inquirer.net", "philstar.com", "rappler.com", "kyivindependent.com", "buenosairesherald.com", "timeslive.co.za", "news24.com", "mg.co.za",
+  "colombiaone.com", "mexiconewsdaily.com", "batimes.com.ar", "thetimes.com", "thetimes.co.uk", "standard.co.uk", "metro.co.uk", "tes.com", "schoolsweek.co.uk",
 ];
 
 const hostMatches = (host: string, base: string) => host === base || host.endsWith("." + base);

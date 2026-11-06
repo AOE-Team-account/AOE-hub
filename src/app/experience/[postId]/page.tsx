@@ -79,7 +79,7 @@ export default async function ExperiencePostPage({ params }: PageProps<"/experie
           <img src={`/api/media/${post.imageId}`} alt="" style={{ maxWidth: "100%", maxHeight: 420, borderRadius: 10, margin: "4px 0 10px", display: "block" }} />
         )}
         {post.linkUrl && post.title && <Translated type="experience-post" id={post.id} field="title" text={post.title} className="title" style={{ margin: "0 0 6px" }} />}
-        <Translated type="experience-post" id={post.id} field="body" text={post.body} className="muted" note noteWhenPaused />
+        <Translated type="experience-post" id={post.id} field="body" text={post.body} className="muted" style={post.linkUrl ? { whiteSpace: "pre-line" } : undefined} note noteWhenPaused />
         {post.linkUrl && post.linkPlatform && <VideoLink url={post.linkUrl} platform={post.linkPlatform} aiPicked={!!post.isAi} />}
       </div>
 

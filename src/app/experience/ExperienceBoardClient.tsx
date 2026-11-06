@@ -139,7 +139,7 @@ export function ExperienceBoardClient({
               // eslint-disable-next-line @next/next/no-img-element
               <img src={`/api/media/${post.imageId}`} alt="" loading="lazy" style={{ maxWidth: "100%", maxHeight: 260, borderRadius: 10, margin: "4px 0 8px", display: "block" }} />
             )}
-            <Translated type="experience-post" id={post.id} field="body" text={post.body} className="muted" note />
+            <Translated type="experience-post" id={post.id} field="body" text={post.body} className="muted" style={post.linkUrl ? { whiteSpace: "pre-line" } : undefined} note />
             {post.linkUrl && post.linkPlatform && <VideoLink url={post.linkUrl} platform={post.linkPlatform} aiPicked={!!post.isAi} />}
             <p className="tiny">{t("exp.viewsReplies", { views: post.views, replies: post.replyCount })}</p>
           </ClickableCard>

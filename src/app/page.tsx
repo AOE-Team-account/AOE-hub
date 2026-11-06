@@ -89,6 +89,10 @@ export default function HomePage() {
         <p className="feature-eyebrow">{t("landing.buzzEyebrow")}</p>
         <h3 className="feature-title">{t("landing.buzzTitle")}</h3>
         {t("landing.buzzDesc").split("\n\n").map((para, i) => <p key={i} className="feature-desc">{para}</p>)}
+        <div style={{ margin: "14px 0 8px" }}>
+          <button className="btn" onClick={() => router.push("/buzzora")}>{t("landing.buzzCta")}</button>
+        </div>
+        <p className="tiny" style={{ maxWidth: 520, margin: "0 auto" }}>{t("landing.buzzNote")}</p>
       </Reveal>
 
       <Reveal className="feature-row">

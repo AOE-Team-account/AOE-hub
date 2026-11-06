@@ -1037,6 +1037,8 @@
   "video.add.error": "Could not use that link. It must be an https link to one of the six platforms.",
   "video.add.done": "Posted on the Experience Board.",
   "landing.buzzEyebrow": "Buzzora Board",
-  "landing.buzzTitle": "Know What's Changing.",
-  "landing.buzzDesc": "Homeschooling and unschooling rules differ from place to place, and they change. The Buzzora Board follows the big developments around the world: new laws, court rulings, government proposals and funding programs, gathered from government sites and major news outlets.\n\nEvery post links to its sources and says plainly what is only a proposal and what is already in force. Browse by News, Law or Regulation, or filter by country. Summaries are collected by AI, so always check the source. This is information, not legal advice."
+  "landing.buzzTitle": "Stay Informed. Know What’s Changing.",
+  "landing.buzzDesc": "Education laws and policies are constantly evolving. Stay up to date with important developments in homeschooling and unschooling around the world, from new laws and court rulings to government proposals and funding opportunities.\n\nExplore news, laws, and regulations by country. Each AI-generated summary links to its original sources and distinguishes proposed changes from rules already in effect.",
+  "landing.buzzCta": "Explore the Buzzora Board",
+  "landing.buzzNote": "AI-generated summaries are for informational purposes only. Always verify important details with official sources. This is not legal advice."
 }
