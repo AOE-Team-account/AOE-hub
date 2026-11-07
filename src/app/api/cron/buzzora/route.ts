@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { runBuzzora } from "@/lib/buzzora/collect";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 600;
 
 // The daily Buzzora job (called by the timer with the CRON_SECRET, like the other cron routes).
 // Add ?dry=1 to see what it WOULD post without saving anything. ?days=30 looks further back (for a first fill of the board).

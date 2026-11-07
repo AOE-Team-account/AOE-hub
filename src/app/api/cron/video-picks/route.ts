@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { runVideoPicks } from "@/lib/buzzora/video-picks";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 600;
 
 // The daily "Videos" job (CRON_SECRET, like the other cron routes). ?dry=1 shows what it WOULD post.
 export async function POST(request: Request) {

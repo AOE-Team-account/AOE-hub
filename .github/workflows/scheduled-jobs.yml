@@ -37,5 +37,5 @@ jobs:
           curl -fsS -m 120 -X POST -H "Authorization: Bearer $CRON_SECRET" "$SITE_URL/api/cron/storage-check"
           curl -fsS -m 120 -X POST -H "Authorization: Bearer $CRON_SECRET" "$SITE_URL/api/cron/rescan"
           # The Buzzora Board (news, laws, regulations) and the Videos picks. A failure here must not stop the other chores.
-          curl -fsS -m 300 -X POST -H "Authorization: Bearer $CRON_SECRET" "$SITE_URL/api/cron/buzzora" || echo "buzzora job failed"
-          curl -fsS -m 120 -X POST -H "Authorization: Bearer $CRON_SECRET" "$SITE_URL/api/cron/video-picks" || echo "video picks job failed"
+          curl -fsS -m 600 -X POST -H "Authorization: Bearer $CRON_SECRET" "$SITE_URL/api/cron/buzzora" || echo "buzzora job failed"
+          curl -fsS -m 600 -X POST -H "Authorization: Bearer $CRON_SECRET" "$SITE_URL/api/cron/video-picks" || echo "video picks job failed"
