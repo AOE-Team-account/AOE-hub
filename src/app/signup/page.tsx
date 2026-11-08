@@ -93,9 +93,6 @@ export default function SignupPage() {
           <span className="tiny">
             {rich(t("signup.agree"), {
               t: (c) => <Link href="/policy/terms" target="_blank" style={{ color: "var(--accent-link)" }}>{c}</Link>,
-              c: (c) => <Link href="/policy/content-policy" target="_blank" style={{ color: "var(--accent-link)" }}>{c}</Link>,
-              m: (c) => <Link href="/policy/community" target="_blank" style={{ color: "var(--accent-link)" }}>{c}</Link>,
-              s: (c) => <Link href="/policy/safety" target="_blank" style={{ color: "var(--accent-link)" }}>{c}</Link>,
               y: (c) => <Link href="/policy/copyright" target="_blank" style={{ color: "var(--accent-link)" }}>{c}</Link>,
               p: (c) => <Link href="/policy/privacy" target="_blank" style={{ color: "var(--accent-link)" }}>{c}</Link>,
             })}

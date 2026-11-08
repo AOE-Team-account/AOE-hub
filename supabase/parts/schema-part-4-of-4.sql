@@ -1082,9 +1082,9 @@ on conflict (kind, version) do nothing;
 
 -- Reason names reworded 2026-10-31 (the Content Policy does not allow
 -- removal for "wrong ideas" or "harmful ideology"); r7 wording is in the app.
-update public.moderation_reasons set label = 'Harmful content (as defined in the Content Policy)' where code = 'harmful';
-update public.moderation_reasons set label = 'Breaks a rule in the Content Policy',
-  note = 'Renamed 2026-10-31: the Content Policy does not allow removal for "wrong ideas".' where code = 'wrong-ideas';
+update public.moderation_reasons set label = 'Harmful content (as defined in the Terms and Conditions)' where code = 'harmful';
+update public.moderation_reasons set label = 'Breaks a rule in the Terms and Conditions',
+  note = 'Renamed 2026-10-31: the Terms and Conditions do not allow removal for "wrong ideas".' where code = 'wrong-ideas';
 update public.moderation_reasons set label = 'Something else that worries me (please explain)' where code = 'other';
 
 -- ============================================================================

@@ -12,6 +12,10 @@ const nextConfig: NextConfig = {
   // Hosted games are served from a separate address ("play." in front of the
   // hub's own, e.g. play.aoe.name). Requests there are mapped to the game
   // file route; the route itself refuses anything not on a "play." address.
+  // The Content, Community and Safety policies are now part of the Terms and Conditions.
+  async redirects() {
+    return ["content-policy", "community", "safety"].map((slug) => ({ source: `/policy/${slug}`, destination: "/policy/terms", permanent: true }));
+  },
   async rewrites() {
     return {
       beforeFiles: [

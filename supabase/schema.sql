@@ -200,10 +200,10 @@ create table if not exists public.moderation_reasons (
 
 insert into public.moderation_reasons (code, label, level, applies_to, sort_order, note) values
   ('scam',             'Scam or asking for money',                          'red',    '{delete,warn,suspend}', 10, null),
-  ('harmful',          'Harmful content (as defined in the Content Policy)', 'red',    '{delete,warn,suspend}', 20, null),
+  ('harmful',          'Harmful content (as defined in the Terms and Conditions)', 'red',    '{delete,warn,suspend}', 20, null),
   ('inappropriate',    'Inappropriate content',                             'red',    '{delete,warn,suspend}', 30, 'Level assumed (memory doc chat6).'),
   ('child-safety',     'Child-safety concern',                              'red',    '{delete,warn,suspend}', 35, 'Added at Clara''s request 2026-10-11 (emergency suspension).'),
-  ('wrong-ideas',      'Breaks a rule in the Content Policy',               'yellow', '{delete,warn}', 40, 'Renamed 2026-10-31: the Content Policy does not allow removal for "wrong ideas".'),
+  ('wrong-ideas',      'Breaks a rule in the Terms and Conditions',               'yellow', '{delete,warn}', 40, 'Renamed 2026-10-31: the Terms and Conditions do not allow removal for "wrong ideas".'),
   ('ads',              'Ads or self-promotion',                             'yellow', '{delete,warn}', 50, null),
   ('paywalled',        'Paywalled or costs money',                          'yellow', '{delete,warn}', 60, 'Level assumed (memory doc chat6).'),
   ('copyright',        'Copyright — not their work',                        'yellow', '{delete,warn}', 70, 'Level assumed (memory doc chat6).'),
@@ -4694,9 +4694,9 @@ on conflict (kind, version) do nothing;
 
 -- Reason names reworded 2026-10-31 (the Content Policy does not allow
 -- removal for "wrong ideas" or "harmful ideology"); r7 wording is in the app.
-update public.moderation_reasons set label = 'Harmful content (as defined in the Content Policy)' where code = 'harmful';
-update public.moderation_reasons set label = 'Breaks a rule in the Content Policy',
-  note = 'Renamed 2026-10-31: the Content Policy does not allow removal for "wrong ideas".' where code = 'wrong-ideas';
+update public.moderation_reasons set label = 'Harmful content (as defined in the Terms and Conditions)' where code = 'harmful';
+update public.moderation_reasons set label = 'Breaks a rule in the Terms and Conditions',
+  note = 'Renamed 2026-10-31: the Terms and Conditions do not allow removal for "wrong ideas".' where code = 'wrong-ideas';
 update public.moderation_reasons set label = 'Something else that worries me (please explain)' where code = 'other';
 
 -- ============================================================================

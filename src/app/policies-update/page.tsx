@@ -11,11 +11,9 @@ import { POLICY_NAME_KEYS, isPolicySlug, type PolicySlug } from "@/lib/policies/
 
 interface Pending { kind: string; version: string }
 
-// The database stores 'safety-policy'; the page address is /policy/safety.
-const slugFor = (kind: string): PolicySlug | null => {
-  const s = kind === "safety-policy" ? "safety" : kind;
-  return isPolicySlug(s) ? s : null;
-};
+// Only the current documents (Terms, Privacy, Copyright / DMCA) are listed. Older kinds the database
+// may still hold (content, community, safety: now inside the Terms) are accepted silently with the rest.
+const slugFor = (kind: string): PolicySlug | null => (isPolicySlug(kind) ? kind : null);
 
 export default function PoliciesUpdatePage() {
   const { t } = useLanguage();
@@ -55,7 +53,7 @@ export default function PoliciesUpdatePage() {
       <div className="card">
         <p className="muted" style={{ marginTop: 0 }}>{t("policyUpdate.body")}</p>
         <ul style={{ paddingLeft: 18 }}>
-          {pending.map((p) => {
+          {pending.filter((p) => slugFor(p.kind)).map((p) => {
             const slug = slugFor(p.kind);
             return (
               <li key={p.kind + p.version} style={{ margin: "6px 0" }}>
