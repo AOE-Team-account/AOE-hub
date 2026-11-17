@@ -1037,5 +1037,9 @@
   "landing.buzzTitle": "掌握最新资讯，了解正在发生的变化。",
   "landing.buzzDesc": "世界各地的教育法律和政策都在不断变化。通过 Buzzora 板，及时了解全球家庭教育（Homeschooling）和自主教育（Unschooling）的重要动态，包括新法律、法院裁决、政府提案及教育资助机会。\n\n你可以按国家浏览相关新闻、法律和法规。每篇 AI 生成的摘要都会附上原始信息来源，并明确区分尚在提议阶段的政策和已经正式生效的规定。",
   "landing.buzzCta": "探索 Buzzora 板",
-  "landing.buzzNote": "所有 AI 生成的摘要仅供参考。重要信息请务必通过官方来源核实。本看板提供的信息不构成法律建议。"
+  "landing.buzzNote": "所有 AI 生成的摘要仅供参考。重要信息请务必通过官方来源核实。本看板提供的信息不构成法律建议。",
+  "contact.followTitle": "关注 AOEhub",
+  "contact.scanToFollow": "扫码在{name}关注我们",
+  "contact.qrAlt": "AOEhub 的{name}二维码",
+  "ai.otherAis": "其他 AI 助手"
 }

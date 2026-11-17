@@ -1178,3 +1178,26 @@ insert into public.hub_settings (key, value) values
   ('video_picks_enabled', 'true'::jsonb),
   ('video_picks_daily_cap', '3'::jsonb)
 on conflict (key) do nothing;
+
+-- ============================================================================
+-- Daily automatic policy check (decided by Clara, 2026-11-17).
+-- Once a day the AI reads NEW posts and comments and, when it thinks one
+-- breaks the Terms and Conditions, files an ordinary report (no reporter:
+-- the details start with "AOEhub auto-check"). It never deletes, hides or
+-- warns. Each item is checked only once, so an item whose report was
+-- dismissed is never reported by the auto-check again.
+-- ============================================================================
+create table if not exists public.auto_checks (
+  item_type text not null check (item_type in ('experience-post', 'comment')),
+  item_id uuid not null,
+  flagged boolean not null default false,
+  checked_at timestamptz not null default now(),
+  primary key (item_type, item_id)
+);
+alter table public.auto_checks enable row level security;
+revoke all on public.auto_checks from anon, authenticated;
+
+insert into public.hub_settings (key, value) values
+  ('auto_check_enabled', 'true'::jsonb),
+  ('auto_check_daily_cap', '200'::jsonb)
+on conflict (key) do nothing;

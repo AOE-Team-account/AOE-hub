@@ -8,6 +8,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { friendlyWriteError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/client";
 import type { UiKey } from "@/lib/i18n/strings";
+import { otherAisFor } from "@/lib/ai/other-ais";
 
 interface ChatMessage {
   id: number;
@@ -19,6 +20,8 @@ interface ChatMessage {
   postHref?: string;
   // The question the AI could not answer, offered as a post on the Experience Board.
   escalateQuestion?: string;
+  // The question was not for the hub AI: show links to other AI assistants.
+  offTopic?: boolean;
   isError?: boolean;
 }
 
@@ -119,6 +122,7 @@ export function AiFab() {
           text: reply.text,
           sources: reply.sources,
           escalateQuestion: reply.escalate ? text : undefined,
+          offTopic: !!reply.offTopic,
         },
       ]);
     } catch (err) {
@@ -204,6 +208,16 @@ export function AiFab() {
                     <span key={i}>
                       {i > 0 && ", "}
                       {src.href ? <Link href={src.href} style={{ color: "var(--accent-link)" }}>{src.title}</Link> : src.title}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {m.offTopic && (
+                <div className="tiny" style={{ marginTop: 6 }}>
+                  {otherAisFor(lang).map((a, i) => (
+                    <span key={a.url}>
+                      {i > 0 && " · "}
+                      <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent-link)" }}>{a.name}</a>
                     </span>
                   ))}
                 </div>

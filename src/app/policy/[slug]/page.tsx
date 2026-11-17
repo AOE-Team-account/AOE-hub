@@ -4,6 +4,7 @@ import { getRequestLanguage } from "@/lib/i18n/server";
 import { loadPolicy } from "@/lib/policies/load";
 import { POLICY_SLUGS } from "@/lib/policies/slugs";
 import { PolicyView } from "@/components/policy/PolicyView";
+import { SocialLinks } from "@/components/policy/SocialLinks";
 
 export function generateStaticParams() {
   return POLICY_SLUGS.map((slug) => ({ slug }));
@@ -23,6 +24,7 @@ export default async function PolicyPage({ params }: { params: Promise<{ slug: s
   return (
     <>
       <PolicyView doc={doc} />
+      {slug === "contact" && <SocialLinks />}
     </>
   );
 }
