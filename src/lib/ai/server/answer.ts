@@ -81,15 +81,33 @@ async function resolveTarget(userId: string | null): Promise<{ target: ChatTarge
   return { target: null, ownKey: false };
 }
 
+/** One retry for a dropped connection, a common failure on slow networks. */
+async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+  try { return await fn(); } catch { await new Promise((r) => setTimeout(r, 1500)); return fn(); }
+}
+
+/** The whole hub guide, for questions about the hub itself (it is short, so it is always given in full). */
+async function hubGuidePassages(): Promise<Passage[]> {
+  const db = createServiceRoleClient();
+  const { data: doc } = await db.from("kb_documents").select("id, title").eq("source_type", "hub-guide").limit(1).maybeSingle();
+  if (!doc) return [];
+  const { data: chunks } = await db.from("kb_chunks").select("content").eq("document_id", doc.id).limit(12);
+  return (chunks ?? []).map((c) => ({ document_id: doc.id, source_type: "hub-guide", source_id: null, title: doc.title, content: c.content as string, similarity: 1 }));
+}
+
 async function retrieve(queries: string[]): Promise<Passage[]> {
   const model = await getLiveEmbeddingModel();
   const unique = [...new Set(queries.map((q) => q.trim()).filter(Boolean))];
-  const vectors = await embedTexts(unique, "query", model);
+  const vectors = await withRetry(() => embedTexts(unique, "query", model));
   const db = createServiceRoleClient();
   // Search once per query and keep the best passages overall (the same passage found twice counts once).
   const best = new Map<string, Passage & { chunk_id?: string }>();
   for (const vector of vectors) {
-    const { data, error } = await db.rpc("match_kb_chunks", { query_embedding: JSON.stringify(vector), match_count: TOP_K, p_model: model });
+    const { data, error } = await withRetry(async () => {
+      const r = await db.rpc("match_kb_chunks", { query_embedding: JSON.stringify(vector), match_count: TOP_K, p_model: model });
+      if (r.error && /fetch|timeout|network/i.test(r.error.message)) throw new Error(r.error.message);
+      return r;
+    });
     if (error) throw new Error(error.message);
     for (const p of (data ?? []) as (Passage & { chunk_id?: string })[]) {
       const key = p.chunk_id ?? `${p.document_id}:${p.content.slice(0, 80)}`;
@@ -182,10 +200,18 @@ export async function answerQuestion(opts: {
   const { target, ownKey } = await resolveTarget(userId);
   // Follow-up messages ("and what about…", "that's not what I asked") are searched as the full question they stand for.
   const { kind, question: rewritten } = await understand(message, history);
-  if (kind === "politics" || kind === "off_topic" || kind === "task") {
+  // Asking to find something ON the hub is a hub search, whatever the sorting step said.
+  // Politics always goes to other AIs, even when the question names the hub.
+  const political = /\bpolitic|\bgovernments?\b|\belections?\b|\bpresident|\bvot(?:e|ing)\b|政治|政府|选举|選舉|总统|總統|政党|政黨/i.test(message);
+  const aboutHub = !political && /aoe ?hub|on the hub|in the hub|本站|在(?:这个)?(?:网站|平台|hub)/i.test(message);
+  const effectiveKind = (kind === "task" || kind === "off_topic") && aboutHub ? "hub" : kind;
+  if (political || effectiveKind === "politics" || effectiveKind === "off_topic" || effectiveKind === "task") {
     return { text: (OFF_TOPIC[lang] ?? OFF_TOPIC.en), sources: [], escalate: false, offTopic: true };
   }
-  const passages = await retrieve(rewritten ? [rewritten, message] : [message]);
+  const found = await retrieve(rewritten ? [rewritten, message] : [message]);
+  // Questions about the hub itself always get the whole hub guide (first), so answers like "how do I report a post?" are never missed.
+  const guide = effectiveKind === "hub" || effectiveKind === "greeting" ? await hubGuidePassages().catch(() => []) : [];
+  const passages = [...guide, ...found.filter((p) => p.source_type !== "hub-guide" || guide.length === 0)];
 
   const context = passages.length
     ? passages
@@ -214,6 +240,10 @@ export async function answerQuestion(opts: {
     throw err;
   }
 
+  // A search of the hub that finds nothing is a "not confident" (offer to post the question), never "ask another AI".
+  if (/OFF_TOPIC/.test(raw) && aboutHub) {
+    return { text: (NOT_CONFIDENT[lang] ?? NOT_CONFIDENT.en), sources: [], escalate: true };
+  }
   if (/OFF_TOPIC/.test(raw)) {
     return { text: (OFF_TOPIC[lang] ?? OFF_TOPIC.en), sources: [], escalate: false, offTopic: true };
   }
