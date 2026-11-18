@@ -8,6 +8,7 @@ import { languageIsAvailable } from "@/lib/translate/languages";
 import { contentCap, refundBudget, takeBudget } from "@/lib/translate/budget";
 import { loadEnglishPolicy, splitPolicy } from "@/lib/policies/load";
 import { isPolicySlug } from "@/lib/policies/slugs";
+import { clientIp } from "@/lib/client-ip";
 
 export const runtime = "nodejs";
 
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
   const available = await languageIsAvailable(lang);
   if (!available.ok || lang === "en" || lang.startsWith("zh")) return NextResponse.json({ error: "Unknown language." }, { status: 400 });
 
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
+  const ip = clientIp(request);
   if (rateLimited(`pt:ip:${ip}`, 12, 60_000)) return NextResponse.json({ error: "Too many requests." }, { status: 429 });
 
   const itemId = `${slug}@${policy.version}`;

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { rateLimited } from "@/lib/ai/server/rate-limit";
 import { languageIsAvailable } from "@/lib/translate/languages";
 import { parseRequests, translateItems } from "@/lib/translate/content";
+import { clientIp } from "@/lib/client-ip";
 
 export const runtime = "nodejs";
 
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
+  const ip = clientIp(request);
   const limited = user ? rateLimited(`tr:u:${user.id}`, 60, 60_000) : rateLimited(`tr:ip:${ip}`, 20, 60_000);
   if (limited) return NextResponse.json({ error: "Too many requests." }, { status: 429 });
 
