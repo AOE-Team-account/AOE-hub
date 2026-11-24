@@ -14,11 +14,18 @@ export async function GET(request: Request, { params }: RouteContext<"/api/downl
     return NextResponse.json({ error: "You must be signed in to download." }, { status: 401 });
   }
 
-  const { data: asset } = await supabase
+  // First ask with the member's own key: the row rules decide whether this member
+  // may see the file at all (clean, post not deleted, author active).
+  const { data: visible } = await supabase.from("file_assets").select("id, scan_status").eq("id", assetId).maybeSingle();
+  if (!visible || visible.scan_status !== "clean") {
+    return NextResponse.json({ error: "This file isn't available for download." }, { status: 404 });
+  }
+  // Where it is stored is server-only (AOE-SEC-25), so that part is read with the server key.
+  const { data: asset } = await createServiceRoleClient()
     .from("file_assets")
     .select("id, storage_path, storage_backend, scan_status, original_name, label")
-    .eq("id", assetId)
-    .single();
+    .eq("id", visible.id)
+    .maybeSingle();
 
   if (!asset || asset.scan_status !== "clean" || !asset.storage_path || !asset.storage_backend) {
     return NextResponse.json({ error: "This file isn't available for download." }, { status: 404 });

@@ -118,13 +118,18 @@ alter default privileges for role postgres revoke execute on functions from publ
 -- Supabase's own per-schema defaults (EXECUTE to anon and authenticated in public):
 alter default privileges for role postgres in schema public revoke execute on functions from public, anon, authenticated;
 alter default privileges for role postgres in schema public grant execute on functions to service_role;
--- Row-level-security helpers in the private schema must stay callable by policies:
-alter default privileges for role postgres in schema private grant execute on functions to anon, authenticated, service_role;
+-- AOE-INF-08: new functions in the private schema are callable by the server only.
+-- The few that row-level-security policies use are granted one by one at the end
+-- of this file ("Private helpers").
+alter default privileges for role postgres in schema private revoke execute on functions from public, anon, authenticated;
+alter default privileges for role postgres in schema private grant execute on functions to service_role;
 
--- First line of every server-only function (AOE-SEC-07). A call from the website
--- carries a role (anon or authenticated) and is refused; only the hub's server
--- (service_role) passes. Direct database sessions (SQL editor, scheduled SQL) have
--- no web role and pass too.
+-- First line of every server-only function (AOE-SEC-07). Only the hub's server
+-- (service_role) passes; a call from the website (anon or authenticated) is refused,
+-- and so is a call with no role at all (AOE-INF-10). To run one of these functions
+-- by hand in the SQL editor, first run:
+--   select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+-- in the same query.
 create or replace function private.require_server()
 returns void
 language plpgsql
@@ -132,7 +137,7 @@ stable
 set search_path = public
 as $$
 begin
-  if coalesce(auth.role(), 'service_role') <> 'service_role' then
+  if auth.role() is distinct from 'service_role' then
     raise exception 'Not allowed.' using errcode = '42501';
   end if;
 end;
@@ -5066,3 +5071,30 @@ insert into public.hub_settings (key, value) values
   ('auto_check_enabled', 'true'::jsonb),
   ('auto_check_daily_cap', '200'::jsonb)
 on conflict (key) do nothing;
+
+-- ============================================================================
+-- Stored file locations are server-only (AOE-SEC-25). Visitors and members may
+-- read the display columns of a file record; where it is stored (bucket keys,
+-- game folder, upload ids, ETag, scan details) is read only by the hub's server.
+-- ============================================================================
+revoke select on public.file_assets from anon, authenticated;
+grant select (id, file_post_id, label, mime_type, downloads, scan_status, created_at,
+              size_bytes, is_link, link_url, link_host, is_game)
+  on public.file_assets to anon, authenticated;
+
+-- ============================================================================
+-- Private helpers (AOE-INF-08). Functions in the private schema are callable by
+-- the server only, except the few that row-level-security policies use (a policy
+-- runs as the visitor, so the visitor needs EXECUTE on them). The private schema
+-- is not exposed by the API either; this is a second lock.
+-- A NEW private helper used in a policy must be added to the grant list below.
+-- Keep this block at the very end of the file.
+-- ============================================================================
+revoke execute on all functions in schema private from public, anon, authenticated;
+grant execute on all functions in schema private to service_role;
+grant execute on function private.author_is_active(uuid) to anon, authenticated;
+grant execute on function private.can_participate(uuid) to anon, authenticated;
+grant execute on function private.creator_unlocked(boolean) to anon, authenticated;
+grant execute on function private.is_reviewer(uuid) to anon, authenticated;
+grant execute on function private.report_kind(text) to anon, authenticated;
+grant execute on function private.reviewer_can(uuid, text, text) to anon, authenticated;

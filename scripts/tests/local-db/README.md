@@ -11,5 +11,9 @@ sed 's/^create extension if not exists supabase_vault;//' supabase/schema.sql | 
 psql -h /tmp -p 55432 -U postgres -d aoe_test -f scripts/tests/local-db/security-checks.sql
 ```
 
+Also `content-limit-checks.sql` (SEC-05/12) and `round2-checks.sql` (SEC-25, INF-08, INF-10;
+it reads every table as anon and as a member, so a policy helper that lost its
+EXECUTE grant shows up as "function permission errors").
+
 Each check prints what it expects (for example "expect permission denied").
 Never run these files against the live database.

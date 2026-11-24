@@ -120,13 +120,18 @@ alter default privileges for role postgres revoke execute on functions from publ
 -- Supabase's own per-schema defaults (EXECUTE to anon and authenticated in public):
 alter default privileges for role postgres in schema public revoke execute on functions from public, anon, authenticated;
 alter default privileges for role postgres in schema public grant execute on functions to service_role;
--- Row-level-security helpers in the private schema must stay callable by policies:
-alter default privileges for role postgres in schema private grant execute on functions to anon, authenticated, service_role;
+-- AOE-INF-08: new functions in the private schema are callable by the server only.
+-- The few that row-level-security policies use are granted one by one at the end
+-- of this file ("Private helpers").
+alter default privileges for role postgres in schema private revoke execute on functions from public, anon, authenticated;
+alter default privileges for role postgres in schema private grant execute on functions to service_role;
 
--- First line of every server-only function (AOE-SEC-07). A call from the website
--- carries a role (anon or authenticated) and is refused; only the hub's server
--- (service_role) passes. Direct database sessions (SQL editor, scheduled SQL) have
--- no web role and pass too.
+-- First line of every server-only function (AOE-SEC-07). Only the hub's server
+-- (service_role) passes; a call from the website (anon or authenticated) is refused,
+-- and so is a call with no role at all (AOE-INF-10). To run one of these functions
+-- by hand in the SQL editor, first run:
+--   select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+-- in the same query.
 create or replace function private.require_server()
 returns void
 language plpgsql
@@ -134,7 +139,7 @@ stable
 set search_path = public
 as $$
 begin
-  if coalesce(auth.role(), 'service_role') <> 'service_role' then
+  if auth.role() is distinct from 'service_role' then
     raise exception 'Not allowed.' using errcode = '42501';
   end if;
 end;

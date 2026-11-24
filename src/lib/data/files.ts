@@ -55,7 +55,11 @@ function fromRow(row: FilePostRow, assets: FileAsset[]): FilePost {
 async function assetsFor(postIds: string[]): Promise<Record<string, FileAsset[]>> {
   if (postIds.length === 0) return {};
   const supabase = await createClient();
-  const { data } = await supabase.from("file_assets").select("*").in("file_post_id", postIds);
+  // Only the display columns: where a file is stored is server-only (AOE-SEC-25).
+  const { data } = await supabase
+    .from("file_assets")
+    .select("id, file_post_id, label, mime_type, downloads, scan_status, size_bytes, is_link, link_url, is_game")
+    .in("file_post_id", postIds);
 
   const byPost: Record<string, FileAsset[]> = {};
   for (const row of (data ?? []) as FileAssetRow[]) {
