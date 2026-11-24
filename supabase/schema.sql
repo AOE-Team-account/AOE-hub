@@ -1394,14 +1394,7 @@ create policy "authors can delete file posts" on public.file_posts
 -- shown publicly." Only clean assets are visible to everyone; the
 -- uploader can still see their own pending/flagged assets (so they get
 -- feedback on what happened), and reviewers can see everything for moderation.
-drop policy if exists "clean file assets are publicly readable" on public.file_assets;
-create policy "clean file assets are publicly readable" on public.file_assets
-  for select using (
-    (scan_status = 'clean'
-       and exists (select 1 from public.file_posts where id = file_post_id and deleted_at is null))
-    or exists (select 1 from public.file_posts where id = file_post_id and author_id = auth.uid() and deleted_at is null)
-    or private.reviewer_can(auth.uid(), 'file', 'view')
-  );
+-- (The read policy for file_assets is set further down, with AOE-SEC-21.)
 
 drop policy if exists "post authors manage their file assets" on public.file_assets;
 create policy "post authors manage their file assets" on public.file_assets
@@ -4679,27 +4672,123 @@ grant update (name, display_name, onboarding_experience, onboarding_reason, refe
 
 grant insert, delete on public.follows to authenticated;
 
--- file_posts / experience_posts: members create and delete their own; views,
--- pinned, announcement flags, deletion fields are never client-written.
-grant insert (author_id, title, description, section, media_type, authorship, remix_of_post_id, made_with_ai)
-  on public.file_posts to authenticated;
-grant delete on public.file_posts to authenticated;
+-- file_posts / experience_posts: members create their own; views, pinned,
+-- announcement flags, deletion fields are never client-written.
+-- A file post is created only by the upload route, through create_file_post()
+-- (AOE-SEC-05: no empty "file" posts straight through the API). Deleting is done
+-- by the hub's server (/api/my-content/delete), which removes stored files first
+-- and keeps reported items as evidence (AOE-SEC-12), so members get no direct delete.
+revoke insert, delete on public.file_posts from authenticated;
 
 grant insert (author_id, category, title, body, made_with_ai) on public.experience_posts to authenticated;
 grant insert (user_id, host, note) on public.link_host_requests to authenticated;
-grant delete on public.experience_posts to authenticated;
+revoke delete on public.experience_posts from authenticated;
 
 -- file_assets: written only by the upload route (service role) and the scan
 -- cron — a member must never be able to mark their own file "clean".
 -- (No grants at all: reads go through the select policy.)
 
 grant insert (parent_type, parent_id, parent_comment_id, author_id, type, body) on public.comments to authenticated;
-grant delete on public.comments to authenticated;
+revoke delete on public.comments from authenticated;
 
 grant insert (target_type, target_id, reason, details, reported_by, urgent) on public.reports to authenticated;
 
 grant update (read) on public.notifications to authenticated;
 
+
+-- ============================================================================
+-- Size and speed limits for what members write (AOE-SEC-05). Members write posts,
+-- comments and reports straight into the database, so the limits live here, not
+-- only in the browser. NOT VALID: only new and changed rows are checked.
+-- The hub's own server jobs (no signed-in member) are not speed-limited.
+-- ============================================================================
+alter table public.experience_posts drop constraint if exists experience_posts_body_len;
+alter table public.experience_posts add constraint experience_posts_body_len check (char_length(body) between 1 and 20000) not valid;
+alter table public.experience_posts drop constraint if exists experience_posts_title_len;
+alter table public.experience_posts add constraint experience_posts_title_len check (title is null or char_length(title) <= 300) not valid;
+alter table public.comments drop constraint if exists comments_body_len;
+alter table public.comments add constraint comments_body_len check (char_length(body) between 1 and 5000) not valid;
+alter table public.file_posts drop constraint if exists file_posts_title_len;
+alter table public.file_posts add constraint file_posts_title_len check (char_length(title) between 1 and 300) not valid;
+alter table public.file_posts drop constraint if exists file_posts_description_len;
+alter table public.file_posts add constraint file_posts_description_len check (char_length(description) <= 10000) not valid;
+alter table public.reports drop constraint if exists reports_details_len;
+alter table public.reports add constraint reports_details_len check (details is null or char_length(details) <= 5000) not valid;
+
+create or replace function private.limit_member_writes()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_n integer;
+begin
+  if v_uid is null then return new; end if;  -- the hub's own server jobs
+  if tg_table_name = 'comments' then
+    select count(*) into v_n from public.comments where author_id = v_uid and created_at > now() - interval '10 minutes';
+    if v_n >= 20 then raise exception 'You are commenting very quickly. Please wait a few minutes.'; end if;
+  elsif tg_table_name = 'experience_posts' then
+    select count(*) into v_n from public.experience_posts where author_id = v_uid and created_at > now() - interval '1 day';
+    if v_n >= 10 then raise exception 'You can share up to 10 posts a day. Please try again tomorrow.'; end if;
+  elsif tg_table_name = 'reports' then
+    select count(*) into v_n from public.reports where reported_by = v_uid and created_at > now() - interval '1 hour';
+    if v_n >= 30 then raise exception 'You have sent many reports this hour. Please wait a little.'; end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists comments_limit_writes on public.comments;
+create trigger comments_limit_writes before insert on public.comments
+  for each row execute function private.limit_member_writes();
+drop trigger if exists experience_posts_limit_writes on public.experience_posts;
+create trigger experience_posts_limit_writes before insert on public.experience_posts
+  for each row execute function private.limit_member_writes();
+drop trigger if exists reports_limit_writes on public.reports;
+create trigger reports_limit_writes before insert on public.reports
+  for each row execute function private.limit_member_writes();
+
+-- The upload route creates file posts with this (server only), after its own checks.
+create or replace function public.create_file_post(
+  p_author uuid, p_title text, p_description text, p_section text, p_media_type text,
+  p_authorship text, p_remix_of uuid, p_made_with_ai boolean
+)
+returns setof public.file_posts
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+begin
+  perform private.require_server();
+  if not private.can_participate(p_author) then
+    raise exception 'This account cannot post right now.' using errcode = '42501';
+  end if;
+  if (select count(*) from public.file_posts where author_id = p_author and created_at > now() - interval '1 day') >= 30 then
+    raise exception 'You can share up to 30 file posts a day. Please try again tomorrow.';
+  end if;
+  return query
+  insert into public.file_posts (author_id, title, description, section, media_type, authorship, remix_of_post_id, made_with_ai)
+  values (p_author, p_title, p_description, p_section, p_media_type, p_authorship, p_remix_of, coalesce(p_made_with_ai, false))
+  returning *;
+end;
+$$;
+revoke execute on function public.create_file_post(uuid, text, text, text, text, text, uuid, boolean) from public, anon, authenticated;
+grant execute on function public.create_file_post(uuid, text, text, text, text, text, uuid, boolean) to service_role;
+
+-- AOE-SEC-21: a file of a suspended (or deleted) member cannot be downloaded by
+-- direct link; the asset follows its post's author, like the post itself.
+drop policy if exists "clean file assets are publicly readable" on public.file_assets;
+create policy "clean file assets are publicly readable" on public.file_assets
+  for select using (
+    (scan_status = 'clean'
+       and exists (select 1 from public.file_posts p
+                    where p.id = file_post_id and p.deleted_at is null and private.author_is_active(p.author_id)))
+    or exists (select 1 from public.file_posts where id = file_post_id and author_id = auth.uid() and deleted_at is null)
+    or private.reviewer_can(auth.uid(), 'file', 'view')
+  );
 
 -- ============================================================================
 -- Shared rate limits (AOE-SEC-04). Counters every server process shares and that

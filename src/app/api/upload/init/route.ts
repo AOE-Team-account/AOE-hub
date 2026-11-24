@@ -122,11 +122,13 @@ export async function POST(request: Request) {
     await svc.rpc("refund_upload_allowance", { p_user: user.id, p_files: files, p_bytes: bytes });
   };
 
-  const { data: post, error: postError } = await supabase
-    .from("file_posts")
-    .insert({ author_id: user.id, title, description, section, media_type: mediaType, authorship, remix_of_post_id: remixOfPostId, made_with_ai: madeWithAi })
-    .select()
-    .single();
+  // Created by the server (AOE-SEC-05): members cannot insert file posts directly any more.
+  const { data: post, error: postError } = await svc
+    .rpc("create_file_post", {
+      p_author: user.id, p_title: title, p_description: description, p_section: section, p_media_type: mediaType,
+      p_authorship: authorship, p_remix_of: remixOfPostId, p_made_with_ai: madeWithAi,
+    })
+    .single<{ id: string }>();
   if (postError || !post) {
     await refund(specs.length + links.length, totalBytes);
     return NextResponse.json({ error: postError ? friendlyWriteError(postError) : "Could not create the post." }, { status: 500 });

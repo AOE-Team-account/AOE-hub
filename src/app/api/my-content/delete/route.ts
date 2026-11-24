@@ -10,6 +10,9 @@ export const runtime = "nodejs";
 // bytes (files, unpacked games, preview pictures and videos) are removed
 // first, so nothing is left behind in storage; only then is the post removed.
 // If any stored file cannot be removed, nothing is deleted and the member can try again.
+// An item with an open report is NOT erased (AOE-SEC-12): it goes to the trash
+// (hidden from everyone, kept for the reviewers as evidence) and the 30-day purge
+// removes it and its stored files later. Members cannot delete through the API directly.
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as { kind?: string; id?: string };
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -25,6 +28,28 @@ export async function POST(request: Request) {
   if (!own) return NextResponse.json({ error: "That is not yours." }, { status: 403 });
 
   const svc = createServiceRoleClient();
+  const reportType = body.kind === "file" ? "file" : "experience-post";
+  const { count: openReports } = await svc
+    .from("reports")
+    .select("id", { count: "exact", head: true })
+    .eq("target_type", reportType)
+    .eq("target_id", body.id)
+    .eq("status", "open");
+  if ((openReports ?? 0) > 0) {
+    const { error } = await svc
+      .from(table)
+      .update({ deleted_at: new Date().toISOString(), deleted_by: user.id, deleted_reason: "author-deleted" })
+      .eq("id", body.id)
+      .eq("author_id", user.id)
+      .is("deleted_at", null);
+    if (error) {
+      console.error("Could not move a reported post to the trash:", error.message);
+      return NextResponse.json({ error: "Could not delete it. Please try again." }, { status: 500 });
+    }
+    await svc.from("kb_documents").delete().eq("source_type", body.kind === "file" ? "file-post" : "experience-post").eq("source_id", body.id);
+    return NextResponse.json({ ok: true });
+  }
+
   try {
     if (body.kind === "file") {
       const { data: assets } = await svc.from("file_assets").select("storage_backend, storage_path, game_prefix").eq("file_post_id", body.id);
@@ -45,7 +70,7 @@ export async function POST(request: Request) {
   // The files are gone, so the post must go too: try again if the connection to the database drops.
   let lastError: { message: string } | null = null;
   for (let attempt = 0; attempt < 4; attempt++) {
-    const { error } = await supabase.from(table).delete().eq("id", body.id);
+    const { error } = await svc.from(table).delete().eq("id", body.id).eq("author_id", user.id);
     if (!error) return NextResponse.json({ ok: true });
     lastError = error;
     if (!/fetch failed|ECONNRESET|timeout|network/i.test(error.message)) break;
