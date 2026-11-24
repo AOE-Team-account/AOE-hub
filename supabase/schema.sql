@@ -106,6 +106,38 @@ revoke all on schema private from public;
 grant usage on schema private to anon, authenticated, service_role;
 alter default privileges in schema private revoke execute on functions from public;
 
+-- AOE-SEC-07: a new function is NOT callable from the browser until it is
+-- granted on purpose. Postgres (and Supabase) give EXECUTE on every new function
+-- to everyone by default; these lines turn that off for functions created from
+-- now on (the sweep near the end of this file still re-locks existing ones).
+-- Helpers in the private schema stay usable by row-level-security policies.
+-- (Run as postgres, as the Supabase SQL editor does. Functions created by the
+-- platform's own supabase_admin role are not covered; the hub never creates any.)
+-- Postgres's built-in "everyone may execute" default can only be removed globally:
+alter default privileges for role postgres revoke execute on functions from public;
+-- Supabase's own per-schema defaults (EXECUTE to anon and authenticated in public):
+alter default privileges for role postgres in schema public revoke execute on functions from public, anon, authenticated;
+alter default privileges for role postgres in schema public grant execute on functions to service_role;
+-- Row-level-security helpers in the private schema must stay callable by policies:
+alter default privileges for role postgres in schema private grant execute on functions to anon, authenticated, service_role;
+
+-- First line of every server-only function (AOE-SEC-07). A call from the website
+-- carries a role (anon or authenticated) and is refused; only the hub's server
+-- (service_role) passes. Direct database sessions (SQL editor, scheduled SQL) have
+-- no web role and pass too.
+create or replace function private.require_server()
+returns void
+language plpgsql
+stable
+set search_path = public
+as $$
+begin
+  if coalesce(auth.role(), 'service_role') <> 'service_role' then
+    raise exception 'Not allowed.' using errcode = '42501';
+  end if;
+end;
+$$;
+
 -- ---- Roles (independent flags; one row per role a person holds) -----------
 
 create table if not exists public.role_definitions (
@@ -1167,6 +1199,8 @@ begin
   end if;
 end;
 $$;
+revoke execute on function public.record_view(text, uuid, uuid) from public, anon, authenticated;
+grant execute on function public.record_view(text, uuid, uuid) to service_role;
 
 -- Call this from the app when a signed-in user downloads a file asset.
 create or replace function public.record_download(p_asset_id uuid, p_downloader_id uuid)
@@ -1191,6 +1225,8 @@ begin
   update public.file_assets set downloads = downloads + 1 where id = p_asset_id;
 end;
 $$;
+revoke execute on function public.record_download(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.record_download(uuid, uuid) to service_role;
 
 -- Points were removed from the hub (2026-10-25). On a database that still has
 -- them, take them away: the earning triggers, the functions, the ledger and
@@ -1664,17 +1700,23 @@ end $$;
 
 create or replace function public.kb_pending_documents(p_model text, p_limit integer default 1)
 returns table (id uuid, title text, content text)
-language sql
+language plpgsql
 security definer
 stable
 set search_path = public
 as $$
+begin
+  perform private.require_server();
+  return query
   select d.id, d.title, d.content
     from public.kb_documents d
    where not exists (select 1 from public.kb_document_models m where m.document_id = d.id and m.model = p_model)
    order by d.created_at, d.id
    limit greatest(p_limit, 1);
+end;
 $$;
+revoke execute on function public.kb_pending_documents(text, integer) from public, anon, authenticated;
+grant execute on function public.kb_pending_documents(text, integer) to service_role;
 
 create or replace function public.kb_pending_count(p_model text)
 returns integer
@@ -1686,6 +1728,8 @@ as $$
   select count(*)::integer from public.kb_documents d
    where not exists (select 1 from public.kb_document_models m where m.document_id = d.id and m.model = p_model);
 $$;
+revoke execute on function public.kb_pending_count(text) from public, anon, authenticated;
+grant execute on function public.kb_pending_count(text) to service_role;
 
 -- Deletes the AI's data made by any model NOT in the keep list (the "clean
 -- up" step, run only after a cut-over has been checked). Returns chunks removed.
@@ -1698,12 +1742,19 @@ as $$
 declare
   v_n integer;
 begin
+  perform private.require_server();
+  -- An empty list would wipe the AI's whole index (AOE-SEC-07).
+  if p_keep is null or cardinality(p_keep) = 0 then
+    raise exception 'kb_cleanup_models needs at least one model to keep.';
+  end if;
   delete from public.kb_chunks where embedding_model is null or embedding_model <> all (p_keep);
   get diagnostics v_n = row_count;
   delete from public.kb_document_models where model <> all (p_keep);
   return v_n;
 end;
 $$;
+revoke execute on function public.kb_cleanup_models(text[]) from public, anon, authenticated;
+grant execute on function public.kb_cleanup_models(text[]) to service_role;
 
 -- Which of the hub's AI providers is resting after hitting a limit, so the
 -- answer/translation AI can fall back (Gemini first, then Groq) and return.
@@ -2164,16 +2215,22 @@ $$;
 -- Not callable by browsers under any role except the service role.
 create or replace function public.get_user_ai_key(p_user_id uuid)
 returns table (provider text, model text, api_key text)
-language sql
+language plpgsql
 security definer
 stable
 set search_path = public
 as $$
+begin
+  perform private.require_server();
+  return query
   select s.provider, s.model, v.decrypted_secret
   from public.user_ai_settings s
   join vault.decrypted_secrets v on v.id = s.vault_secret_id
   where s.user_id = p_user_id;
+end;
 $$;
+revoke execute on function public.get_user_ai_key(uuid) from public, anon, authenticated;
+grant execute on function public.get_user_ai_key(uuid) to service_role;
 
 revoke execute on function public.set_my_ai_key(text, text, text) from public, anon;
 grant execute on function public.set_my_ai_key(text, text, text) to authenticated;
@@ -2299,17 +2356,24 @@ $$;
 -- first in the order they were added; and the result of a test.
 create or replace function public.hub_ai_key_secrets(p_only_active boolean default true)
 returns table (id uuid, provider text, label text, api_key text)
-language sql
+language plpgsql
 security definer
 stable
 set search_path = public
 as $$
+begin
+  -- Returns the hub's decrypted AI keys: server only, checked here too (AOE-SEC-07).
+  perform private.require_server();
+  return query
   select k.id, k.provider, k.label, v.decrypted_secret
     from public.hub_ai_keys k
     join vault.decrypted_secrets v on v.id = k.vault_secret_id
    where (not p_only_active or k.active)
    order by k.sort_order;
+end;
 $$;
+revoke execute on function public.hub_ai_key_secrets(boolean) from public, anon, authenticated;
+grant execute on function public.hub_ai_key_secrets(boolean) to service_role;
 
 create or replace function public.record_hub_ai_key_check(p_id uuid, p_ok boolean, p_note text)
 returns void
@@ -2320,6 +2384,8 @@ set search_path = public
 as $$
   update public.hub_ai_keys set last_check_at = now(), last_check_ok = p_ok, last_check_note = left(p_note, 200) where id = p_id;
 $$;
+revoke execute on function public.record_hub_ai_key_check(uuid, boolean, text) from public, anon, authenticated;
+grant execute on function public.record_hub_ai_key_check(uuid, boolean, text) to service_role;
 
 -- ============================================================================
 -- Moderation actions (chat6: Roles & moderation powers; Trust & safety)
@@ -3256,13 +3322,16 @@ security definer
 set search_path = public
 as $$
 declare
-  v_cutoff timestamptz := now() - make_interval(days => p_days);
+  -- Never less than 30 days, whatever is asked (AOE-SEC-07): purge_expired(0) used to erase the whole trash.
+  v_days integer := greatest(coalesce(p_days, 30), 30);
+  v_cutoff timestamptz := now() - make_interval(days => greatest(coalesce(p_days, 30), 30));
   v_files integer;
   v_posts integer;
   v_comments integer;
   v_accounts integer;
   v_ids uuid[];
 begin
+  perform private.require_server();
   delete from public.file_posts where deleted_at is not null and deleted_at < v_cutoff;
   get diagnostics v_files = row_count;
   delete from public.experience_posts where deleted_at is not null and deleted_at < v_cutoff;
@@ -3291,11 +3360,13 @@ begin
 
   if v_files + v_posts + v_comments + v_accounts > 0 then
     perform private.log_activity(null, 'purge', null, null, null, null,
-      jsonb_build_object('file_posts', v_files, 'posts', v_posts, 'comments', v_comments, 'accounts', v_accounts, 'days', p_days));
+      jsonb_build_object('file_posts', v_files, 'posts', v_posts, 'comments', v_comments, 'accounts', v_accounts, 'days', v_days));
   end if;
   return jsonb_build_object('file_posts', v_files, 'posts', v_posts, 'comments', v_comments, 'accounts', v_accounts);
 end;
 $$;
+revoke execute on function public.purge_expired(integer) from public, anon, authenticated;
+grant execute on function public.purge_expired(integer) to service_role;
 
 grant execute on function private.item_snapshot(text, uuid) to service_role;
 grant execute on function private.settle_reports(text, uuid) to service_role;
@@ -3819,6 +3890,8 @@ as $$
     'unlimited', private.has_role(p_user, 'creator')
   );
 $$;
+revoke execute on function public.get_upload_max_file(uuid) from public, anon, authenticated;
+grant execute on function public.get_upload_max_file(uuid) to service_role;
 
 -- Server only: takes one pending file for scanning (atomic, so two triggers cannot
 -- scan the same file at once). Returns nothing when it is already being scanned.
@@ -3835,6 +3908,8 @@ as $$
      and (scan_started_at is null or scan_started_at < now() - interval '30 minutes')
   returning *;
 $$;
+revoke execute on function public.claim_scan(uuid) from public, anon, authenticated;
+grant execute on function public.claim_scan(uuid) to service_role;
 
 -- Server only: the lift has been used.
 create or replace function public.consume_one_time_max(p_user uuid)
@@ -3846,6 +3921,8 @@ set search_path = public
 as $$
   update public.member_upload_limits set one_time_max_file_bytes = null, updated_at = now() where user_id = p_user;
 $$;
+revoke execute on function public.consume_one_time_max(uuid) from public, anon, authenticated;
+grant execute on function public.consume_one_time_max(uuid) to service_role;
 
 -- Creator panel: allow one member a single bigger upload (null takes it back).
 create or replace function public.set_member_one_time_max(p_user_id uuid, p_bytes bigint)
@@ -4072,30 +4149,32 @@ as $$
     join public.file_posts p on p.id = a.file_post_id
    where (a.storage_path is not null or a.game_prefix is not null)
      and (
-       (p.deleted_at is not null and p.deleted_at < now() - make_interval(days => p_days))
+       (p.deleted_at is not null and p.deleted_at < now() - make_interval(days => greatest(coalesce(p_days, 30), 30)))
        or exists (select 1 from public.profiles pr
                    where pr.id = p.author_id and pr.account_status = 'deleted'
-                     and pr.account_status_changed_at < now() - make_interval(days => p_days))
+                     and pr.account_status_changed_at < now() - make_interval(days => greatest(coalesce(p_days, 30), 30)))
      )
   union all
   select pr.id, 'r2'::text, pr.avatar_path, null::text
     from public.profiles pr
    where pr.avatar_path is not null and pr.account_status = 'deleted'
-     and pr.account_status_changed_at < now() - make_interval(days => p_days)
+     and pr.account_status_changed_at < now() - make_interval(days => greatest(coalesce(p_days, 30), 30))
   union all
   select m.id, m.storage_backend, m.storage_path, null::text
     from public.post_media m
     left join public.file_posts f on m.owner_type = 'file' and f.id = m.owner_id
     left join public.experience_posts e on m.owner_type = 'experience' and e.id = m.owner_id
    where m.storage_path is not null and ((f.id is not null and (
-            (f.deleted_at is not null and f.deleted_at < now() - make_interval(days => p_days))
+            (f.deleted_at is not null and f.deleted_at < now() - make_interval(days => greatest(coalesce(p_days, 30), 30)))
             or exists (select 1 from public.profiles pr where pr.id = f.author_id and pr.account_status = 'deleted'
-                          and pr.account_status_changed_at < now() - make_interval(days => p_days))))
+                          and pr.account_status_changed_at < now() - make_interval(days => greatest(coalesce(p_days, 30), 30)))))
       or (e.id is not null and (
-            (e.deleted_at is not null and e.deleted_at < now() - make_interval(days => p_days))
+            (e.deleted_at is not null and e.deleted_at < now() - make_interval(days => greatest(coalesce(p_days, 30), 30)))
             or exists (select 1 from public.profiles pr where pr.id = e.author_id and pr.account_status = 'deleted'
-                          and pr.account_status_changed_at < now() - make_interval(days => p_days)))));
+                          and pr.account_status_changed_at < now() - make_interval(days => greatest(coalesce(p_days, 30), 30))))));
 $$;
+revoke execute on function public.list_expired_storage(integer) from public, anon, authenticated;
+grant execute on function public.list_expired_storage(integer) to service_role;
 revoke execute on function public.list_expired_storage(integer) from public, anon, authenticated;
 grant execute on function public.list_expired_storage(integer) to service_role;
 
