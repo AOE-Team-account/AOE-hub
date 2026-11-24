@@ -127,6 +127,21 @@ Two checks guard this:
 
 Reviewed false alarms are listed by fingerprint (never by value) in `.gitleaksignore`. To scan the whole history by hand: `gitleaks git --redact .`
 
+## Visitor address for rate limits (set this before going live)
+
+Rate limits for signed-out visitors need the visitor's real address, and only a
+header written by **our own** proxy can be trusted (a visitor can fake
+`X-Forwarded-For`). So the hub trusts **no** address header until one of these
+is set on the host (details in `.env.example`):
+
+- `CLIENT_IP_HEADER`, e.g. `cf-connecting-ip` behind Cloudflare, or `x-real-ip` if Apache/nginx sets it; or
+- `TRUSTED_PROXY_COUNT`, how many of our proxies append to `X-Forwarded-For`.
+
+Until then (fail safe): signed-out visitors are asked to sign in before using the hub AI,
+and the other signed-out actions (page translation, takedown form) share one small
+allowance. Members are always counted by their account. The server log says
+"visitor address headers are ignored" once per start while neither is set.
+
 ## Getting started
 
 ```bash
