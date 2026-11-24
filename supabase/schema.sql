@@ -1556,6 +1556,17 @@ as $$
   from public.kb_chunks c
   join public.kb_documents d on d.id = c.document_id
   where c.embedding_model = p_model and c.embedding is not null
+    -- Never a passage whose post or comment was trashed, or whose author is no longer
+    -- active, even before the next index run removes it (AOE-SEC-08).
+    and case d.source_type
+      when 'file-post' then exists (select 1 from public.file_posts f
+                                     where f.id = d.source_id and f.deleted_at is null and private.author_is_active(f.author_id))
+      when 'experience-post' then exists (select 1 from public.experience_posts e
+                                     where e.id = d.source_id and e.deleted_at is null and private.author_is_active(e.author_id))
+      when 'community-answer' then exists (select 1 from public.comments cm
+                                     where cm.id = d.source_id and cm.deleted_at is null and private.author_is_active(cm.author_id))
+      else true
+    end
   order by c.embedding <=> query_embedding
   limit least(greatest(match_count, 1), 20);
 $$;
