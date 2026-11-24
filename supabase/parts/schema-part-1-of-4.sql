@@ -108,6 +108,38 @@ revoke all on schema private from public;
 grant usage on schema private to anon, authenticated, service_role;
 alter default privileges in schema private revoke execute on functions from public;
 
+-- AOE-SEC-07: a new function is NOT callable from the browser until it is
+-- granted on purpose. Postgres (and Supabase) give EXECUTE on every new function
+-- to everyone by default; these lines turn that off for functions created from
+-- now on (the sweep near the end of this file still re-locks existing ones).
+-- Helpers in the private schema stay usable by row-level-security policies.
+-- (Run as postgres, as the Supabase SQL editor does. Functions created by the
+-- platform's own supabase_admin role are not covered; the hub never creates any.)
+-- Postgres's built-in "everyone may execute" default can only be removed globally:
+alter default privileges for role postgres revoke execute on functions from public;
+-- Supabase's own per-schema defaults (EXECUTE to anon and authenticated in public):
+alter default privileges for role postgres in schema public revoke execute on functions from public, anon, authenticated;
+alter default privileges for role postgres in schema public grant execute on functions to service_role;
+-- Row-level-security helpers in the private schema must stay callable by policies:
+alter default privileges for role postgres in schema private grant execute on functions to anon, authenticated, service_role;
+
+-- First line of every server-only function (AOE-SEC-07). A call from the website
+-- carries a role (anon or authenticated) and is refused; only the hub's server
+-- (service_role) passes. Direct database sessions (SQL editor, scheduled SQL) have
+-- no web role and pass too.
+create or replace function private.require_server()
+returns void
+language plpgsql
+stable
+set search_path = public
+as $$
+begin
+  if coalesce(auth.role(), 'service_role') <> 'service_role' then
+    raise exception 'Not allowed.' using errcode = '42501';
+  end if;
+end;
+$$;
+
 -- ---- Roles (independent flags; one row per role a person holds) -----------
 
 create table if not exists public.role_definitions (
@@ -1119,4 +1151,112 @@ alter table public.profiles drop column if exists groups_count;
 
 -- (The old admin_notify_user() was replaced by warn_user() and notices.)
 drop function if exists public.admin_notify_user(uuid, text);
+
+-- ============================================================================
+-- View and download counters (there are no points; these are plain counts)
+-- ============================================================================
+
+-- Dedup table for "one counted view per person per day": a row here means that
+-- viewer already counted for that content today.
+create table if not exists public.post_views (
+  target_type text not null,
+  target_id uuid not null,
+  viewer_id uuid not null references public.profiles (id) on delete cascade,
+  viewed_on date not null default current_date,
+  primary key (target_type, target_id, viewer_id, viewed_on)
+);
+
+-- Call this from the app whenever a signed-in user opens a file or
+-- experience post. Silently no-ops on a duplicate same-day view.
+create or replace function public.record_view(
+  p_target_type text,
+  p_target_id uuid,
+  p_viewer_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  is_new_view_today boolean;
+begin
+  -- The counter only moves for a genuinely new view (this viewer, this
+  -- content, today), not on every page load or refresh.
+  insert into public.post_views (target_type, target_id, viewer_id)
+  values (p_target_type, p_target_id, p_viewer_id)
+  on conflict do nothing
+  returning true into is_new_view_today;
+
+  if not coalesce(is_new_view_today, false) then
+    return;
+  end if;
+
+  if p_target_type = 'file' then
+    update public.file_posts set views = views + 1 where id = p_target_id;
+  elsif p_target_type = 'experience-post' then
+    update public.experience_posts set views = views + 1 where id = p_target_id;
+  else
+    raise exception 'record_view: unsupported target_type %', p_target_type;
+  end if;
+end;
+$$;
+revoke execute on function public.record_view(text, uuid, uuid) from public, anon, authenticated;
+grant execute on function public.record_view(text, uuid, uuid) to service_role;
+
+-- Call this from the app when a signed-in user downloads a file asset.
+create or replace function public.record_download(p_asset_id uuid, p_downloader_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  is_new_today boolean;
+begin
+  -- One counted download per person per file per day, so scripted repeat
+  -- downloads cannot inflate the counter. (Server-only function.)
+  insert into public.post_views (target_type, target_id, viewer_id)
+  values ('download', p_asset_id, p_downloader_id)
+  on conflict do nothing
+  returning true into is_new_today;
+  if not coalesce(is_new_today, false) then
+    return;
+  end if;
+
+  update public.file_assets set downloads = downloads + 1 where id = p_asset_id;
+end;
+$$;
+revoke execute on function public.record_download(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.record_download(uuid, uuid) to service_role;
+
+-- Points were removed from the hub (2026-10-25). On a database that still has
+-- them, take them away: the earning triggers, the functions, the ledger and
+-- the balance column. Nothing here runs on a fresh install.
+drop trigger if exists comments_award_points on public.comments;
+drop trigger if exists file_posts_award_remix_points on public.file_posts;
+drop function if exists public.award_points_for_comment();
+drop function if exists public.award_points_for_remix();
+drop function if exists public.award_points(uuid, integer, text, text, uuid);
+drop table if exists public.points_events cascade;
+alter table public.profiles drop column if exists points;
+
+-- ============================================================================
+-- Notifications
+-- ============================================================================
+
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  body text not null,
+  kind text,
+  read boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists notifications_user_id_idx on public.notifications (user_id, read);
+
+-- Generic notification payload (event type is `kind`; details go here), so
+-- order, payout and report events can use the same table later.
+alter table public.notifications add column if not exists data jsonb not null default '{}'::jsonb;
 

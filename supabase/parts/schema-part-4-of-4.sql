@@ -1,156 +1,6 @@
 -- AOEhub database setup, part 4 of 4. Run the parts in order (1, 2, 3 ...). Each part is safe to run again.
 
 -- ============================================================================
--- Daily upload allowance (Step 7). One default for everyone (hub_settings:
--- upload_daily_files, upload_daily_bytes) that the Creator can raise or lower
--- in the Creator panel at any time, plus an optional override for one member.
--- The Creator account itself is never limited. The day is the UTC day.
--- ============================================================================
-create table if not exists public.upload_usage (
-  user_id uuid not null references public.profiles (id) on delete cascade,
-  day date not null,
-  files integer not null default 0,
-  bytes bigint not null default 0,
-  primary key (user_id, day)
-);
-alter table public.upload_usage enable row level security;
-
-create table if not exists public.member_upload_limits (
-  user_id uuid primary key references public.profiles (id) on delete cascade,
-  files_per_day integer check (files_per_day is null or files_per_day >= 0),
-  bytes_per_day bigint check (bytes_per_day is null or bytes_per_day >= 0),
-  updated_at timestamptz not null default now()
-);
-alter table public.member_upload_limits enable row level security;
-
-insert into public.hub_settings (key, value) values
-  ('upload_daily_files', '100'::jsonb),
-  ('upload_daily_bytes', '1073741824'::jsonb)
-on conflict (key) do nothing;
-
--- What this member may upload per day: their own override, else the hub default.
--- Returns nulls (= no limit) for the Creator.
-create or replace function private.upload_limits(p_user uuid, out o_files bigint, out o_bytes bigint)
-language plpgsql
-security definer
-stable
-set search_path = public
-as $$
-declare
-  v_ov public.member_upload_limits;
-begin
-  if private.has_role(p_user, 'creator') then
-    o_files := null; o_bytes := null; return;
-  end if;
-  select * into v_ov from public.member_upload_limits where user_id = p_user;
-  o_files := coalesce(v_ov.files_per_day,
-    (select case when jsonb_typeof(value) = 'number' then (value)::numeric::bigint end from public.hub_settings where key = 'upload_daily_files'), 100);
-  o_bytes := coalesce(v_ov.bytes_per_day,
-    (select case when jsonb_typeof(value) = 'number' then (value)::numeric::bigint end from public.hub_settings where key = 'upload_daily_bytes'), 1073741824);
-end;
-$$;
-
--- Server only. Takes p_files / p_bytes from today's allowance if they fit;
--- atomic, so two uploads at once cannot overspend. Always answers with the
--- numbers the member needs for a clear message.
-create or replace function public.take_upload_allowance(p_user uuid, p_files integer, p_bytes bigint)
-returns jsonb
-language plpgsql
-volatile
-set search_path = public
-as $$
-declare
-  v_lf bigint;
-  v_lb bigint;
-  v_files integer;
-  v_bytes bigint;
-  v_ok boolean := false;
-begin
-  select o_files, o_bytes into v_lf, v_lb from private.upload_limits(p_user);
-  insert into public.upload_usage (user_id, day) values (p_user, (now() at time zone 'utc')::date)
-  on conflict (user_id, day) do nothing;
-  update public.upload_usage
-     set files = files + p_files, bytes = bytes + p_bytes
-   where user_id = p_user and day = (now() at time zone 'utc')::date
-     and (v_lf is null or files + p_files <= v_lf)
-     and (v_lb is null or bytes + p_bytes <= v_lb)
-  returning files, bytes into v_files, v_bytes;
-  v_ok := v_files is not null;
-  if not v_ok then
-    select files, bytes into v_files, v_bytes from public.upload_usage where user_id = p_user and day = (now() at time zone 'utc')::date;
-  end if;
-  return jsonb_build_object(
-    'ok', v_ok,
-    'limit_files', v_lf, 'limit_bytes', v_lb,
-    'files_left', case when v_lf is null then null else greatest(0, v_lf - v_files) end,
-    'bytes_left', case when v_lb is null then null else greatest(0, v_lb - v_bytes) end);
-end;
-$$;
-
--- Server only: gives back files that did not make it into storage.
-create or replace function public.refund_upload_allowance(p_user uuid, p_files integer, p_bytes bigint)
-returns void
-language sql
-volatile
-set search_path = public
-as $$
-  update public.upload_usage
-     set files = greatest(0, files - p_files), bytes = greatest(0, bytes - p_bytes)
-   where user_id = p_user and day = (now() at time zone 'utc')::date;
-$$;
-
--- Creator panel: one member's override and today's use.
-create or replace function public.member_upload_limit(p_user_id uuid)
-returns jsonb
-language plpgsql
-security definer
-volatile
-set search_path = public
-as $$
-declare
-  v_ov public.member_upload_limits;
-  v_use public.upload_usage;
-  v_lf bigint;
-  v_lb bigint;
-begin
-  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
-  select * into v_ov from public.member_upload_limits where user_id = p_user_id;
-  select * into v_use from public.upload_usage where user_id = p_user_id and day = (now() at time zone 'utc')::date;
-  select o_files, o_bytes into v_lf, v_lb from private.upload_limits(p_user_id);
-  return jsonb_build_object(
-    'override_files', v_ov.files_per_day, 'override_bytes', v_ov.bytes_per_day,
-    'limit_files', v_lf, 'limit_bytes', v_lb,
-    'used_files', coalesce(v_use.files, 0), 'used_bytes', coalesce(v_use.bytes, 0),
-    'one_time_max_file_bytes', v_ov.one_time_max_file_bytes);
-end;
-$$;
-
--- Creator panel: set (or, with both null, clear) one member's override.
-create or replace function public.set_member_upload_limit(p_user_id uuid, p_files integer, p_bytes bigint)
-returns void
-language plpgsql
-security definer
-volatile
-set search_path = public
-as $$
-begin
-  if auth.uid() is null or not private.creator_unlocked(true) then raise exception 'Unlock the Creator panel first.'; end if;
-  if not exists (select 1 from public.profiles where id = p_user_id) then raise exception 'No such member.'; end if;
-  if (p_files is not null and (p_files < 0 or p_files > 1000000)) or (p_bytes is not null and (p_bytes < 0 or p_bytes > 10000000000000)) then
-    raise exception 'That limit is out of range.';
-  end if;
-  if p_files is null and p_bytes is null then
-    delete from public.member_upload_limits where user_id = p_user_id;
-  else
-    insert into public.member_upload_limits (user_id, files_per_day, bytes_per_day) values (p_user_id, p_files, p_bytes)
-    on conflict (user_id) do update set files_per_day = excluded.files_per_day, bytes_per_day = excluded.bytes_per_day, updated_at = now();
-  end if;
-  perform private.log_activity(auth.uid(), 'setting-changed', 'user', p_user_id, p_user_id, null,
-                               jsonb_build_object('key', 'upload_limit', 'files', p_files, 'bytes', p_bytes));
-end;
-$$;
-
--- ============================================================================
 -- Virus scanner and large uploads (Step 7, scanner)
 -- A file is sent by the browser straight to a private staging bucket, scanned by
 -- the ClamAV service, and only if clean moved to its final place. Until then the
@@ -173,6 +23,10 @@ alter table public.file_assets add column if not exists scan_attempts integer no
 alter table public.file_assets add column if not exists scan_started_at timestamptz;
 alter table public.file_assets add column if not exists scan_finished_at timestamptz;
 alter table public.file_assets add column if not exists multipart_upload_id text;
+-- The fingerprint (ETag) of the sealed copy that is scanned and published. The
+-- upload is copied to a new key nobody can write to when it is complete, and the
+-- scanner refuses to scan or move anything that does not match this (AOE-SEC-01).
+alter table public.file_assets add column if not exists staged_etag text;
 -- When a stored file was last re-checked against fresh virus signatures (weekly job).
 alter table public.file_assets add column if not exists rescanned_at timestamptz;
 create index if not exists file_assets_rescan_idx on public.file_assets (rescanned_at nulls first, scan_finished_at) where scan_status = 'clean' and storage_path is not null;
@@ -203,6 +57,8 @@ as $$
     'unlimited', private.has_role(p_user, 'creator')
   );
 $$;
+revoke execute on function public.get_upload_max_file(uuid) from public, anon, authenticated;
+grant execute on function public.get_upload_max_file(uuid) to service_role;
 
 -- Server only: takes one pending file for scanning (atomic, so two triggers cannot
 -- scan the same file at once). Returns nothing when it is already being scanned.
@@ -219,6 +75,8 @@ as $$
      and (scan_started_at is null or scan_started_at < now() - interval '30 minutes')
   returning *;
 $$;
+revoke execute on function public.claim_scan(uuid) from public, anon, authenticated;
+grant execute on function public.claim_scan(uuid) to service_role;
 
 -- Server only: the lift has been used.
 create or replace function public.consume_one_time_max(p_user uuid)
@@ -230,6 +88,8 @@ set search_path = public
 as $$
   update public.member_upload_limits set one_time_max_file_bytes = null, updated_at = now() where user_id = p_user;
 $$;
+revoke execute on function public.consume_one_time_max(uuid) from public, anon, authenticated;
+grant execute on function public.consume_one_time_max(uuid) to service_role;
 
 -- Creator panel: allow one member a single bigger upload (null takes it back).
 create or replace function public.set_member_one_time_max(p_user_id uuid, p_bytes bigint)
@@ -456,30 +316,32 @@ as $$
     join public.file_posts p on p.id = a.file_post_id
    where (a.storage_path is not null or a.game_prefix is not null)
      and (
-       (p.deleted_at is not null and p.deleted_at < now() - make_interval(days => p_days))
+       (p.deleted_at is not null and p.deleted_at < now() - make_interval(days => greatest(coalesce(p_days, 30), 30)))
        or exists (select 1 from public.profiles pr
                    where pr.id = p.author_id and pr.account_status = 'deleted'
-                     and pr.account_status_changed_at < now() - make_interval(days => p_days))
+                     and pr.account_status_changed_at < now() - make_interval(days => greatest(coalesce(p_days, 30), 30)))
      )
   union all
   select pr.id, 'r2'::text, pr.avatar_path, null::text
     from public.profiles pr
    where pr.avatar_path is not null and pr.account_status = 'deleted'
-     and pr.account_status_changed_at < now() - make_interval(days => p_days)
+     and pr.account_status_changed_at < now() - make_interval(days => greatest(coalesce(p_days, 30), 30))
   union all
   select m.id, m.storage_backend, m.storage_path, null::text
     from public.post_media m
     left join public.file_posts f on m.owner_type = 'file' and f.id = m.owner_id
     left join public.experience_posts e on m.owner_type = 'experience' and e.id = m.owner_id
    where m.storage_path is not null and ((f.id is not null and (
-            (f.deleted_at is not null and f.deleted_at < now() - make_interval(days => p_days))
+            (f.deleted_at is not null and f.deleted_at < now() - make_interval(days => greatest(coalesce(p_days, 30), 30)))
             or exists (select 1 from public.profiles pr where pr.id = f.author_id and pr.account_status = 'deleted'
-                          and pr.account_status_changed_at < now() - make_interval(days => p_days))))
+                          and pr.account_status_changed_at < now() - make_interval(days => greatest(coalesce(p_days, 30), 30)))))
       or (e.id is not null and (
-            (e.deleted_at is not null and e.deleted_at < now() - make_interval(days => p_days))
+            (e.deleted_at is not null and e.deleted_at < now() - make_interval(days => greatest(coalesce(p_days, 30), 30)))
             or exists (select 1 from public.profiles pr where pr.id = e.author_id and pr.account_status = 'deleted'
-                          and pr.account_status_changed_at < now() - make_interval(days => p_days)))));
+                          and pr.account_status_changed_at < now() - make_interval(days => greatest(coalesce(p_days, 30), 30))))));
 $$;
+revoke execute on function public.list_expired_storage(integer) from public, anon, authenticated;
+grant execute on function public.list_expired_storage(integer) to service_role;
 revoke execute on function public.list_expired_storage(integer) from public, anon, authenticated;
 grant execute on function public.list_expired_storage(integer) to service_role;
 
@@ -956,6 +818,27 @@ revoke insert, update, delete, truncate on public.ai_key_help from anon, authent
 revoke all on public.hub_settings, public.creator_access, public.creator_sessions, public.creator_recovery_keys, public.creator_security_events from anon, authenticated;
 revoke all on public.restrictions from anon;
 
+-- profiles (AOE-SEC-03): the browser may read only the public columns.
+-- Region, language, onboarding answers, referral source, age check and the
+-- account-status details are private: only the owner reads them, through
+-- my_profile(). Staff tools read them through their own checked functions.
+revoke select on public.profiles from anon, authenticated;
+grant select (id, name, display_name, member_since, followers_count, following_count, files_count,
+              avatar_path, profile_frame, profile_background, post_font)
+  on public.profiles to anon, authenticated;
+
+create or replace function public.my_profile()
+returns setof public.profiles
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select * from public.profiles where id = auth.uid();
+$$;
+revoke execute on function public.my_profile() from public, anon;
+grant execute on function public.my_profile() to authenticated, service_role;
+
 -- profiles: only the person's own presentation fields. Counters,
 -- account status and age attestation are changed by functions/triggers only.
 grant update (name, display_name, onboarding_experience, onboarding_reason, referral_source, region, language, profile_frame, profile_background, post_font)
@@ -963,27 +846,171 @@ grant update (name, display_name, onboarding_experience, onboarding_reason, refe
 
 grant insert, delete on public.follows to authenticated;
 
--- file_posts / experience_posts: members create and delete their own; views,
--- pinned, announcement flags, deletion fields are never client-written.
-grant insert (author_id, title, description, section, media_type, authorship, remix_of_post_id, made_with_ai)
-  on public.file_posts to authenticated;
-grant delete on public.file_posts to authenticated;
+-- file_posts / experience_posts: members create their own; views, pinned,
+-- announcement flags, deletion fields are never client-written.
+-- A file post is created only by the upload route, through create_file_post()
+-- (AOE-SEC-05: no empty "file" posts straight through the API). Deleting is done
+-- by the hub's server (/api/my-content/delete), which removes stored files first
+-- and keeps reported items as evidence (AOE-SEC-12), so members get no direct delete.
+revoke insert, delete on public.file_posts from authenticated;
 
 grant insert (author_id, category, title, body, made_with_ai) on public.experience_posts to authenticated;
 grant insert (user_id, host, note) on public.link_host_requests to authenticated;
-grant delete on public.experience_posts to authenticated;
+revoke delete on public.experience_posts from authenticated;
 
 -- file_assets: written only by the upload route (service role) and the scan
 -- cron — a member must never be able to mark their own file "clean".
 -- (No grants at all: reads go through the select policy.)
 
 grant insert (parent_type, parent_id, parent_comment_id, author_id, type, body) on public.comments to authenticated;
-grant delete on public.comments to authenticated;
+revoke delete on public.comments from authenticated;
 
 grant insert (target_type, target_id, reason, details, reported_by, urgent) on public.reports to authenticated;
 
 grant update (read) on public.notifications to authenticated;
 
+
+-- ============================================================================
+-- Size and speed limits for what members write (AOE-SEC-05). Members write posts,
+-- comments and reports straight into the database, so the limits live here, not
+-- only in the browser. NOT VALID: only new and changed rows are checked.
+-- The hub's own server jobs (no signed-in member) are not speed-limited.
+-- ============================================================================
+alter table public.experience_posts drop constraint if exists experience_posts_body_len;
+alter table public.experience_posts add constraint experience_posts_body_len check (char_length(body) between 1 and 20000) not valid;
+alter table public.experience_posts drop constraint if exists experience_posts_title_len;
+alter table public.experience_posts add constraint experience_posts_title_len check (title is null or char_length(title) <= 300) not valid;
+alter table public.comments drop constraint if exists comments_body_len;
+alter table public.comments add constraint comments_body_len check (char_length(body) between 1 and 5000) not valid;
+alter table public.file_posts drop constraint if exists file_posts_title_len;
+alter table public.file_posts add constraint file_posts_title_len check (char_length(title) between 1 and 300) not valid;
+alter table public.file_posts drop constraint if exists file_posts_description_len;
+alter table public.file_posts add constraint file_posts_description_len check (char_length(description) <= 10000) not valid;
+alter table public.reports drop constraint if exists reports_details_len;
+alter table public.reports add constraint reports_details_len check (details is null or char_length(details) <= 5000) not valid;
+
+create or replace function private.limit_member_writes()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_n integer;
+begin
+  if v_uid is null then return new; end if;  -- the hub's own server jobs
+  if tg_table_name = 'comments' then
+    select count(*) into v_n from public.comments where author_id = v_uid and created_at > now() - interval '10 minutes';
+    if v_n >= 20 then raise exception 'You are commenting very quickly. Please wait a few minutes.'; end if;
+  elsif tg_table_name = 'experience_posts' then
+    select count(*) into v_n from public.experience_posts where author_id = v_uid and created_at > now() - interval '1 day';
+    if v_n >= 10 then raise exception 'You can share up to 10 posts a day. Please try again tomorrow.'; end if;
+  elsif tg_table_name = 'reports' then
+    select count(*) into v_n from public.reports where reported_by = v_uid and created_at > now() - interval '1 hour';
+    if v_n >= 30 then raise exception 'You have sent many reports this hour. Please wait a little.'; end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists comments_limit_writes on public.comments;
+create trigger comments_limit_writes before insert on public.comments
+  for each row execute function private.limit_member_writes();
+drop trigger if exists experience_posts_limit_writes on public.experience_posts;
+create trigger experience_posts_limit_writes before insert on public.experience_posts
+  for each row execute function private.limit_member_writes();
+drop trigger if exists reports_limit_writes on public.reports;
+create trigger reports_limit_writes before insert on public.reports
+  for each row execute function private.limit_member_writes();
+
+-- The upload route creates file posts with this (server only), after its own checks.
+create or replace function public.create_file_post(
+  p_author uuid, p_title text, p_description text, p_section text, p_media_type text,
+  p_authorship text, p_remix_of uuid, p_made_with_ai boolean
+)
+returns setof public.file_posts
+language plpgsql
+security definer
+volatile
+set search_path = public
+as $$
+begin
+  perform private.require_server();
+  if not private.can_participate(p_author) then
+    raise exception 'This account cannot post right now.' using errcode = '42501';
+  end if;
+  if (select count(*) from public.file_posts where author_id = p_author and created_at > now() - interval '1 day') >= 30 then
+    raise exception 'You can share up to 30 file posts a day. Please try again tomorrow.';
+  end if;
+  return query
+  insert into public.file_posts (author_id, title, description, section, media_type, authorship, remix_of_post_id, made_with_ai)
+  values (p_author, p_title, p_description, p_section, p_media_type, p_authorship, p_remix_of, coalesce(p_made_with_ai, false))
+  returning *;
+end;
+$$;
+revoke execute on function public.create_file_post(uuid, text, text, text, text, text, uuid, boolean) from public, anon, authenticated;
+grant execute on function public.create_file_post(uuid, text, text, text, text, text, uuid, boolean) to service_role;
+
+-- AOE-SEC-21: a file of a suspended (or deleted) member cannot be downloaded by
+-- direct link; the asset follows its post's author, like the post itself.
+drop policy if exists "clean file assets are publicly readable" on public.file_assets;
+create policy "clean file assets are publicly readable" on public.file_assets
+  for select using (
+    (scan_status = 'clean'
+       and exists (select 1 from public.file_posts p
+                    where p.id = file_post_id and p.deleted_at is null and private.author_is_active(p.author_id)))
+    or exists (select 1 from public.file_posts where id = file_post_id and author_id = auth.uid() and deleted_at is null)
+    or private.reviewer_can(auth.uid(), 'file', 'view')
+  );
+
+-- ============================================================================
+-- Shared rate limits (AOE-SEC-04). Counters every server process shares and that
+-- survive a restart. Buckets are fingerprints (hashes) made by the server, never
+-- raw addresses. Server only. Old windows are cleared as it goes.
+-- ============================================================================
+create table if not exists public.rate_limit_counters (
+  bucket text not null,
+  window_start timestamptz not null,
+  hits integer not null default 0,
+  primary key (bucket, window_start)
+);
+alter table public.rate_limit_counters enable row level security;
+revoke all on public.rate_limit_counters from anon, authenticated;
+
+create or replace function public.take_rate_limit(p_bucket text, p_limit integer, p_window_seconds integer)
+returns boolean
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare
+  v_window integer := greatest(coalesce(p_window_seconds, 60), 1);
+  v_start timestamptz := to_timestamp(floor(extract(epoch from now()) / v_window) * v_window);
+  v_hits integer;
+begin
+  perform private.require_server();
+  if p_bucket is null or length(p_bucket) > 100 then raise exception 'Bad bucket.'; end if;
+  insert into public.rate_limit_counters as c (bucket, window_start, hits)
+  values (p_bucket, v_start, 1)
+  on conflict (bucket, window_start) do update set hits = c.hits + 1
+  returning hits into v_hits;
+  if random() < 0.01 then
+    delete from public.rate_limit_counters where window_start < now() - interval '2 days';
+  end if;
+  return v_hits <= greatest(p_limit, 0);
+end;
+$$;
+revoke execute on function public.take_rate_limit(text, integer, integer) from public, anon, authenticated;
+grant execute on function public.take_rate_limit(text, integer, integer) to service_role;
+
+-- The hub AI's daily allowance (questions a day), kept in translation_usage under
+-- the kinds 'hub-ai' and 'hub-ai-guest'. The Creator can change these numbers.
+insert into public.hub_settings (key, value) values
+  ('hub_ai_daily_cap', '1500'::jsonb),
+  ('hub_ai_guest_daily_cap', '300'::jsonb)
+on conflict (key) do nothing;
 
 -- ---- Functions: only the listed ones are callable from a browser ----------
 do $$
@@ -1060,6 +1087,7 @@ grant execute on function public.ask_for_two_step(uuid) to authenticated;
 grant execute on function public.pin_my_item(text, uuid) to authenticated;
 grant execute on function public.unpin_my_item(text) to authenticated;
 grant execute on function public.creator_account_queue() to authenticated;
+grant execute on function public.my_profile() to authenticated;
 -- list_expired_storage, purge_expired, get_upload_max_file, consume_one_time_max, claim_scan: server (service role) only.
 -- record_view, record_download, record_account_deletion,
 -- get_user_ai_key, match_kb_chunks: server (service role) only.

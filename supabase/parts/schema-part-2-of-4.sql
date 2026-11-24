@@ -1,110 +1,6 @@
 -- AOEhub database setup, part 2 of 4. Run the parts in order (1, 2, 3 ...). Each part is safe to run again.
 
 -- ============================================================================
--- View and download counters (there are no points; these are plain counts)
--- ============================================================================
-
--- Dedup table for "one counted view per person per day": a row here means that
--- viewer already counted for that content today.
-create table if not exists public.post_views (
-  target_type text not null,
-  target_id uuid not null,
-  viewer_id uuid not null references public.profiles (id) on delete cascade,
-  viewed_on date not null default current_date,
-  primary key (target_type, target_id, viewer_id, viewed_on)
-);
-
--- Call this from the app whenever a signed-in user opens a file or
--- experience post. Silently no-ops on a duplicate same-day view.
-create or replace function public.record_view(
-  p_target_type text,
-  p_target_id uuid,
-  p_viewer_id uuid
-)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  is_new_view_today boolean;
-begin
-  -- The counter only moves for a genuinely new view (this viewer, this
-  -- content, today), not on every page load or refresh.
-  insert into public.post_views (target_type, target_id, viewer_id)
-  values (p_target_type, p_target_id, p_viewer_id)
-  on conflict do nothing
-  returning true into is_new_view_today;
-
-  if not coalesce(is_new_view_today, false) then
-    return;
-  end if;
-
-  if p_target_type = 'file' then
-    update public.file_posts set views = views + 1 where id = p_target_id;
-  elsif p_target_type = 'experience-post' then
-    update public.experience_posts set views = views + 1 where id = p_target_id;
-  else
-    raise exception 'record_view: unsupported target_type %', p_target_type;
-  end if;
-end;
-$$;
-
--- Call this from the app when a signed-in user downloads a file asset.
-create or replace function public.record_download(p_asset_id uuid, p_downloader_id uuid)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  is_new_today boolean;
-begin
-  -- One counted download per person per file per day, so scripted repeat
-  -- downloads cannot inflate the counter. (Server-only function.)
-  insert into public.post_views (target_type, target_id, viewer_id)
-  values ('download', p_asset_id, p_downloader_id)
-  on conflict do nothing
-  returning true into is_new_today;
-  if not coalesce(is_new_today, false) then
-    return;
-  end if;
-
-  update public.file_assets set downloads = downloads + 1 where id = p_asset_id;
-end;
-$$;
-
--- Points were removed from the hub (2026-10-25). On a database that still has
--- them, take them away: the earning triggers, the functions, the ledger and
--- the balance column. Nothing here runs on a fresh install.
-drop trigger if exists comments_award_points on public.comments;
-drop trigger if exists file_posts_award_remix_points on public.file_posts;
-drop function if exists public.award_points_for_comment();
-drop function if exists public.award_points_for_remix();
-drop function if exists public.award_points(uuid, integer, text, text, uuid);
-drop table if exists public.points_events cascade;
-alter table public.profiles drop column if exists points;
-
--- ============================================================================
--- Notifications
--- ============================================================================
-
-create table if not exists public.notifications (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.profiles (id) on delete cascade,
-  body text not null,
-  kind text,
-  read boolean not null default false,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists notifications_user_id_idx on public.notifications (user_id, read);
-
--- Generic notification payload (event type is `kind`; details go here), so
--- order, payout and report events can use the same table later.
-alter table public.notifications add column if not exists data jsonb not null default '{}'::jsonb;
-
--- ============================================================================
 -- RAG knowledge base (Phase 6 uses these; created now since pgvector needs
 -- to be enabled anyway, and the shape is settled)
 -- ============================================================================
@@ -240,14 +136,7 @@ create policy "authors can delete file posts" on public.file_posts
 -- shown publicly." Only clean assets are visible to everyone; the
 -- uploader can still see their own pending/flagged assets (so they get
 -- feedback on what happened), and reviewers can see everything for moderation.
-drop policy if exists "clean file assets are publicly readable" on public.file_assets;
-create policy "clean file assets are publicly readable" on public.file_assets
-  for select using (
-    (scan_status = 'clean'
-       and exists (select 1 from public.file_posts where id = file_post_id and deleted_at is null))
-    or exists (select 1 from public.file_posts where id = file_post_id and author_id = auth.uid() and deleted_at is null)
-    or private.reviewer_can(auth.uid(), 'file', 'view')
-  );
+-- (The read policy for file_assets is set further down, with AOE-SEC-21.)
 
 drop policy if exists "post authors manage their file assets" on public.file_assets;
 create policy "post authors manage their file assets" on public.file_assets
@@ -409,6 +298,17 @@ as $$
   from public.kb_chunks c
   join public.kb_documents d on d.id = c.document_id
   where c.embedding_model = p_model and c.embedding is not null
+    -- Never a passage whose post or comment was trashed, or whose author is no longer
+    -- active, even before the next index run removes it (AOE-SEC-08).
+    and case d.source_type
+      when 'file-post' then exists (select 1 from public.file_posts f
+                                     where f.id = d.source_id and f.deleted_at is null and private.author_is_active(f.author_id))
+      when 'experience-post' then exists (select 1 from public.experience_posts e
+                                     where e.id = d.source_id and e.deleted_at is null and private.author_is_active(e.author_id))
+      when 'community-answer' then exists (select 1 from public.comments cm
+                                     where cm.id = d.source_id and cm.deleted_at is null and private.author_is_active(cm.author_id))
+      else true
+    end
   order by c.embedding <=> query_embedding
   limit least(greatest(match_count, 1), 20);
 $$;
@@ -546,17 +446,23 @@ end $$;
 
 create or replace function public.kb_pending_documents(p_model text, p_limit integer default 1)
 returns table (id uuid, title text, content text)
-language sql
+language plpgsql
 security definer
 stable
 set search_path = public
 as $$
+begin
+  perform private.require_server();
+  return query
   select d.id, d.title, d.content
     from public.kb_documents d
    where not exists (select 1 from public.kb_document_models m where m.document_id = d.id and m.model = p_model)
    order by d.created_at, d.id
    limit greatest(p_limit, 1);
+end;
 $$;
+revoke execute on function public.kb_pending_documents(text, integer) from public, anon, authenticated;
+grant execute on function public.kb_pending_documents(text, integer) to service_role;
 
 create or replace function public.kb_pending_count(p_model text)
 returns integer
@@ -568,6 +474,8 @@ as $$
   select count(*)::integer from public.kb_documents d
    where not exists (select 1 from public.kb_document_models m where m.document_id = d.id and m.model = p_model);
 $$;
+revoke execute on function public.kb_pending_count(text) from public, anon, authenticated;
+grant execute on function public.kb_pending_count(text) to service_role;
 
 -- Deletes the AI's data made by any model NOT in the keep list (the "clean
 -- up" step, run only after a cut-over has been checked). Returns chunks removed.
@@ -580,12 +488,19 @@ as $$
 declare
   v_n integer;
 begin
+  perform private.require_server();
+  -- An empty list would wipe the AI's whole index (AOE-SEC-07).
+  if p_keep is null or cardinality(p_keep) = 0 then
+    raise exception 'kb_cleanup_models needs at least one model to keep.';
+  end if;
   delete from public.kb_chunks where embedding_model is null or embedding_model <> all (p_keep);
   get diagnostics v_n = row_count;
   delete from public.kb_document_models where model <> all (p_keep);
   return v_n;
 end;
 $$;
+revoke execute on function public.kb_cleanup_models(text[]) from public, anon, authenticated;
+grant execute on function public.kb_cleanup_models(text[]) to service_role;
 
 -- Which of the hub's AI providers is resting after hitting a limit, so the
 -- answer/translation AI can fall back (Gemini first, then Groq) and return.
@@ -1046,16 +961,22 @@ $$;
 -- Not callable by browsers under any role except the service role.
 create or replace function public.get_user_ai_key(p_user_id uuid)
 returns table (provider text, model text, api_key text)
-language sql
+language plpgsql
 security definer
 stable
 set search_path = public
 as $$
+begin
+  perform private.require_server();
+  return query
   select s.provider, s.model, v.decrypted_secret
   from public.user_ai_settings s
   join vault.decrypted_secrets v on v.id = s.vault_secret_id
   where s.user_id = p_user_id;
+end;
 $$;
+revoke execute on function public.get_user_ai_key(uuid) from public, anon, authenticated;
+grant execute on function public.get_user_ai_key(uuid) to service_role;
 
 revoke execute on function public.set_my_ai_key(text, text, text) from public, anon;
 grant execute on function public.set_my_ai_key(text, text, text) to authenticated;
@@ -1181,17 +1102,24 @@ $$;
 -- first in the order they were added; and the result of a test.
 create or replace function public.hub_ai_key_secrets(p_only_active boolean default true)
 returns table (id uuid, provider text, label text, api_key text)
-language sql
+language plpgsql
 security definer
 stable
 set search_path = public
 as $$
+begin
+  -- Returns the hub's decrypted AI keys: server only, checked here too (AOE-SEC-07).
+  perform private.require_server();
+  return query
   select k.id, k.provider, k.label, v.decrypted_secret
     from public.hub_ai_keys k
     join vault.decrypted_secrets v on v.id = k.vault_secret_id
    where (not p_only_active or k.active)
    order by k.sort_order;
+end;
 $$;
+revoke execute on function public.hub_ai_key_secrets(boolean) from public, anon, authenticated;
+grant execute on function public.hub_ai_key_secrets(boolean) to service_role;
 
 create or replace function public.record_hub_ai_key_check(p_id uuid, p_ok boolean, p_note text)
 returns void
@@ -1202,4 +1130,6 @@ set search_path = public
 as $$
   update public.hub_ai_keys set last_check_at = now(), last_check_ok = p_ok, last_check_note = left(p_note, 200) where id = p_id;
 $$;
+revoke execute on function public.record_hub_ai_key_check(uuid, boolean, text) from public, anon, authenticated;
+grant execute on function public.record_hub_ai_key_check(uuid, boolean, text) to service_role;
 
