@@ -39,6 +39,6 @@ reset role; select set_config('request.jwt.claims','',false);
 create or replace function public.zz_new_fn() returns int language sql as $$ select 1 $$;
 select has_function_privilege('anon','public.zz_new_fn()','execute') anon_can, has_function_privilege('authenticated','public.zz_new_fn()','execute') user_can, has_function_privilege('service_role','public.zz_new_fn()','execute') svc;
 create or replace function private.zz_helper() returns int language sql as $$ select 1 $$;
-\echo [defaults] new private helper callable by anon (expect t):
+\echo [defaults] new private helper callable by anon (expect f since AOE-INF-08; policy helpers are granted one by one):
 select has_function_privilege('anon','private.zz_helper()','execute');
 drop function public.zz_new_fn(); drop function private.zz_helper();
