@@ -11,6 +11,10 @@ async function setting(key: string, fallback: number): Promise<number> {
 export const contentCap = () => setting("translation_daily_cap", 2000);
 export const newLanguageCap = () => setting("new_language_daily_cap", 3);
 export const maxAiLanguages = () => setting("max_ai_languages", 30);
+// The hub AI's own daily allowance (AOE-SEC-04): questions per day for everyone, and
+// a smaller share of it for signed-out visitors. Change them in hub_settings.
+export const hubAiDailyCap = () => setting("hub_ai_daily_cap", 1500);
+export const hubAiGuestDailyCap = () => setting("hub_ai_guest_daily_cap", 300);
 
 /** Takes n units from today's allowance; false when that would go over the cap. */
 export async function takeBudget(kind: string, n: number, cap: number): Promise<boolean> {

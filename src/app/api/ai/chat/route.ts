@@ -3,9 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { answerQuestion } from "@/lib/ai/server/answer";
 import { AIProviderError } from "@/lib/ai/server/chat-providers";
 import { AINotConfiguredError } from "@/lib/ai/server/config";
-import { rateLimited } from "@/lib/ai/server/rate-limit";
+import { rateLimitedShared } from "@/lib/ai/server/rate-limit";
 import type { AIHistoryTurn, LanguageCode } from "@/lib/ai/types";
 import { clientIp } from "@/lib/client-ip";
+import { hubAiDailyCap, hubAiGuestDailyCap, takeBudget } from "@/lib/translate/budget";
 
 export const runtime = "nodejs";
 
@@ -40,10 +41,29 @@ export async function POST(request: Request) {
   // Local testing only: AI_RATE_LIMIT=off lifts the limit, and only for requests made to localhost.
   const testing = process.env.AI_RATE_LIMIT === "off" && /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(request.headers.get("host") ?? "");
   const limited = testing ? false : user
-    ? rateLimited(`u:${user.id}`, 30, 10 * 60_000)
-    : rateLimited(`ip:${ip}`, 10, 10 * 60_000);
+    ? await rateLimitedShared(`u:${user.id}`, 30, 10 * 60_000)
+    : await rateLimitedShared(`ip:${ip}`, 10, 10 * 60_000);
   if (limited) {
     return NextResponse.json({ error: "You're asking quickly — please wait a few minutes and try again." }, { status: 429 });
+  }
+
+  // Daily allowance for the hub's own AI (AOE-SEC-04). Each question costs a few AI calls,
+  // so the whole hub has a daily cap, and signed-out visitors share a smaller part of it.
+  if (!testing) {
+    let allowed = false;
+    try {
+      allowed =
+        (user ? true : await takeBudget("hub-ai-guest", 1, await hubAiGuestDailyCap())) &&
+        (await takeBudget("hub-ai", 1, await hubAiDailyCap()));
+    } catch (err) {
+      console.error("AI allowance check failed:", err instanceof Error ? err.message : err);
+    }
+    if (!allowed) {
+      return NextResponse.json(
+        { error: user ? "The assistant has answered all it can for today. Please try again tomorrow." : "The assistant is paused for visitors for today. Sign in, or try again tomorrow.", code: "paused" },
+        { status: 503 }
+      );
+    }
   }
 
   try {

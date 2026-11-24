@@ -4,7 +4,7 @@ import sharp from "sharp";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { uploadToR2, deleteFromR2 } from "@/lib/storage/r2";
-import { rateLimited } from "@/lib/ai/server/rate-limit";
+import { rateLimitedShared } from "@/lib/ai/server/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
-  if (rateLimited(`avatar:${user.id}`, 10, 10 * 60_000)) return NextResponse.json({ error: "Please wait a few minutes.", code: "slow" }, { status: 429 });
+  if (await rateLimitedShared(`avatar:${user.id}`, 10, 10 * 60_000)) return NextResponse.json({ error: "Please wait a few minutes.", code: "slow" }, { status: 429 });
 
   const form = await request.formData();
   const file = form.get("file");

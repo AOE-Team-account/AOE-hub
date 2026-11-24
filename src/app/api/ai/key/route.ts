@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { BYO_PROVIDERS, MODEL_NAME_PATTERN, type ByoProviderId } from "@/lib/ai/byo-providers";
 import { AIProviderError, chatComplete } from "@/lib/ai/server/chat-providers";
 import type { ChatTarget } from "@/lib/ai/server/config";
-import { rateLimited } from "@/lib/ai/server/rate-limit";
+import { rateLimitedShared } from "@/lib/ai/server/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
-  if (rateLimited(`key:${user.id}`, 10, 10 * 60_000)) {
+  if (await rateLimitedShared(`key:${user.id}`, 10, 10 * 60_000)) {
     return NextResponse.json({ error: "Too many attempts — please wait a few minutes." }, { status: 429 });
   }
 

@@ -3,7 +3,7 @@ import { requireBuzzStaff } from "@/lib/buzzora/guard";
 import { ensureSystemUser } from "@/lib/buzzora/system-user";
 import { cleanText } from "@/lib/buzzora/text";
 import { createServiceRoleClient } from "@/lib/supabase/service";
-import { rateLimited } from "@/lib/ai/server/rate-limit";
+import { rateLimitedShared } from "@/lib/ai/server/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   const guard = await requireBuzzStaff();
   if (!guard.ok) return guard.response;
-  if (rateLimited(`buzz-post:${guard.userId}`, 20, 60 * 60_000)) return NextResponse.json({ error: "Too many posts this hour." }, { status: 429 });
+  if (await rateLimitedShared(`buzz-post:${guard.userId}`, 20, 60 * 60_000)) return NextResponse.json({ error: "Too many posts this hour." }, { status: 429 });
 
   const b = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!b) return NextResponse.json({ error: "Bad request." }, { status: 400 });

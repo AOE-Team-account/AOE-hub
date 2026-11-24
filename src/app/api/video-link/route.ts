@@ -5,7 +5,7 @@ import { previewVideoLink } from "@/lib/buzzora/link-preview";
 import { cleanText } from "@/lib/buzzora/text";
 import { platformName } from "@/lib/buzzora/platforms";
 import { createServiceRoleClient } from "@/lib/supabase/service";
-import { rateLimited } from "@/lib/ai/server/rate-limit";
+import { rateLimitedShared } from "@/lib/ai/server/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -16,7 +16,7 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   const guard = await requireBuzzStaff();
   if (!guard.ok) return guard.response;
-  if (rateLimited(`video-link:${guard.userId}`, 40, 60 * 60_000)) return NextResponse.json({ error: "Too many links this hour." }, { status: 429 });
+  if (await rateLimitedShared(`video-link:${guard.userId}`, 40, 60 * 60_000)) return NextResponse.json({ error: "Too many links this hour." }, { status: 429 });
   const b = (await request.json().catch(() => null)) as { url?: unknown; preview?: unknown; title?: unknown; note?: unknown } | null;
   const preview = await previewVideoLink(String(b?.url ?? ""));
   if (!preview) return NextResponse.json({ error: "That is not an https link to YouTube, bilibili, TikTok, 小红书, WeChat or Facebook." }, { status: 400 });

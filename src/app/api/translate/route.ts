@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { rateLimited } from "@/lib/ai/server/rate-limit";
+import { rateLimitedShared } from "@/lib/ai/server/rate-limit";
 import { languageIsAvailable } from "@/lib/translate/languages";
 import { parseRequests, translateItems } from "@/lib/translate/content";
 import { clientIp } from "@/lib/client-ip";
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const ip = clientIp(request);
-  const limited = user ? rateLimited(`tr:u:${user.id}`, 60, 60_000) : rateLimited(`tr:ip:${ip}`, 20, 60_000);
+  const limited = user ? await rateLimitedShared(`tr:u:${user.id}`, 60, 60_000) : await rateLimitedShared(`tr:ip:${ip}`, 20, 60_000);
   if (limited) return NextResponse.json({ error: "Too many requests." }, { status: 429 });
 
   const results = await translateItems(supabase, items, lang, available.englishName);

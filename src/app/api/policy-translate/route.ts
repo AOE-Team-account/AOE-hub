@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { createServiceRoleClient } from "@/lib/supabase/service";
-import { rateLimited } from "@/lib/ai/server/rate-limit";
+import { rateLimitedShared } from "@/lib/ai/server/rate-limit";
 import { hubChat } from "@/lib/ai/server/hub-ai";
 import { AIProviderError } from "@/lib/ai/server/chat-providers";
 import { languageIsAvailable } from "@/lib/translate/languages";
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
   if (!available.ok || lang === "en" || lang.startsWith("zh")) return NextResponse.json({ error: "Unknown language." }, { status: 400 });
 
   const ip = clientIp(request);
-  if (rateLimited(`pt:ip:${ip}`, 12, 60_000)) return NextResponse.json({ error: "Too many requests." }, { status: 429 });
+  if (await rateLimitedShared(`pt:ip:${ip}`, 12, 60_000)) return NextResponse.json({ error: "Too many requests." }, { status: 429 });
 
   const itemId = `${slug}@${policy.version}`;
   const pieces = [`# ${policy.title}`, ...splitPolicy(policy.body)];

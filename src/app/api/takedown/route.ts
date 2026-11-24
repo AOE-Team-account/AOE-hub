@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
-import { rateLimited } from "@/lib/ai/server/rate-limit";
+import { rateLimitedShared } from "@/lib/ai/server/rate-limit";
 import { clientIp } from "@/lib/client-ip";
 
 export const runtime = "nodejs";
@@ -13,7 +13,7 @@ const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slic
 
 export async function POST(request: Request) {
   const ip = clientIp(request);
-  if (rateLimited(`takedown:${ip}`, 5, 60 * 60_000)) return NextResponse.json({ error: "Too many notices from this connection. Please try again later.", code: "slow" }, { status: 429 });
+  if (await rateLimitedShared(`takedown:${ip}`, 5, 60 * 60_000)) return NextResponse.json({ error: "Too many notices from this connection. Please try again later.", code: "slow" }, { status: 429 });
 
   const b = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const name = text(b.name, 200);
