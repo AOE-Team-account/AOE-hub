@@ -61,6 +61,17 @@ See `.env.example` for the full list with inline notes.
 
 ## Setting up nightly database backups
 
+> **Backups are OFF until `BACKUP_AGE_PUBLIC_KEY` is set (AOE-SEC-23).** This is on purpose: the
+> workflow never uploads an unencrypted dump. Until the key is set, every nightly run fails at its
+> first step ("Check the backup encryption key is set"), shows a red **"Database backup is OFF"**
+> error on the run page and in the run summary, and GitHub emails the repo owner about the failed
+> run. No dump is made. Set the key (step 7 below), run the workflow once by hand, and test-restore it.
+>
+> **Old plain backups:** dumps made before encryption end in `.sql.gz` (not `.age`) and are not
+> encrypted. After one encrypted backup has been restored successfully, delete the old `.sql.gz`
+> files in the B2 bucket by hand (B2 web UI). Consider giving the workflow a B2 key that can
+> write but not delete, and doing the pruning with a B2 lifecycle rule instead.
+
 The workflow at `.github/workflows/backup-database.yml` runs every night, dumps the Supabase database with `pg_dump`, and uploads it to a Backblaze B2 bucket. It needs five **GitHub repository secrets** (Settings → Secrets and variables → Actions → New repository secret) — add these directly in GitHub's own UI, never by pasting the values into a chat or a file in this repo:
 
 1. **Set your Backblaze B2 spending cap before anything else.** Sign up at [backblaze.com/b2](https://www.backblaze.com/cloud-storage) (no credit card required for the free 10GB tier), then immediately go to **My Account → Caps & Alerts** and set a low cap (e.g. $1–2). Per Backblaze's own docs, an account with no cap set has *no spending limit at all* — this step is opt-in, not a default safety net, so don't skip it or defer it.

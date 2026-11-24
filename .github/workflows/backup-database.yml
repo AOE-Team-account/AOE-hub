@@ -20,6 +20,34 @@ jobs:
         with:
           persist-credentials: false
 
+      # AOE-SEC-23: backups stay OFF (on purpose) until the encryption key is set. Check
+      # that first, before anything is dumped, and say so loudly: a red run, an error
+      # note on the run page, and a box in the run summary.
+      - name: Check the backup encryption key is set
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="$(printf '%s' "${BACKUP_AGE_PUBLIC_KEY:-}" | tr -d '[:space:]')"
+          if [[ ! "$key" =~ ^age1[02-9ac-hj-np-z]{58}$ ]]; then
+            if [ -z "$key" ]; then why="is not set"; else why="does not look like an age public key (age1 + 58 letters/digits)"; fi
+            msg="NO BACKUP WAS MADE. The repository variable BACKUP_AGE_PUBLIC_KEY $why. Backups are switched off until it is set, so nothing unencrypted ever leaves GitHub."
+            echo "::error title=Database backup is OFF::$msg"
+            {
+              echo "## :x: Database backup is OFF"
+              echo
+              echo "$msg"
+              echo
+              echo "**To fix (Clara, on your own computer):**"
+              echo "1. Install age, then run \`age-keygen -o aoehub-backup.key\`. Keep that file offline (it opens the backups)."
+              echo "2. Copy the printed public key (\`age1...\`) into GitHub: Settings > Secrets and variables > Actions > **Variables** > \`BACKUP_AGE_PUBLIC_KEY\`."
+              echo "3. Run this workflow again (Actions > Backup Supabase database > Run workflow) and test-restore the \`.age\` file (README, Backups)."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "Backup encryption key is set."
+        env:
+          BACKUP_AGE_PUBLIC_KEY: ${{ vars.BACKUP_AGE_PUBLIC_KEY }}
+
       - name: Dump database
         shell: bash
         run: |
@@ -50,13 +78,13 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${BACKUP_AGE_PUBLIC_KEY:-}" ]; then
-            echo "::error::BACKUP_AGE_PUBLIC_KEY is not set. Refusing to upload an unencrypted backup."
+            echo "::error title=Database backup is OFF::BACKUP_AGE_PUBLIC_KEY is not set. Refusing to upload an unencrypted backup."
             echo "Make a key pair with 'age-keygen -o aoehub-backup.key' on your own computer, keep that file offline,"
             echo "and put the printed public key (age1...) in Settings > Secrets and variables > Actions > Variables."
             exit 1
           fi
           sudo apt-get install -y -qq age >/dev/null
-          age -r "$BACKUP_AGE_PUBLIC_KEY" -o backup.sql.gz.age backup.sql.gz
+          age -r "$(printf '%s' "$BACKUP_AGE_PUBLIC_KEY" | tr -d '[:space:]')" -o backup.sql.gz.age backup.sql.gz
           shred -u backup.sql.gz 2>/dev/null || rm -f backup.sql.gz
         env:
           BACKUP_AGE_PUBLIC_KEY: ${{ vars.BACKUP_AGE_PUBLIC_KEY }}
