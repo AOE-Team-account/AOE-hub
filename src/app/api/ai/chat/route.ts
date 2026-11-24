@@ -5,7 +5,7 @@ import { AIProviderError } from "@/lib/ai/server/chat-providers";
 import { AINotConfiguredError } from "@/lib/ai/server/config";
 import { rateLimitedShared } from "@/lib/ai/server/rate-limit";
 import type { AIHistoryTurn, LanguageCode } from "@/lib/ai/types";
-import { clientIp } from "@/lib/client-ip";
+import { clientIp, clientNetwork } from "@/lib/client-ip";
 import { answerSignatureOk, signAnswer } from "@/lib/ai/server/history-sig";
 import { hubAiDailyCap, hubAiGuestDailyCap, takeBudget } from "@/lib/translate/budget";
 
@@ -43,9 +43,21 @@ export async function POST(request: Request) {
   const ip = clientIp(request);
   // Local testing only: AI_RATE_LIMIT=off lifts the limit, and only for requests made to localhost.
   const testing = process.env.AI_RATE_LIMIT === "off" && /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(request.headers.get("host") ?? "");
+  // Signed-out visitors are counted by address (AOE-SEC-24). When the address can't be
+  // known safely (CLIENT_IP_HEADER / TRUSTED_PROXY_COUNT not set, or the header is
+  // missing), a signed-out question is not answered: there is no shared "unknown"
+  // allowance that one person could use up for everyone.
+  if (!user && !ip && !testing) {
+    return NextResponse.json({ error: "Please sign in to ask the assistant.", code: "sign-in" }, { status: 401 });
+  }
   const limited = testing ? false : user
     ? await rateLimitedShared(`u:${user.id}`, 30, 10 * 60_000)
-    : await rateLimitedShared(`ip:${ip}`, 10, 10 * 60_000);
+    : // Per address: 10 every 10 minutes and 20 a day; per network (IPv4 /24, IPv6 /48):
+      // 60 a day. So no single address or network can take more than a small share of
+      // the guests' daily allowance (hub_ai_guest_daily_cap, 300 by default).
+      (await rateLimitedShared(`ip:${ip}`, 10, 10 * 60_000)) ||
+      (await rateLimitedShared(`ipday:${ip}`, 20, 24 * 60 * 60_000)) ||
+      (await rateLimitedShared(`netday:${clientNetwork(ip!)}`, 60, 24 * 60 * 60_000));
   if (limited) {
     return NextResponse.json({ error: "You're asking quickly — please wait a few minutes and try again." }, { status: 429 });
   }

@@ -26,7 +26,13 @@ export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const ip = clientIp(request);
-  const limited = user ? await rateLimitedShared(`tr:u:${user.id}`, 60, 60_000) : await rateLimitedShared(`tr:ip:${ip}`, 20, 60_000);
+  // Signed-out visitors with no known address share one separate allowance (AOE-SEC-04);
+  // translations also have their own daily budget.
+  const limited = user
+    ? await rateLimitedShared(`tr:u:${user.id}`, 60, 60_000)
+    : ip
+      ? await rateLimitedShared(`tr:ip:${ip}`, 20, 60_000)
+      : await rateLimitedShared("tr:noip", 60, 60_000);
   if (limited) return NextResponse.json({ error: "Too many requests." }, { status: 429 });
 
   const results = await translateItems(supabase, items, lang, available.englishName);

@@ -31,7 +31,7 @@ export async function POST(request: Request) {
   if (!available.ok || lang === "en" || lang.startsWith("zh")) return NextResponse.json({ error: "Unknown language." }, { status: 400 });
 
   const ip = clientIp(request);
-  if (await rateLimitedShared(`pt:ip:${ip}`, 12, 60_000)) return NextResponse.json({ error: "Too many requests." }, { status: 429 });
+  if (await (ip ? rateLimitedShared(`pt:ip:${ip}`, 12, 60_000) : rateLimitedShared("pt:noip", 30, 60_000))) return NextResponse.json({ error: "Too many requests." }, { status: 429 });
 
   const itemId = `${slug}@${policy.version}`;
   const pieces = [`# ${policy.title}`, ...splitPolicy(policy.body)];

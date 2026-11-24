@@ -14,11 +14,12 @@ const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slic
 
 export async function POST(request: Request) {
   const ip = clientIp(request);
-  if (await rateLimitedShared(`takedown:${ip}`, 5, 60 * 60_000)) return NextResponse.json({ error: "Too many notices from this connection. Please try again later.", code: "slow" }, { status: 429 });
+  // Per address; with no known address, one shared allowance (AOE-SEC-04).
+  if (await (ip ? rateLimitedShared(`takedown:${ip}`, 5, 60 * 60_000) : rateLimitedShared("takedown:noip", 20, 60 * 60_000))) return NextResponse.json({ error: "Too many notices from this connection. Please try again later.", code: "slow" }, { status: 429 });
 
   const b = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   // The "are you a person?" check (AOE-SEC-17), once Turnstile is set up.
-  if (!(await verifyTurnstile(b.captchaToken, ip))) return NextResponse.json({ error: "Please complete the check and try again.", code: "captcha" }, { status: 400 });
+  if (!(await verifyTurnstile(b.captchaToken, ip ?? undefined))) return NextResponse.json({ error: "Please complete the check and try again.", code: "captcha" }, { status: 400 });
   const name = text(b.name, 200);
   const email = text(b.email, 200);
   const address = text(b.address, 500);

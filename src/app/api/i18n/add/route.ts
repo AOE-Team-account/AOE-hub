@@ -20,7 +20,7 @@ export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const ip = clientIp(request);
-  const who = user ? `u:${user.id}` : `ip:${ip}`;
+  const who = user ? `u:${user.id}` : ip ? `ip:${ip}` : "noip"; // no known address: one shared allowance
 
   if (typeof body.lang === "string") {
     if (!LANG_PATTERN.test(body.lang)) return NextResponse.json({ error: "Invalid language." }, { status: 400 });
