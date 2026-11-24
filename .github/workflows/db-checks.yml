@@ -1,0 +1,42 @@
+name: Database checks (test database only)
+
+# AOE-INF-13: builds a THROWAWAY PostgreSQL in the CI runner from supabase/schema.sql
+# (twice) and from the old schema + every migration (twice), then runs hard checks:
+# RLS on for every public table, no hub function callable by strangers, private
+# helpers locked, new functions server-only, private columns hidden, require_server().
+# It never connects to the live database and uses no secrets.
+
+on:
+  push:
+    paths: ["supabase/**", "scripts/tests/local-db/**", ".github/workflows/db-checks.yml"]
+  pull_request:
+    paths: ["supabase/**", "scripts/tests/local-db/**", ".github/workflows/db-checks.yml"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  db-checks:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        # pgvector/pgvector:pg17, pinned by digest.
+        image: pgvector/pgvector@sha256:b513c48566e4777cd3370451400000c78eda6a08131d68f4c31d4a76f27bd8fd
+        env:
+          POSTGRES_PASSWORD: test-only-not-a-secret
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: test-only-not-a-secret
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # the old schema (de8ac89) is read from history
+      - name: Schema, migrations and hard checks
+        run: scripts/tests/local-db/run-checks.sh de8ac89

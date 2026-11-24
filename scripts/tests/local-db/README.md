@@ -15,5 +15,16 @@ Also `content-limit-checks.sql` (SEC-05/12) and `round2-checks.sql` (SEC-25, INF
 it reads every table as anon and as a member, so a policy helper that lost its
 EXECUTE grant shows up as "function permission errors").
 
+**Hard checks (AOE-INF-13):** `run-checks.sh` builds the databases itself and runs
+`assert-checks.sql`, which STOPS with an error if a public table has RLS off, a hub
+function is callable by strangers, a private helper is opened up, new functions are
+not server-only, a private column is readable, or `require_server()` lets a call
+without the service role through. CI runs the same script
+(`.github/workflows/db-checks.yml`) in a throwaway database:
+
+```sh
+PGHOST=/tmp PGPORT=55432 PGUSER=postgres scripts/tests/local-db/run-checks.sh de8ac89
+```
+
 Each check prints what it expects (for example "expect permission denied").
 Never run these files against the live database.
