@@ -7,12 +7,18 @@ on:
     - cron: "0 9 * * *"
   workflow_dispatch: {}
 
+# Read-only access to the repository; nothing else (AOE-SEC-09).
+permissions:
+  contents: read
+
 jobs:
   backup:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      # Needed for scripts/prune-backups.py (the retention rule).
-      - uses: actions/checkout@v4
+      # Needed for scripts/prune-backups.py (the retention rule). Pinned to an exact version.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
 
       - name: Dump database
         shell: bash
@@ -20,7 +26,8 @@ jobs:
           # The AI's search vectors (kb_chunks) are left out: they can be rebuilt
           # from the text and are more than half of the database's size. After a
           # restore, see RECOVERY.md to rebuild them.
-          docker run --rm postgres:17 \
+          # postgres:17, pinned by digest so the image cannot change under us.
+          docker run --rm postgres@sha256:cdbfb3de010ef603c29f10a5dfc79e023f66ad662ec6fddcda7130afe5d65e7b \
             pg_dump "$SUPABASE_DB_URL" --no-owner --format=plain \
               --exclude-table-data=public.kb_chunks \
             | gzip > backup.sql.gz
@@ -34,6 +41,26 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
 
+      # Encrypt before it leaves GitHub (AOE-SEC-09). The dump holds every member's
+      # data and the sign-in table, so it is locked with an `age` PUBLIC key; only the
+      # private key (kept offline by Clara, never in GitHub) can open it.
+      # Set the repository variable BACKUP_AGE_PUBLIC_KEY (starts with "age1...").
+      - name: Encrypt the dump
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${BACKUP_AGE_PUBLIC_KEY:-}" ]; then
+            echo "::error::BACKUP_AGE_PUBLIC_KEY is not set. Refusing to upload an unencrypted backup."
+            echo "Make a key pair with 'age-keygen -o aoehub-backup.key' on your own computer, keep that file offline,"
+            echo "and put the printed public key (age1...) in Settings > Secrets and variables > Actions > Variables."
+            exit 1
+          fi
+          sudo apt-get install -y -qq age >/dev/null
+          age -r "$BACKUP_AGE_PUBLIC_KEY" -o backup.sql.gz.age backup.sql.gz
+          shred -u backup.sql.gz 2>/dev/null || rm -f backup.sql.gz
+        env:
+          BACKUP_AGE_PUBLIC_KEY: ${{ vars.BACKUP_AGE_PUBLIC_KEY }}
+
       - name: Upload to Backblaze B2
         shell: bash
         run: |
@@ -45,9 +72,9 @@ jobs:
           # B2 signs requests with the region embedded in the endpoint (s3.<region>.backblazeb2.com).
           export AWS_DEFAULT_REGION="$(printf '%s' "$B2_ENDPOINT" | sed -E 's/^s3\.([^.]+)\.backblazeb2\.com$/\1/')"
 
-          pip install --quiet awscli
+          pip install --quiet "awscli==1.46.3"
           TODAY="$(date -u +%Y-%m-%d)"
-          aws s3 cp backup.sql.gz "s3://$B2_BUCKET_NAME/backups/daily/aoehub-$TODAY.sql.gz" \
+          aws s3 cp backup.sql.gz.age "s3://$B2_BUCKET_NAME/backups/daily/aoehub-$TODAY.sql.gz.age" \
             --endpoint-url "https://$B2_ENDPOINT"
 
           # Retention: every daily copy for 30 days, then one a week (Sundays)

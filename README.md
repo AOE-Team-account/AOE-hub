@@ -75,9 +75,11 @@ The workflow at `.github/workflows/backup-database.yml` runs every night, dumps 
    - `B2_ENDPOINT` — the endpoint host from step 5 (no `https://`)
    - `SUPABASE_DB_URL` — from Supabase dashboard → Project Settings → Database → Connection string (URI, **Session pooler**, port 5432 — not the "Direct connection" string, which is IPv6-only and unreachable from GitHub's runners, and not the Transaction pooler on port 6543, which `pg_dump` can't use). This is a full database password in URL form — treat it with the same care as the Supabase service role key.
 
+7. **Encryption (required).** The backup is locked with [age](https://github.com/FiloSottile/age) before it is uploaded, so a leaked B2 key or bucket does not expose members' data. On your own computer run `age-keygen -o aoehub-backup.key` (macOS: `brew install age`). Keep `aoehub-backup.key` **offline** (for example on a USB stick and in a password manager), never in GitHub or this folder. Copy the printed public key (`age1…`) into GitHub → Settings → Secrets and variables → Actions → **Variables** → `BACKUP_AGE_PUBLIC_KEY`. Without it the workflow stops instead of uploading an unlocked copy.
+
 Once the secrets exist, the workflow runs automatically at 09:00 UTC daily, or you can trigger it manually from the **Actions** tab (`Backup Supabase database` → **Run workflow**) to verify it works without waiting for the schedule.
 
-**Restoring** from a backup: download the `.sql.gz` object from the B2 bucket (or an older version of it, if recovering from a bad recent backup), then `gunzip backup.sql.gz && psql "$SUPABASE_DB_URL" -f backup.sql` against a fresh/target database. Not something to script blindly — always confirm which database you're pointing at first.
+**Restoring** from a backup: download the `.sql.gz.age` object from the B2 bucket (or an older one, if recovering from a bad recent backup), unlock it with the offline key, then load it: `age -d -i aoehub-backup.key -o backup.sql.gz backup.sql.gz.age && gunzip backup.sql.gz && psql "$SUPABASE_DB_URL" -f backup.sql` against a fresh/target database. (Backups made before encryption was added end in `.sql.gz` and only need the `gunzip` step.) Not something to script blindly — always confirm which database you're pointing at first.
 
 ## Setting up the AI assistant
 

@@ -14,9 +14,12 @@ on:
     - cron: "17 3 * * *"     # every day: the 30-day purge
   workflow_dispatch: {}
 
+# This job only calls the hub's own addresses; it needs no access to the repository (AOE-SEC-09).
+permissions: {}
+
 jobs:
   run:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       SITE_URL: ${{ secrets.SITE_URL }}
       CRON_SECRET: ${{ secrets.CRON_SECRET }}

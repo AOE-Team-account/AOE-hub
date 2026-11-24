@@ -3,7 +3,7 @@
 then keep one per week (the Sunday copy) for a year, delete everything else.
 
 Reads the list of object keys as a JSON array on stdin and prints the keys to
-delete, one per line. Keys look like backups/daily/aoehub-2026-10-16.sql.gz.
+delete, one per line. Keys look like backups/daily/aoehub-2026-10-16.sql.gz (or .sql.gz.age when encrypted).
 Anything that does not match that pattern is never touched.
 """
 import json
@@ -11,7 +11,7 @@ import re
 import sys
 from datetime import date, timedelta
 
-PATTERN = re.compile(r"^backups/daily/aoehub-(\d{4})-(\d{2})-(\d{2})\.sql\.gz$")
+PATTERN = re.compile(r"^backups/daily/aoehub-(\d{4})-(\d{2})-(\d{2})\.sql\.gz(?:\.age)?$")
 DAILY_DAYS = 30
 WEEKLY_DAYS = 365
 
