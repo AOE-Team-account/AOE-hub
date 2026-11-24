@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { runVideoPicks } from "@/lib/buzzora/video-picks";
+import { isCronRequest } from "@/lib/server-secrets";
 
 export const runtime = "nodejs";
 export const maxDuration = 600;
 
 // The daily "Videos" job (CRON_SECRET, like the other cron routes). ?dry=1 shows what it WOULD post.
 export async function POST(request: Request) {
-  const expected = process.env.CRON_SECRET;
-  if (!expected || request.headers.get("authorization") !== `Bearer ${expected}`) {
+  if (!isCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const q = new URL(request.url).searchParams;

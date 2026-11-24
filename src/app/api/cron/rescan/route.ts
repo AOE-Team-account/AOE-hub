@@ -1,6 +1,7 @@
 import { NextResponse, after } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { runRescan } from "@/lib/scanner/run";
+import { isCronRequest } from "@/lib/server-secrets";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -13,8 +14,7 @@ const MAX_BYTES_PER_RUN = 6 * 1024 * 1024 * 1024;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 export async function POST(request: Request) {
-  const expected = process.env.CRON_SECRET;
-  if (!expected || request.headers.get("authorization") !== `Bearer ${expected}`) {
+  if (!isCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const db = createServiceRoleClient();

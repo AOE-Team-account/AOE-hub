@@ -1,3 +1,4 @@
+import "server-only";
 import { uploadToR2, getR2DownloadUrl, deleteFromR2 } from "./r2";
 import { uploadToInternetArchive, getInternetArchiveDownloadUrl, deleteFromInternetArchive } from "./internet-archive";
 import type { MediaType } from "@/lib/types";

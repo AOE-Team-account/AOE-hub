@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runBuzzora } from "@/lib/buzzora/collect";
+import { isCronRequest } from "@/lib/server-secrets";
 
 export const runtime = "nodejs";
 export const maxDuration = 600;
@@ -7,8 +8,7 @@ export const maxDuration = 600;
 // The daily Buzzora job (called by the timer with the CRON_SECRET, like the other cron routes).
 // Add ?dry=1 to see what it WOULD post without saving anything. ?days=30 looks further back (for a first fill of the board).
 export async function POST(request: Request) {
-  const expected = process.env.CRON_SECRET;
-  if (!expected || request.headers.get("authorization") !== `Bearer ${expected}`) {
+  if (!isCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const q = new URL(request.url).searchParams;

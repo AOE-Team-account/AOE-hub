@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { checkStorage } from "@/lib/storage/watch";
+import { isCronRequest } from "@/lib/server-secrets";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 // Run once a day by the scheduled-jobs workflow (Authorization: Bearer CRON_SECRET).
 export async function POST(request: Request) {
-  const expected = process.env.CRON_SECRET;
-  if (!expected || request.headers.get("authorization") !== `Bearer ${expected}`) {
+  if (!isCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {

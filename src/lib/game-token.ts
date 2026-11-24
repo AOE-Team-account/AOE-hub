@@ -1,5 +1,6 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { signingKey } from "@/lib/server-secrets";
 
 // Playing a hosted game needs a signed-in member. The game's own address
 // ("play.") never sees sign-in, so the hub (signed in) hands out a short-lived
@@ -8,8 +9,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 // The game's own relative links keep carrying the token, so nothing else changes.
 const TTL_MS = 12 * 60 * 60 * 1000;
 
-// Derived from the server's private key, so there is no extra setting to keep.
-const secret = () => createHmac("sha256", process.env.SUPABASE_SERVICE_ROLE_KEY || "dev-secret").update("aoehub-game-token").digest();
+// Its own key (APP_SIGNING_SECRET), never a fixed word (AOE-SEC-14); see server-secrets.ts.
+const secret = () => signingKey("aoehub-game-token");
 const sign = (assetId: string, exp: string) => createHmac("sha256", secret()).update(`${assetId}.${exp}`).digest("hex").slice(0, 32);
 
 export function signGameToken(assetId: string): string {

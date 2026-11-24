@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { deleteStaged } from "@/lib/storage/staging";
 import { runScan, runPreviewScan } from "@/lib/scanner/run";
+import { isCronRequest } from "@/lib/server-secrets";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -11,8 +12,7 @@ export const maxDuration = 300;
 //  - files whose scan never finished (the hub restarted, the scanner was down) are sent again;
 //  - uploads that were started but never completed (closed tab) are cleaned up after a day.
 export async function POST(request: Request) {
-  const expected = process.env.CRON_SECRET;
-  if (!expected || request.headers.get("authorization") !== `Bearer ${expected}`) {
+  if (!isCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const db = createServiceRoleClient();

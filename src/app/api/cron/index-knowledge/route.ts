@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runIndexing } from "@/lib/ai/server/indexer";
+import { isCronRequest } from "@/lib/server-secrets";
 
 export const runtime = "nodejs";
 
@@ -9,8 +10,7 @@ export const runtime = "nodejs";
 // to a scheduler (Phase 7, alongside check-pending-scans); until then the
 // Creator panel's "Update index" button does the same work by hand.
 export async function POST(request: Request) {
-  const expected = process.env.CRON_SECRET;
-  if (!expected || request.headers.get("authorization") !== `Bearer ${expected}`) {
+  if (!isCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {

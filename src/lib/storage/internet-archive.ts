@@ -1,3 +1,4 @@
+import "server-only";
 import { iaEndpoint, iaAccessKey, iaSecretKey, iaBucketName } from "./config";
 
 // Internet Archive's S3-like API is NOT standard AWS SigV4 — it uses its

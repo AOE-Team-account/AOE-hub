@@ -1,3 +1,4 @@
+import "server-only";
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { r2Endpoint, r2AccessKeyId, r2SecretAccessKey, r2BucketName } from "./config";

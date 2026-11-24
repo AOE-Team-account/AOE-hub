@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { deleteFile, type StorageBackend } from "@/lib/storage/router";
 import { deleteFromR2Prefix } from "@/lib/storage/r2";
+import { isCronRequest } from "@/lib/server-secrets";
 
 export const runtime = "nodejs";
 
@@ -12,8 +13,7 @@ export const runtime = "nodejs";
 const RETENTION_DAYS = 30;
 
 export async function POST(request: Request) {
-  const expected = process.env.CRON_SECRET;
-  if (!expected || request.headers.get("authorization") !== `Bearer ${expected}`) {
+  if (!isCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
