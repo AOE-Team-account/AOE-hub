@@ -7,6 +7,12 @@ export function initialsFromName(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+// The profile columns anyone may read (AOE-SEC-03). The database only lets the
+// browser read these; region, language, onboarding answers, referral source and
+// age check are private and are read by the owner through the my_profile() function.
+export const PUBLIC_PROFILE_COLUMNS =
+  "id, name, display_name, member_since, followers_count, following_count, files_count, avatar_path, profile_frame, profile_background, post_font" as const;
+
 // Row shape from the `profiles` table (see supabase/schema.sql).
 export interface ProfileRow {
   id: string;

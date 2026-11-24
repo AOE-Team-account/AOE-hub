@@ -4572,6 +4572,27 @@ revoke insert, update, delete, truncate on public.ai_key_help from anon, authent
 revoke all on public.hub_settings, public.creator_access, public.creator_sessions, public.creator_recovery_keys, public.creator_security_events from anon, authenticated;
 revoke all on public.restrictions from anon;
 
+-- profiles (AOE-SEC-03): the browser may read only the public columns.
+-- Region, language, onboarding answers, referral source, age check and the
+-- account-status details are private: only the owner reads them, through
+-- my_profile(). Staff tools read them through their own checked functions.
+revoke select on public.profiles from anon, authenticated;
+grant select (id, name, display_name, member_since, followers_count, following_count, files_count,
+              avatar_path, profile_frame, profile_background, post_font)
+  on public.profiles to anon, authenticated;
+
+create or replace function public.my_profile()
+returns setof public.profiles
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select * from public.profiles where id = auth.uid();
+$$;
+revoke execute on function public.my_profile() from public, anon;
+grant execute on function public.my_profile() to authenticated, service_role;
+
 -- profiles: only the person's own presentation fields. Counters,
 -- account status and age attestation are changed by functions/triggers only.
 grant update (name, display_name, onboarding_experience, onboarding_reason, referral_source, region, language, profile_frame, profile_background, post_font)
@@ -4676,6 +4697,7 @@ grant execute on function public.ask_for_two_step(uuid) to authenticated;
 grant execute on function public.pin_my_item(text, uuid) to authenticated;
 grant execute on function public.unpin_my_item(text) to authenticated;
 grant execute on function public.creator_account_queue() to authenticated;
+grant execute on function public.my_profile() to authenticated;
 -- list_expired_storage, purge_expired, get_upload_max_file, consume_one_time_max, claim_scan: server (service role) only.
 -- record_view, record_download, record_account_deletion,
 -- get_user_ai_key, match_kb_chunks: server (service role) only.

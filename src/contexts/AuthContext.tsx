@@ -48,7 +48,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const supabase = useRef(createClient()).current;
 
   async function loadProfile(userId: string) {
-    const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single();
+    // Your own full profile (with the private fields) comes from my_profile(): the
+    // profiles table only shows everyone's public columns (AOE-SEC-03).
+    const { data: rows, error } = await supabase.rpc("my_profile");
+    const data = Array.isArray(rows) ? rows.find((r: { id?: string }) => r.id === userId) : null;
     if (error || !data) {
       setUser(null);
       return;

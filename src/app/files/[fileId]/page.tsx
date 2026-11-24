@@ -3,7 +3,7 @@ import { getFilePostById, listFileComments } from "@/lib/data/files";
 import { getUserById } from "@/lib/data/users";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
-import { userFromProfileRow, type ProfileRow } from "@/lib/profile";
+import { userFromProfileRow, type ProfileRow, PUBLIC_PROFILE_COLUMNS } from "@/lib/profile";
 import { getBadgeMap } from "@/lib/data/badges";
 import type { User } from "@/lib/types";
 import { BackLink } from "@/components/ui/BackLink";
@@ -52,7 +52,7 @@ export default async function FileDetailPage({ params }: PageProps<"/files/[file
 
   const commentAuthorIds = [...new Set(collectAuthorIds(comments))];
   const { data: authorRows } = commentAuthorIds.length
-    ? await supabase.from("profiles").select("*").in("id", commentAuthorIds)
+    ? await supabase.from("profiles").select(PUBLIC_PROFILE_COLUMNS).in("id", commentAuthorIds)
     : { data: [] as ProfileRow[] };
   const badgeMap = await getBadgeMap(supabase, commentAuthorIds);
   const authors: Record<string, User | undefined> = Object.fromEntries(

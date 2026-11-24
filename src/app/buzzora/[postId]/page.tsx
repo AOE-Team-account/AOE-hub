@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { getExperiencePostById, listExperienceComments } from "@/lib/data/experience";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
-import { userFromProfileRow, type ProfileRow } from "@/lib/profile";
+import { userFromProfileRow, type ProfileRow, PUBLIC_PROFILE_COLUMNS } from "@/lib/profile";
 import { getBadgeMap } from "@/lib/data/badges";
 import type { User } from "@/lib/types";
 import { BackLink } from "@/components/ui/BackLink";
@@ -29,7 +29,7 @@ export default async function BuzzoraPostPage({ params }: { params: Promise<{ po
   const ids: string[] = [];
   for (const c of comments) { ids.push(c.authorId); for (const r of c.replies ?? []) ids.push(r.authorId); }
   const commentAuthorIds = [...new Set(ids)];
-  const { data: authorRows } = commentAuthorIds.length ? await supabase.from("profiles").select("*").in("id", commentAuthorIds) : { data: [] as ProfileRow[] };
+  const { data: authorRows } = commentAuthorIds.length ? await supabase.from("profiles").select(PUBLIC_PROFILE_COLUMNS).in("id", commentAuthorIds) : { data: [] as ProfileRow[] };
   const badgeMap = await getBadgeMap(supabase, commentAuthorIds);
   const authors: Record<string, User | undefined> = Object.fromEntries(
     (authorRows ?? []).map((row) => [row.id, userFromProfileRow(row as ProfileRow, [], undefined, badgeMap[row.id] ?? [])])
