@@ -23,8 +23,9 @@ interface ChatMessage {
   // The question was not for the hub AI: show links to other AI assistants.
   offTopic?: boolean;
   isError?: boolean;
-  /** The server's signature of an AI answer, sent back with the history. */
+  /** The server's signature of an AI answer and its time, sent back with the history. */
   sig?: string;
+  ts?: number;
 }
 
 const clamp = (val: number, min: number, max: number) => Math.max(min, Math.min(max, val));
@@ -47,6 +48,12 @@ export function AiFab() {
   ]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
+  // A random id for this chat window: the server signs its answers for this chat only (AOE-INF-09).
+  const [chatId] = useState(() =>
+    typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("")
+  );
 
   const dragState = useRef({ dragging: false, moved: false, startX: 0, startY: 0, startLeft: 0, startTop: 0 });
 
@@ -110,12 +117,12 @@ export function AiFab() {
   async function sendChat() {
     const text = input.trim();
     if (!text || thinking) return;
-    const history = messages.filter((m) => !m.isError && !m.key).map((m) => ({ from: m.from, text: m.text, sig: m.sig }));
+    const history = messages.filter((m) => !m.isError && !m.key).map((m) => ({ from: m.from, text: m.text, sig: m.sig, ts: m.ts }));
     setMessages((m) => [...m, { id: Date.now(), from: "user", text }]);
     setInput("");
     setThinking(true);
     try {
-      const reply = await aiProvider.reply(text, lang, history);
+      const reply = await aiProvider.reply(text, lang, history, chatId);
       setMessages((m) => [
         ...m,
         {
@@ -126,6 +133,7 @@ export function AiFab() {
           escalateQuestion: reply.escalate ? text : undefined,
           offTopic: !!reply.offTopic,
           sig: reply.sig,
+          ts: reply.ts,
         },
       ]);
     } catch (err) {

@@ -4,5 +4,6 @@ import type { AIHistoryTurn, AIReply, LanguageCode } from "./types";
 // key) all happens behind /api/ai/chat — the browser never sees a model, a
 // key, or the knowledge base.
 export interface AIProvider {
-  reply(message: string, lang: LanguageCode, history: AIHistoryTurn[]): Promise<AIReply>;
+  /** `chatId`: a random id for this chat window; answers are signed for this chat only (AOE-INF-09). */
+  reply(message: string, lang: LanguageCode, history: AIHistoryTurn[], chatId: string): Promise<AIReply>;
 }

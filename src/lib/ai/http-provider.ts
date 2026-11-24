@@ -2,13 +2,13 @@ import type { AIProvider } from "./provider";
 import type { AIReply } from "./types";
 
 export const httpAIProvider: AIProvider = {
-  async reply(message, lang, history) {
+  async reply(message, lang, history, chatId) {
     let res: Response;
     try {
       res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message, lang, history }),
+        body: JSON.stringify({ message, lang, history, chatId }),
       });
     } catch {
       throw new Error("Couldn't reach the assistant. Check your connection and try again.");

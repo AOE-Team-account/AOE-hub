@@ -6,7 +6,7 @@ import { AINotConfiguredError } from "@/lib/ai/server/config";
 import { rateLimitedShared } from "@/lib/ai/server/rate-limit";
 import type { AIHistoryTurn, LanguageCode } from "@/lib/ai/types";
 import { clientIp, clientNetwork } from "@/lib/client-ip";
-import { answerSignatureOk, signAnswer } from "@/lib/ai/server/history-sig";
+import { answerSignatureOk, signAnswer, validChatId } from "@/lib/ai/server/history-sig";
 import { hubAiDailyCap, hubAiGuestDailyCap, takeBudget } from "@/lib/translate/budget";
 
 export const runtime = "nodejs";
@@ -16,7 +16,7 @@ const LANG_PATTERN = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 const MAX_MESSAGE = 1000;
 
 export async function POST(request: Request) {
-  let body: { message?: unknown; lang?: unknown; history?: unknown };
+  let body: { message?: unknown; lang?: unknown; history?: unknown; chatId?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -29,11 +29,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `Please ask a question of 1–${MAX_MESSAGE} characters.` }, { status: 400 });
   }
 
+  // The chat window's own random id (AOE-INF-09). Without one, earlier AI answers are not used.
+  const chatId = validChatId(body.chatId) ? body.chatId : null;
   const history: AIHistoryTurn[] = Array.isArray(body.history)
     ? body.history
         .filter((t): t is AIHistoryTurn => !!t && (t.from === "ai" || t.from === "user") && typeof t.text === "string")
         // An "AI" turn counts only if this server wrote it (AOE-SEC-20).
-        .filter((t) => t.from === "user" || answerSignatureOk(t.text, t.sig))
+        .filter((t) => t.from === "user" || answerSignatureOk(t.text, chatId, t.ts, t.sig))
         .slice(-6)
         .map((t) => ({ from: t.from, text: t.text.slice(0, t.from === "ai" ? 4000 : MAX_MESSAGE) }))
     : [];
@@ -83,7 +85,9 @@ export async function POST(request: Request) {
 
   try {
     const reply = await answerQuestion({ message, lang, history, userId: user?.id ?? null });
-    return NextResponse.json({ ...reply, sig: signAnswer(reply.text) });
+    if (!chatId) return NextResponse.json(reply);
+    const ts = Date.now();
+    return NextResponse.json({ ...reply, sig: signAnswer(reply.text, chatId, ts), ts });
   } catch (err) {
     if (err instanceof AINotConfiguredError) {
       console.error("AI not configured:", err.message);
