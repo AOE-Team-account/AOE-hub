@@ -985,6 +985,7 @@
   "policyUpdate.settings": "前往设置",
   "a11y.skip": "跳到主要内容",
   "signup.passwordHint": "至少 8 个字符。",
+  "signup.failed": "注册没有成功。请检查填写的内容，几分钟后再试一次。",
   "turnstile.failed": "安全验证无法加载。请检查网络连接或广告拦截器，或换一个网络再试。仍然不行？请写信到 {email}。",
   "tabs.buzzora": "Buzzora 板",
   "buzz.intro": "世界各地在家教育和非学校教育的法律、法规和政策方面的重大动态，来自政府网站和主要新闻媒体。",

@@ -985,6 +985,7 @@
   "policyUpdate.settings": "Go to Settings",
   "a11y.skip": "Skip to main content",
   "signup.passwordHint": "At least 8 characters.",
+  "signup.failed": "Sign-up didn't work. Please check your details and try again in a few minutes.",
   "turnstile.failed": "The safety check could not load. Check your connection or ad blocker, or try another network. Still stuck? Write to {email}.",
   "tabs.buzzora": "Buzzora Board",
   "buzz.intro": "Big developments in homeschooling and unschooling law, regulation and policy around the world, collected from government sites and major news outlets.",

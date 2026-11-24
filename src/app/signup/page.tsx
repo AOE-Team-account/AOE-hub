@@ -39,7 +39,15 @@ export default function SignupPage() {
     setLoading(false);
     ts.reset();
     if (signUpError) {
-      setError(signUpError.message);
+      // Never say whether an email already has an account (AOE-SEC-19): that case looks
+      // exactly like a new sign-up ("check your email"). Password rules are still shown.
+      if (/already (been )?registered|already exists/i.test(signUpError.message)) {
+        setNeedsEmailConfirmation(true);
+      } else if (/password/i.test(signUpError.message)) {
+        setError(signUpError.message);
+      } else {
+        setError(t("signup.failed"));
+      }
       return;
     }
     if (data.session) {

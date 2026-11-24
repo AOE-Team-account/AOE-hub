@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/Button";
+import { useTurnstile } from "@/components/ui/Turnstile";
 import { BackLink } from "@/components/ui/BackLink";
 import { CONTACT_EMAIL } from "@/lib/site";
 
@@ -27,15 +28,17 @@ function TakedownForm() {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const ts = useTurnstile();
   const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF((x) => ({ ...x, [k]: e.target.value }));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const res = await fetch("/api/takedown", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...f, goodFaith, accurate }) });
+    const res = await fetch("/api/takedown", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...f, goodFaith, accurate, captchaToken: ts.token }) });
     const d = await res.json().catch(() => ({}));
     setBusy(false);
+    ts.reset();
     if (res.ok) return setDone(true);
     setError(d.code === "slow" ? t("takedown.slow") : d.code === "invalid" ? t("takedown.invalid") : t("takedown.failed"));
   }
@@ -81,7 +84,8 @@ function TakedownForm() {
         <label className="field-label">{t("takedown.signature")} {t("common.required")}</label>
         <input value={f.signature} onChange={set("signature")} required maxLength={200} placeholder={t("takedown.signaturePh")} />
         {error && <p className="muted" style={{ color: "#b5471f", marginTop: 10 }}>{error}</p>}
-        <Button variant="primary" type="submit" style={{ width: "100%", marginTop: 14 }} disabled={busy || !goodFaith || !accurate}>
+        {ts.widget}
+        <Button variant="primary" type="submit" style={{ width: "100%", marginTop: 14 }} disabled={busy || !goodFaith || !accurate || !ts.ready}>
           {busy ? t("takedown.sending") : t("takedown.send")}
         </Button>
         {CONTACT_EMAIL && <p className="tiny" style={{ marginTop: 10 }}>{t("takedown.orEmail", { email: CONTACT_EMAIL })}</p>}

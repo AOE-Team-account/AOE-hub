@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { rateLimitedShared } from "@/lib/ai/server/rate-limit";
 import { clientIp } from "@/lib/client-ip";
+import { verifyTurnstile } from "@/lib/turnstile-verify";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,8 @@ export async function POST(request: Request) {
   if (await rateLimitedShared(`takedown:${ip}`, 5, 60 * 60_000)) return NextResponse.json({ error: "Too many notices from this connection. Please try again later.", code: "slow" }, { status: 429 });
 
   const b = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  // The "are you a person?" check (AOE-SEC-17), once Turnstile is set up.
+  if (!(await verifyTurnstile(b.captchaToken, ip))) return NextResponse.json({ error: "Please complete the check and try again.", code: "captcha" }, { status: 400 });
   const name = text(b.name, 200);
   const email = text(b.email, 200);
   const address = text(b.address, 500);

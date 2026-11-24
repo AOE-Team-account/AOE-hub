@@ -31,6 +31,8 @@ export async function POST(request: Request) {
     return NextResponse.json(step, { status: step.ok ? 200 : 502 });
   }
 
+  // Naming a NEW language uses the hub's daily allowance, so only members may do it (AOE-SEC-18).
+  if (!user) return NextResponse.json({ ok: false, error: "Please sign in to add a new language.", code: "sign-in" }, { status: 401 });
   const name = typeof body.name === "string" ? body.name : "";
   if (await rateLimitedShared(`i18nadd:${who}`, 5, 60 * 60_000)) {
     return NextResponse.json({ ok: false, error: "You have tried several languages. Please wait a while and try again." }, { status: 429 });
