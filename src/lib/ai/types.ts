@@ -12,11 +12,15 @@ export interface AIReply {
   escalate: boolean;
   /** True when the question is not for the hub AI: the member is shown links to other AI assistants. */
   offTopic?: boolean;
+  /** Server signature of `text`; sent back with the history so the server knows the answer is really its own. */
+  sig?: string;
 }
 
 export interface AIHistoryTurn {
   from: "ai" | "user";
   text: string;
+  /** For "ai" turns: the signature the server gave that answer. */
+  sig?: string;
 }
 
 export type { LanguageCode };

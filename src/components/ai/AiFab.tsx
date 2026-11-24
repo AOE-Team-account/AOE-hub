@@ -23,6 +23,8 @@ interface ChatMessage {
   // The question was not for the hub AI: show links to other AI assistants.
   offTopic?: boolean;
   isError?: boolean;
+  /** The server's signature of an AI answer, sent back with the history. */
+  sig?: string;
 }
 
 const clamp = (val: number, min: number, max: number) => Math.max(min, Math.min(max, val));
@@ -108,7 +110,7 @@ export function AiFab() {
   async function sendChat() {
     const text = input.trim();
     if (!text || thinking) return;
-    const history = messages.filter((m) => !m.isError && !m.key).map((m) => ({ from: m.from, text: m.text }));
+    const history = messages.filter((m) => !m.isError && !m.key).map((m) => ({ from: m.from, text: m.text, sig: m.sig }));
     setMessages((m) => [...m, { id: Date.now(), from: "user", text }]);
     setInput("");
     setThinking(true);
@@ -123,6 +125,7 @@ export function AiFab() {
           sources: reply.sources,
           escalateQuestion: reply.escalate ? text : undefined,
           offTopic: !!reply.offTopic,
+          sig: reply.sig,
         },
       ]);
     } catch (err) {
