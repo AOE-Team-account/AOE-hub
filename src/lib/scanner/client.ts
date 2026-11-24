@@ -15,6 +15,8 @@ export interface ScanJob {
   allowScripts?: boolean;
   /** Where the file is read from: a new upload (default), or a stored file being re-checked. */
   source?: "staging" | "main" | "internet-archive";
+  /** ETag of the sealed staged copy. When given, the scanner refuses a file that no longer matches it. */
+  expectedEtag?: string;
 }
 
 export interface ScanOutcome {

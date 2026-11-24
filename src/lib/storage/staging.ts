@@ -9,7 +9,9 @@ import {
   UploadPartCommand,
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
+  CopyObjectCommand,
 } from "@aws-sdk/client-s3";
+import { randomUUID } from "node:crypto";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { r2Endpoint, r2AccessKeyId, r2SecretAccessKey, r2StagingBucketName } from "./config";
 
@@ -27,10 +29,15 @@ const Bucket = r2StagingBucketName;
 /** Files up to this size are sent in one request; bigger ones in parts. */
 export const SINGLE_PUT_MAX_BYTES = 64 * 1024 * 1024;
 export const PART_SIZE_BYTES = 64 * 1024 * 1024;
-const URL_LIFETIME_SECONDS = 6 * 60 * 60;
+// Upload links are short-lived (AOE-SEC-01). A file sent in one request gets 30 minutes;
+// the parts of a big file get longer, because a 1 GB upload on a slow line takes a while.
+// Even while a link still works, nothing sent to it after "complete" is ever scanned or
+// published: complete seals the file under a new key no link points at (sealStaged).
+const SINGLE_URL_LIFETIME_SECONDS = 30 * 60;
+const PART_URL_LIFETIME_SECONDS = 3 * 60 * 60;
 
 export async function presignSinglePut(key: string, contentType: string): Promise<string> {
-  return getSignedUrl(client, new PutObjectCommand({ Bucket, Key: key, ContentType: contentType }), { expiresIn: URL_LIFETIME_SECONDS });
+  return getSignedUrl(client, new PutObjectCommand({ Bucket, Key: key, ContentType: contentType }), { expiresIn: SINGLE_URL_LIFETIME_SECONDS });
 }
 
 export async function startMultipart(key: string, contentType: string): Promise<string> {
@@ -40,7 +47,7 @@ export async function startMultipart(key: string, contentType: string): Promise<
 }
 
 export async function presignPart(key: string, uploadId: string, partNumber: number): Promise<string> {
-  return getSignedUrl(client, new UploadPartCommand({ Bucket, Key: key, UploadId: uploadId, PartNumber: partNumber }), { expiresIn: URL_LIFETIME_SECONDS });
+  return getSignedUrl(client, new UploadPartCommand({ Bucket, Key: key, UploadId: uploadId, PartNumber: partNumber }), { expiresIn: PART_URL_LIFETIME_SECONDS });
 }
 
 export async function finishMultipart(key: string, uploadId: string, parts: { PartNumber: number; ETag: string }[]): Promise<void> {
@@ -68,6 +75,58 @@ export async function stagedSize(key: string): Promise<number | null> {
   }
 }
 
+const normEtag = (e: string | undefined | null) => (e ?? "").replace(/^W\//, "").replace(/"/g, "");
+
+export interface SealedFile {
+  key: string;
+  etag: string;
+  size: number;
+}
+
+/**
+ * Seals an uploaded file (AOE-SEC-01): copies it, exactly as it is now, to a new
+ * unguessable key that no upload link points at, then removes the original. The
+ * scanner checks the sealed copy and only the sealed copy is ever published, so a
+ * file sent to the old upload link after this point is never used.
+ * Returns null when the file is missing or not the announced size.
+ */
+export async function sealStaged(key: string, expectedSize: number): Promise<SealedFile | null> {
+  let head;
+  try {
+    head = await client.send(new HeadObjectCommand({ Bucket, Key: key }));
+  } catch {
+    return null;
+  }
+  const etag = normEtag(head.ETag);
+  if (!etag || Number(head.ContentLength ?? -1) !== expectedSize) return null;
+  const sealedKey = `sealed/${key}-${randomUUID()}`;
+  await client.send(
+    new CopyObjectCommand({
+      Bucket,
+      Key: sealedKey,
+      CopySource: `${Bucket}/${encodeURIComponent(key).replace(/%2F/g, "/")}`,
+      // Copy only the very bytes that were measured above; a swap in between makes this fail.
+      CopySourceIfMatch: `"${etag}"`,
+      MetadataDirective: "COPY",
+    })
+  );
+  const sealed = await client.send(new HeadObjectCommand({ Bucket, Key: sealedKey }));
+  const size = Number(sealed.ContentLength ?? -1);
+  if (size !== expectedSize) {
+    await deleteStaged(sealedKey);
+    return null;
+  }
+  await deleteStaged(key);
+  return { key: sealedKey, etag: normEtag(sealed.ETag), size };
+}
+
+/** Reads a staged file only if it is still exactly the sealed version (ETag match). */
+export async function readSealed(key: string, etag: string): Promise<Buffer> {
+  const res = await client.send(new GetObjectCommand({ Bucket, Key: key, IfMatch: `"${etag}"` }));
+  const bytes = await res.Body!.transformToByteArray();
+  return Buffer.from(bytes);
+}
+
 export async function deleteStaged(key: string): Promise<void> {
   await client.send(new DeleteObjectCommand({ Bucket, Key: key })).catch(() => undefined);
 }
@@ -75,11 +134,4 @@ export async function deleteStaged(key: string): Promise<void> {
 /** Server-side upload of a small file (previews). */
 export async function putStaged(key: string, body: Buffer, contentType: string): Promise<void> {
   await client.send(new PutObjectCommand({ Bucket, Key: key, Body: body, ContentType: contentType }));
-}
-
-/** Reads a whole staged file into memory (only used for game zips, at most 50 MB). */
-export async function readStaged(key: string): Promise<Buffer> {
-  const res = await client.send(new GetObjectCommand({ Bucket, Key: key }));
-  const bytes = await res.Body!.transformToByteArray();
-  return Buffer.from(bytes);
 }

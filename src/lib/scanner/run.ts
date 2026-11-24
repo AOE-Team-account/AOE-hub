@@ -4,6 +4,7 @@ import { deleteStaged } from "@/lib/storage/staging";
 import { deleteFile, type StorageBackend } from "@/lib/storage/router";
 import { deleteFromR2Prefix } from "@/lib/storage/r2";
 import { CONTACT_EMAIL } from "@/lib/site";
+import { unpackScannedGame } from "@/lib/games-unpack";
 import { scanStagedFile } from "./client";
 
 // Runs the scan of one uploaded file and records the result. Safe to call more
@@ -12,7 +13,7 @@ import { scanStagedFile } from "./client";
 const MAX_ATTEMPTS = 3;
 const RETRY_AFTER_MS = [30_000, 90_000];
 // Problems retrying cannot fix.
-const FINAL_CODES = new Set(["missing", "size-mismatch", "too-big", "bad-request", "not-configured"]);
+const FINAL_CODES = new Set(["missing", "size-mismatch", "too-big", "bad-request", "not-configured", "changed"]);
 
 const contact = CONTACT_EMAIL ?? "info@aoe.name";
 
@@ -27,7 +28,7 @@ export async function runScan(assetId: string, attempt = 0): Promise<void> {
     console.error("Could not take the file for scanning:", error.message);
     return;
   }
-  const asset = (claimed as { id: string; file_post_id: string; label: string; original_name: string | null; staging_key: string | null; final_key: string | null; final_backend: string | null; size_bytes: number | null; mime_type: string | null; scan_attempts: number; game_prefix: string | null }[] | null)?.[0];
+  const asset = (claimed as { id: string; file_post_id: string; label: string; original_name: string | null; staging_key: string | null; final_key: string | null; final_backend: string | null; size_bytes: number | null; mime_type: string | null; scan_attempts: number; game_prefix: string | null; staged_etag?: string | null }[] | null)?.[0];
   if (!asset) return; // not pending, or someone else is already scanning it
 
   const { data: post } = await db.from("file_posts").select("author_id, media_type").eq("id", asset.file_post_id).maybeSingle();
@@ -45,18 +46,29 @@ export async function runScan(assetId: string, attempt = 0): Promise<void> {
           finalKey: asset.final_key,
           name: asset.original_name ?? asset.label,
           allowScripts: isGamePost,
+          // The sealed copy's fingerprint: the scanner refuses to scan or move a file that differs from it (AOE-SEC-01).
+          expectedEtag: asset.staged_etag ?? undefined,
         })
       : ({ status: "error", code: "bad-request", message: "The file record is incomplete." } as const);
 
   if (outcome.status === "clean") {
+    const storagePath = outcome.finalKey ?? asset.final_key;
+    const storageBackend = outcome.finalBackend ?? asset.final_backend ?? "r2";
+    // A game is unpacked now, after the scan, from the stored copy the scanner just
+    // checked and moved, never from the upload area (AOE-SEC-01).
+    let gamePrefix: string | null = null;
+    if (isGamePost && storageBackend === "r2" && storagePath && /\.zip$/i.test(asset.original_name ?? "")) {
+      gamePrefix = await unpackScannedGame(asset.id, storagePath);
+    }
     await db
       .from("file_assets")
       .update({
         scan_status: "clean",
-        storage_path: outcome.finalKey ?? asset.final_key,
-        storage_backend: outcome.finalBackend ?? asset.final_backend ?? "r2",
+        storage_path: storagePath,
+        storage_backend: storageBackend,
         scan_signature: null,
         scan_finished_at: new Date().toISOString(),
+        ...(gamePrefix ? { is_game: true, game_prefix: gamePrefix } : {}),
       })
       .eq("id", asset.id);
     if (asset.staging_key) await deleteStaged(asset.staging_key);

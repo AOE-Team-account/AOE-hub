@@ -3785,6 +3785,10 @@ alter table public.file_assets add column if not exists scan_attempts integer no
 alter table public.file_assets add column if not exists scan_started_at timestamptz;
 alter table public.file_assets add column if not exists scan_finished_at timestamptz;
 alter table public.file_assets add column if not exists multipart_upload_id text;
+-- The fingerprint (ETag) of the sealed copy that is scanned and published. The
+-- upload is copied to a new key nobody can write to when it is complete, and the
+-- scanner refuses to scan or move anything that does not match this (AOE-SEC-01).
+alter table public.file_assets add column if not exists staged_etag text;
 -- When a stored file was last re-checked against fresh virus signatures (weekly job).
 alter table public.file_assets add column if not exists rescanned_at timestamptz;
 create index if not exists file_assets_rescan_idx on public.file_assets (rescanned_at nulls first, scan_finished_at) where scan_status = 'clean' and storage_path is not null;

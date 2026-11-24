@@ -2,7 +2,7 @@ import http from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
 import * as clamd from "./clamd.mjs";
-import { sourceSize, readSource, readSourceRange, copyToMain, copyToInternetArchive } from "./storage.mjs";
+import { sourceHead, readSource, readSourceRange, copyToMain, copyToInternetArchive } from "./storage.mjs";
 import { sniff, disguisedProgram, inspectZip, pdfTap, pdfVerdict } from "./inspect.mjs";
 
 // The AOEhub virus scanner. The hub asks it to scan one file that is waiting in
@@ -11,14 +11,22 @@ import { sniff, disguisedProgram, inspectZip, pdfTap, pdfVerdict } from "./inspe
 //
 //   POST /scan   Authorization: Bearer <SCANNER_SECRET>
 //   { assetId, stagingKey, size, contentType, finalBackend: "r2" | "internet-archive" | "none", finalKey,
-//     name, allowScripts, source: "staging" (default) | "main" | "internet-archive" }  (stagingKey is the key in that source)
-//   -> { status: "clean" | "flagged" | "error", signature?, code?, message?, finalBackend?, finalKey? }
+//     name, allowScripts, source: "staging" (default) | "main" | "internet-archive", expectedEtag? }  (stagingKey is the key in that source)
+//   -> { status: "clean" | "flagged" | "error", signature?, code?, message?, finalBackend?, finalKey?, etag? }
+// The file is pinned to the ETag seen at the start (or to expectedEtag): every read and the
+// final copy use If-Match, so a file swapped during the scan is never moved (AOE-SEC-01).
 //   GET /healthz -> engine status
 
 const PORT = Number(process.env.PORT || 8080);
 const SECRET = process.env.SCANNER_SECRET || "";
 const MAX_BYTES = Number(process.env.SCAN_MAX_BYTES || 2047 * 1024 * 1024); // ClamAV cannot scan 2 GiB or more (hub limit 1 GB; one-time lifts up to 2047 MB)
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const U = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+// Where a clean file may be put (AOE-SEC-10): "<postId>/<uuid>-<name>" for shared files and
+// "previews/<kind>/<ownerId>/<uuid>.<ext>" for preview videos. Nothing else, so even a caller
+// holding the secret cannot overwrite a hosted game or another member's stored file.
+const FINAL_KEY = new RegExp(`^(?:${U}/${U}-[^/]{1,300}|previews/[a-z-]{1,40}/${U}/${U}\\.[a-z0-9]{1,10})$`, "i");
+const ETAG = /^[A-Za-z0-9-]{1,100}$/;
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -99,9 +107,12 @@ async function scanOne(job) {
     return { status: "error", code: "bad-request", message: "Invalid request." };
   }
   if (!["r2", "internet-archive", "none"].includes(finalBackend)) return { status: "error", code: "bad-request", message: "Invalid destination." };
-  if (finalBackend !== "none" && (typeof finalKey !== "string" || !finalKey || finalKey.includes("..") || finalKey.length > 700)) {
+  if (finalBackend !== "none" && (typeof finalKey !== "string" || !finalKey || finalKey.includes("..") || finalKey.length > 700 || !FINAL_KEY.test(finalKey))) {
     return { status: "error", code: "bad-request", message: "Invalid destination." };
   }
+  if (finalBackend !== "none" && source !== "staging") return { status: "error", code: "bad-request", message: "Only new uploads are moved." };
+  const expectedEtag = job.expectedEtag === undefined || job.expectedEtag === null ? null : String(job.expectedEtag);
+  if (expectedEtag !== null && !ETAG.test(expectedEtag)) return { status: "error", code: "bad-request", message: "Invalid fingerprint." };
   if (!Number.isFinite(size) || size <= 0) return { status: "error", code: "bad-request", message: "Invalid size." };
   if (size > MAX_BYTES) return { status: "error", code: "too-big", message: "File is over the scan limit." };
 
@@ -109,10 +120,13 @@ async function scanOne(job) {
 
   // Look at the file in storage. Only a clear "not found" means it is missing; any other trouble talking to storage is worth trying again.
   let actual;
+  let etag = null;
   let lastError;
   for (let attempt = 0; attempt < 3 && actual === undefined; attempt++) {
     try {
-      actual = await sourceSize(source, stagingKey);
+      const head = await sourceHead(source, stagingKey);
+      actual = head.size;
+      etag = head.etag || null;
     } catch (err) {
       lastError = err;
       const status = err?.$metadata?.httpStatusCode;
@@ -124,6 +138,10 @@ async function scanOne(job) {
   }
   if (actual === undefined) return { status: "error", code: "storage-error", message: `Could not reach storage (${lastError?.name ?? "error"}).` };
   if (actual !== size) return { status: "error", code: "size-mismatch", message: `Expected ${size} bytes, found ${actual}.` };
+  if (expectedEtag !== null && etag !== expectedEtag) return { status: "error", code: "changed", message: "The file is not the one that was uploaded." };
+  // A file in R2 that will be moved must be pinned to one exact version.
+  if (finalBackend !== "none" && !etag) return { status: "error", code: "changed", message: "The file has no fingerprint." };
+  const pin = source === "internet-archive" ? undefined : etag || undefined;
 
   const started = Date.now();
   const flagged = (signature) => {
@@ -134,12 +152,12 @@ async function scanOne(job) {
   // Our own checks first: they do not need to know the threat in advance.
   let kind = null;
   try {
-    const head = await readSourceRange(source, stagingKey, 0, Math.min(size, 4096) - 1);
+    const head = await readSourceRange(source, stagingKey, 0, Math.min(size, 4096) - 1, pin);
     kind = sniff(head);
     const disguised = disguisedProgram(name, kind);
     if (disguised) return flagged(disguised);
     if (kind === "zip") {
-      const z = await inspectZip(size, (a, b) => readSourceRange(source, stagingKey, a, b), { allowScripts });
+      const z = await inspectZip(size, (a, b) => readSourceRange(source, stagingKey, a, b, pin), { allowScripts });
       if (z.flagged) return flagged(z.signature);
     }
   } catch (err) {
@@ -148,7 +166,7 @@ async function scanOne(job) {
   }
 
   const found = {};
-  let stream = await readSource(source, stagingKey);
+  let stream = await readSource(source, stagingKey, pin);
   if (kind === "pdf") stream = pdfTap(stream, found);
   const result = await clamd.scanStream(stream);
   if (result.status === "clean" && kind === "pdf") {
@@ -164,13 +182,18 @@ async function scanOne(job) {
 
   if (finalBackend === "none") return { status: "clean", finalBackend: "none" };
   try {
-    if (finalBackend === "r2") await copyToMain(stagingKey, finalKey);
-    else await copyToInternetArchive(stagingKey, finalKey, contentType, size);
+    if (finalBackend === "r2") await copyToMain(stagingKey, finalKey, pin);
+    else await copyToInternetArchive(stagingKey, finalKey, contentType, size, pin);
   } catch (err) {
+    const status = err?.$metadata?.httpStatusCode;
+    if (status === 412 || err?.name === "PreconditionFailed") {
+      log(`promote refused for ${assetId}: the file changed after it was scanned`);
+      return { status: "error", code: "changed", message: "The file changed after it was scanned." };
+    }
     log(`promote failed for ${assetId}:`, err instanceof Error ? err.message : err);
     return { status: "error", code: "promote-failed", message: "The file is clean but could not be moved to its final place." };
   }
-  return { status: "clean", finalBackend, finalKey };
+  return { status: "clean", finalBackend, finalKey, etag };
 }
 
 const server = http.createServer(async (req, res) => {

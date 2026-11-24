@@ -1,18 +1,21 @@
 import { NextResponse, after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
-import { finishMultipart, stagedSize, deleteStaged, readStaged, abortMultipart } from "@/lib/storage/staging";
-import { uploadToR2, deleteFromR2Prefix } from "@/lib/storage/r2";
-import { GameZipError, inspectGameZip } from "@/lib/games";
+import { finishMultipart, deleteStaged, readSealed, sealStaged, abortMultipart } from "@/lib/storage/staging";
+import { GameZipError } from "@/lib/games";
+import { checkGameZip } from "@/lib/games-unpack";
 import { runScan } from "@/lib/scanner/run";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 // Step 2 of an upload: the browser says every file has been sent. This joins
-// the parts of big files, checks that what arrived is what was announced, looks
-// inside game zips, and starts the virus scan. The file stays hidden (and the
-// member is told it is being scanned) until the scan says it is clean.
+// the parts of big files, checks that what arrived is what was announced, seals
+// the file under a new key no upload link points at (so it cannot be swapped
+// after this point; AOE-SEC-01), checks game zips, and starts the virus scan.
+// The file stays hidden (and the member is told it is being scanned) until the
+// scan says it is clean. Games are unpacked only AFTER the scan, from the exact
+// bytes that were scanned (see runScan).
 
 interface PartIn { PartNumber: number; ETag: string }
 
@@ -50,9 +53,11 @@ export async function POST(request: Request) {
       continue;
     }
 
+    let stagingKey = asset.staging_key as string;
     const fail = async (code: string, message: string) => {
       if (asset.multipart_upload_id) await abortMultipart(asset.staging_key as string, asset.multipart_upload_id);
       await deleteStaged(asset.staging_key as string);
+      if (stagingKey !== asset.staging_key) await deleteStaged(stagingKey);
       await svc.from("file_assets").update({ scan_status: "error", scan_finished_at: new Date().toISOString() }).eq("id", asset.id);
       await svc.rpc("refund_upload_allowance", { p_user: user.id, p_files: 1, p_bytes: Number(asset.size_bytes ?? 0) });
       results.push({ assetId, status: "failed", code, error: message });
@@ -70,40 +75,32 @@ export async function POST(request: Request) {
         }
         await finishMultipart(asset.staging_key, asset.multipart_upload_id, clean);
       }
-      const size = await stagedSize(asset.staging_key);
-      if (size === null || size !== Number(asset.size_bytes)) {
+      // Seal it: from here on only this exact copy is scanned and published.
+      const sealed = await sealStaged(asset.staging_key, Number(asset.size_bytes));
+      if (!sealed) {
         await fail("incomplete", "The file did not arrive in full.");
         continue;
       }
+      stagingKey = sealed.key;
+      const { error: sealError } = await svc
+        .from("file_assets")
+        .update({ staging_key: sealed.key, staged_etag: sealed.etag, multipart_upload_id: null })
+        .eq("id", asset.id)
+        .eq("scan_status", "uploading");
+      if (sealError) throw new Error(sealError.message);
 
-      // A game: look inside the zip (never run it) and unpack it where it will be played from, hidden until the scan passes.
+      // A game: look inside the zip now (never run it) so an unsafe zip is refused at once.
+      // It is unpacked only after the virus scan, from the scanned copy.
       const isGame = post.media_type === "game" || post.media_type === "app";
       if (isGame && /\.zip$/i.test(asset.original_name ?? "")) {
-        let plan;
         try {
-          plan = inspectGameZip(await readStaged(asset.staging_key));
+          await checkGameZip(() => readSealed(sealed.key, sealed.etag));
         } catch (err) {
           if (err instanceof GameZipError) {
             await fail("game-invalid", err.message);
             continue;
           }
           throw err;
-        }
-        // (A zip without an index.html at the top is an ordinary download, not a game.)
-        if (plan) {
-          const prefix = `games/${asset.id}/`;
-          try {
-            const queue = [...plan];
-            await Promise.all(
-              Array.from({ length: 6 }, async () => {
-                for (let f = queue.shift(); f; f = queue.shift()) await uploadToR2(prefix + f.path, Buffer.from(f.data), f.mime);
-              })
-            );
-            await svc.from("file_assets").update({ is_game: true, game_prefix: prefix }).eq("id", asset.id);
-          } catch (err) {
-            console.error("Could not unpack the game:", err instanceof Error ? err.message : err);
-            await deleteFromR2Prefix(prefix).catch(() => undefined);
-          }
         }
       }
 
