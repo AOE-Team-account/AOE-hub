@@ -5,5 +5,6 @@ import type { AIHistoryTurn, AIReply, LanguageCode } from "./types";
 // key, or the knowledge base.
 export interface AIProvider {
   /** `chatId`: a random id for this chat window; answers are signed for this chat only (AOE-INF-09). */
-  reply(message: string, lang: LanguageCode, history: AIHistoryTurn[], chatId: string): Promise<AIReply>;
+  /** `captchaToken`: a Turnstile token, needed for signed-out questions once Turnstile is set up (AOE-SEC-24). */
+  reply(message: string, lang: LanguageCode, history: AIHistoryTurn[], chatId: string, captchaToken?: string): Promise<AIReply>;
 }

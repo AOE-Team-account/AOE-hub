@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { rateLimitedShared } from "@/lib/ai/server/rate-limit";
 import { clientIp } from "@/lib/client-ip";
-import { verifyTurnstile } from "@/lib/turnstile-verify";
+import { turnstileRequired, verifyTurnstile } from "@/lib/turnstile-verify";
 
 export const runtime = "nodejs";
 
@@ -14,12 +14,17 @@ const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slic
 
 export async function POST(request: Request) {
   const ip = clientIp(request);
-  // Per address; with no known address, one shared allowance (AOE-SEC-04).
-  if (await (ip ? rateLimitedShared(`takedown:${ip}`, 5, 60 * 60_000) : rateLimitedShared("takedown:noip", 20, 60 * 60_000))) return NextResponse.json({ error: "Too many notices from this connection. Please try again later.", code: "slow" }, { status: 429 });
-
   const b = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-  // The "are you a person?" check (AOE-SEC-17), once Turnstile is set up.
+  // The "are you a person?" check first (AOE-SEC-17), once Turnstile is set up, so a bot
+  // can't use up the allowance below.
   if (!(await verifyTurnstile(b.captchaToken, ip ?? undefined))) return NextResponse.json({ error: "Please complete the check and try again.", code: "captcha" }, { status: 400 });
+  // Per address. With no known address, one shared allowance (AOE-SEC-04): 20 an hour, or
+  // 100 an hour when every notice has passed Turnstile (AOE-SEC-29: a legal form should
+  // not be easy for one stranger to block for everyone).
+  const limited = ip
+    ? await rateLimitedShared(`takedown:${ip}`, 5, 60 * 60_000)
+    : await rateLimitedShared(turnstileRequired ? "takedown:noip-checked" : "takedown:noip", turnstileRequired ? 100 : 20, 60 * 60_000);
+  if (limited) return NextResponse.json({ error: "Too many notices from this connection. Please try again later.", code: "slow" }, { status: 429 });
   const name = text(b.name, 200);
   const email = text(b.email, 200);
   const address = text(b.address, 500);

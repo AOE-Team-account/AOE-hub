@@ -7,7 +7,8 @@ import { rateLimitedShared } from "@/lib/ai/server/rate-limit";
 import type { AIHistoryTurn, LanguageCode } from "@/lib/ai/types";
 import { clientIp, clientNetwork } from "@/lib/client-ip";
 import { answerSignatureOk, signAnswer, validChatId } from "@/lib/ai/server/history-sig";
-import { hubAiDailyCap, hubAiGuestDailyCap, takeBudget } from "@/lib/translate/budget";
+import { hubAiDailyCap, hubAiGuestDailyCap, hubAiMemberDailyCap, takeBudget } from "@/lib/translate/budget";
+import { turnstileRequired, verifyTurnstile } from "@/lib/turnstile-verify";
 
 export const runtime = "nodejs";
 
@@ -16,7 +17,7 @@ const LANG_PATTERN = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 const MAX_MESSAGE = 1000;
 
 export async function POST(request: Request) {
-  let body: { message?: unknown; lang?: unknown; history?: unknown; chatId?: unknown };
+  let body: { message?: unknown; lang?: unknown; history?: unknown; chatId?: unknown; captchaToken?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -43,8 +44,12 @@ export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const ip = clientIp(request);
-  // Local testing only: AI_RATE_LIMIT=off lifts the limit, and only for requests made to localhost.
-  const testing = process.env.AI_RATE_LIMIT === "off" && /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(request.headers.get("host") ?? "");
+  // Local testing only: AI_RATE_LIMIT=off lifts the limits, only for requests made to localhost,
+  // and never in a production build (AOE-INF-12: the Host header can be set by anyone).
+  const testing =
+    process.env.NODE_ENV !== "production" &&
+    process.env.AI_RATE_LIMIT === "off" &&
+    /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(request.headers.get("host") ?? "");
   // Signed-out visitors are counted by address (AOE-SEC-24). When the address can't be
   // known safely (CLIENT_IP_HEADER / TRUSTED_PROXY_COUNT not set, or the header is
   // missing), a signed-out question is not answered: there is no shared "unknown"
@@ -52,8 +57,22 @@ export async function POST(request: Request) {
   if (!user && !ip && !testing) {
     return NextResponse.json({ error: "Please sign in to ask the assistant.", code: "sign-in" }, { status: 401 });
   }
-  const limited = testing ? false : user
-    ? await rateLimitedShared(`u:${user.id}`, 30, 10 * 60_000)
+  // Once Turnstile is set up (TURNSTILE_SECRET_KEY), every signed-out question also needs a
+  // fresh "are you a person?" token (AOE-SEC-24), so renting many addresses is not enough.
+  if (!user && !testing && turnstileRequired && !(await verifyTurnstile(body.captchaToken, ip ?? undefined))) {
+    return NextResponse.json({ error: "Please complete the check and try again.", code: "captcha" }, { status: 400 });
+  }
+  if (user && !testing) {
+    // Members: 30 every 10 minutes, and a daily share (hub_ai_member_daily_cap, 100 by default)
+    // so one account can't use up the whole hub's allowance (AOE-SEC-28).
+    if (await rateLimitedShared(`u:${user.id}`, 30, 10 * 60_000)) {
+      return NextResponse.json({ error: "You're asking quickly — please wait a few minutes and try again." }, { status: 429 });
+    }
+    if (await rateLimitedShared(`uday:${user.id}`, await hubAiMemberDailyCap(), 24 * 60 * 60_000)) {
+      return NextResponse.json({ error: "You've asked the assistant a lot today. Please try again tomorrow.", code: "daily" }, { status: 429 });
+    }
+  }
+  const limited = testing || user ? false
     : // Per address: 10 every 10 minutes and 20 a day; per network (IPv4 /24, IPv6 /48):
       // 60 a day. So no single address or network can take more than a small share of
       // the guests' daily allowance (hub_ai_guest_daily_cap, 300 by default).

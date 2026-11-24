@@ -15,6 +15,8 @@ export const maxAiLanguages = () => setting("max_ai_languages", 30);
 // a smaller share of it for signed-out visitors. Change them in hub_settings.
 export const hubAiDailyCap = () => setting("hub_ai_daily_cap", 1500);
 export const hubAiGuestDailyCap = () => setting("hub_ai_guest_daily_cap", 300);
+// Each member's own daily share (AOE-SEC-28), so one account can't use up the hub's day.
+export const hubAiMemberDailyCap = () => setting("hub_ai_member_daily_cap", 100);
 
 /** Takes n units from today's allowance; false when that would go over the cap. */
 export async function takeBudget(kind: string, n: number, cap: number): Promise<boolean> {

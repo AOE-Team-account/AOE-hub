@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { aiProvider, type AISource } from "@/lib/ai";
 import { useAuth } from "@/contexts/AuthContext";
@@ -9,6 +9,25 @@ import { friendlyWriteError } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/client";
 import type { UiKey } from "@/lib/i18n/strings";
 import { otherAisFor } from "@/lib/ai/other-ais";
+import { turnstileEnabled, useTurnstile } from "@/components/ui/Turnstile";
+
+interface GuestCheckState {
+  ready: boolean;
+  token: string | undefined;
+  reset: () => void;
+}
+
+// The "are you a person?" box for signed-out visitors (AOE-SEC-24). Its own component, so
+// it is set up when it appears (for example after signing out) and removed when it goes.
+function GuestCheck({ onChange }: { onChange: (s: GuestCheckState | null) => void }) {
+  const ts = useTurnstile();
+  const { ready, token, reset, widget } = ts;
+  useEffect(() => {
+    onChange({ ready, token, reset });
+  }, [ready, token, reset, onChange]);
+  useEffect(() => () => onChange(null), [onChange]);
+  return <div style={{ padding: "0 12px" }}>{widget}</div>;
+}
 
 interface ChatMessage {
   id: number;
@@ -48,6 +67,11 @@ export function AiFab() {
   ]);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
+  // Signed-out visitors pass the "are you a person?" check for each question, once
+  // Turnstile is set up (AOE-SEC-24). Members never see it.
+  const needsCheck = !user && turnstileEnabled;
+  const [check, setCheck] = useState<GuestCheckState | null>(null);
+  const checkReady = !needsCheck || !!check?.ready;
   // A random id for this chat window: the server signs its answers for this chat only (AOE-INF-09).
   const [chatId] = useState(() =>
     typeof crypto.randomUUID === "function"
@@ -116,13 +140,15 @@ export function AiFab() {
 
   async function sendChat() {
     const text = input.trim();
-    if (!text || thinking) return;
+    if (!text || thinking || !checkReady) return;
     const history = messages.filter((m) => !m.isError && !m.key).map((m) => ({ from: m.from, text: m.text, sig: m.sig, ts: m.ts }));
     setMessages((m) => [...m, { id: Date.now(), from: "user", text }]);
     setInput("");
     setThinking(true);
     try {
-      const reply = await aiProvider.reply(text, lang, history, chatId);
+      const captchaToken = needsCheck ? check?.token : undefined;
+      if (needsCheck) check?.reset(); // a token works only once
+      const reply = await aiProvider.reply(text, lang, history, chatId, captchaToken);
       setMessages((m) => [
         ...m,
         {
@@ -247,6 +273,7 @@ export function AiFab() {
           ))}
           {thinking && <div className="chat-msg ai">{t("ai.thinking")}</div>}
         </div>
+        {needsCheck && <GuestCheck onChange={setCheck} />}
         <div className="chat-input-row">
           <input
             placeholder={t("ai.placeholder")}
@@ -254,7 +281,7 @@ export function AiFab() {
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && sendChat()}
           />
-          <button className="btn primary small" onClick={sendChat}>
+          <button className="btn primary small" onClick={sendChat} disabled={!checkReady}>
             {t("ai.send")}
           </button>
         </div>

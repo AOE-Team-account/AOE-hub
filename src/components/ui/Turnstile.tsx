@@ -11,6 +11,8 @@ import { CONTACT_EMAIL } from "@/lib/site";
 // Supabase (Authentication → Bot and Abuse Protection), which checks every
 // token on its own server, so a bot cannot skip the widget.
 const SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
+/** True when the site key is set (the check is shown). */
+export const turnstileEnabled = SITE_KEY !== "";
 
 interface TurnstileApi {
   render: (el: HTMLElement, options: Record<string, unknown>) => string;

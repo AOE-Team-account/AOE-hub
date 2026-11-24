@@ -1011,6 +1011,10 @@ insert into public.hub_settings (key, value) values
   ('hub_ai_daily_cap', '1500'::jsonb),
   ('hub_ai_guest_daily_cap', '300'::jsonb)
 on conflict (key) do nothing;
+-- Each member's own daily share of the hub AI (AOE-SEC-28). 0 = members can't ask.
+insert into public.hub_settings (key, value) values
+  ('hub_ai_member_daily_cap', '100'::jsonb)
+on conflict (key) do nothing;
 
 -- ---- Functions: only the listed ones are callable from a browser ----------
 do $$
