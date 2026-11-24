@@ -1,25 +1,43 @@
 import "server-only";
 import dns from "node:dns/promises";
 import net from "node:net";
+import https from "node:https";
+import zlib from "node:zlib";
+import type { Readable } from "node:stream";
 
 // Fetching a page whose address came from the internet is a classic attack
 // route (making the server call something inside its own network). Every
 // address is checked before it is fetched, and again after each redirect:
 // plain https only, no passwords in the address, only hosts the caller allows,
-// and the host must resolve to public internet addresses only.
+// and the host must resolve to public internet addresses only. The connection
+// then goes to the very address that was checked (AOE-SEC-16), so a second DNS
+// answer (DNS rebinding) cannot point it somewhere else.
+
+// Two lists: Node matches IPv4 addresses against IPv4-mapped IPv6 ranges too.
+const blocked4 = new net.BlockList();
+const blocked6 = new net.BlockList();
+for (const [a, p] of [
+  ["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16], ["172.16.0.0", 12],
+  ["192.0.0.0", 24], ["192.0.2.0", 24], ["192.88.99.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15], ["198.51.100.0", 24],
+  ["203.0.113.0", 24], ["224.0.0.0", 4], ["240.0.0.0", 4],
+] as [string, number][]) blocked4.addSubnet(a, p, "ipv4");
+for (const [a, p] of [
+  ["::", 128], ["::1", 128], ["::ffff:0:0", 96], ["64:ff9b::", 96], ["64:ff9b:1::", 48], ["100::", 64], ["2001::", 23],
+  ["2001:db8::", 32], ["2002::", 16], ["fc00::", 7], ["fe80::", 10], ["fec0::", 10], ["ff00::", 8],
+] as [string, number][]) blocked6.addSubnet(a, p, "ipv6");
 
 function isPrivateAddress(ip: string): boolean {
-  if (net.isIPv4(ip)) {
-    const [a, b] = ip.split(".").map(Number);
-    return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
-  }
+  if (net.isIPv4(ip)) return blocked4.check(ip, "ipv4");
+  if (!net.isIPv6(ip)) return true;
   const v = ip.toLowerCase();
-  if (v === "::1" || v === "::" || v.startsWith("fe80") || v.startsWith("fc") || v.startsWith("fd")) return true;
-  if (v.startsWith("::ffff:")) return isPrivateAddress(v.slice(7));
-  return false;
+  // IPv4 written inside IPv6 (::ffff:10.0.0.1 or ::ffff:a00:1): judge the IPv4 part.
+  const mapped = v.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (mapped) return isPrivateAddress(mapped[1]);
+  // Any other IPv4-mapped form (::ffff:a00:1) is inside ::ffff:0:0/96 and refused.
+  return blocked6.check(v, "ipv6");
 }
 
-async function assertSafe(rawUrl: string, allowHost: (host: string) => boolean): Promise<URL> {
+async function assertSafe(rawUrl: string, allowHost: (host: string) => boolean): Promise<{ url: URL; address: string; family: number }> {
   const u = new URL(rawUrl);
   if (u.protocol !== "https:") throw new Error("Only https addresses are allowed.");
   if (u.username || u.password) throw new Error("Addresses with a password are not allowed.");
@@ -28,10 +46,31 @@ async function assertSafe(rawUrl: string, allowHost: (host: string) => boolean):
   if (net.isIP(host) || !allowHost(host)) throw new Error("That site is not on the allowed list.");
   const addrs = await dns.lookup(host, { all: true });
   if (addrs.length === 0 || addrs.some((a) => isPrivateAddress(a.address))) throw new Error("That address is not a public one.");
-  return u;
+  return { url: u, address: addrs[0].address, family: addrs[0].family };
 }
 
 export interface SafeText { url: string; status: number; contentType: string; text: string }
+
+/** One GET to the checked address only (the name is still used for TLS and the Host header). */
+function getPinned(url: URL, address: string, family: number, headers: Record<string, string>, timeoutMs: number): Promise<{ status: number; headers: Record<string, string | string[] | undefined>; body: Readable }> {
+  return new Promise((resolve, reject) => {
+    const req = https.get(
+      url,
+      {
+        headers,
+        timeout: timeoutMs,
+        lookup: (_host, opts, cb) => {
+          const o = opts as { all?: boolean };
+          if (o?.all) (cb as unknown as (e: null, a: { address: string; family: number }[]) => void)(null, [{ address, family }]);
+          else cb(null, address, family);
+        },
+      },
+      (res) => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: res })
+    );
+    req.on("timeout", () => req.destroy(new Error("The site took too long to answer.")));
+    req.on("error", reject);
+  });
+}
 
 /** Fetches a page as text, with a size cap and timeout, following up to 3 redirects that are each re-checked. */
 export async function safeFetchText(
@@ -40,29 +79,43 @@ export async function safeFetchText(
   opts: { maxBytes?: number; timeoutMs?: number; accept?: string } = {}
 ): Promise<SafeText> {
   const maxBytes = opts.maxBytes ?? 1_500_000;
+  const timeoutMs = opts.timeoutMs ?? 15_000;
   let current = rawUrl;
   for (let hop = 0; hop < 4; hop++) {
-    const u = await assertSafe(current, allowHost);
-    const res = await fetch(u, {
-      redirect: "manual",
-      headers: { "user-agent": "AOEhubBot/1.0 (+https://aoe.ai)", accept: opts.accept ?? "text/html,application/xhtml+xml,application/json;q=0.8,*/*;q=0.5" },
-      signal: AbortSignal.timeout(opts.timeoutMs ?? 15_000),
-    });
-    if (res.status >= 300 && res.status < 400 && res.headers.get("location")) {
-      current = new URL(res.headers.get("location")!, u).toString();
+    const { url: u, address, family } = await assertSafe(current, allowHost);
+    const res = await getPinned(u, address, family, {
+      "user-agent": "AOEhubBot/1.0 (+https://aoe.ai)",
+      accept: opts.accept ?? "text/html,application/xhtml+xml,application/json;q=0.8,*/*;q=0.5",
+      "accept-encoding": "gzip, deflate, br",
+    }, timeoutMs);
+    const location = res.headers.location;
+    if (res.status >= 300 && res.status < 400 && typeof location === "string" && location) {
+      res.body.resume();
+      current = new URL(location, u).toString();
       continue;
     }
-    const reader = res.body?.getReader();
+    const enc = String(res.headers["content-encoding"] ?? "").toLowerCase();
+    let stream: Readable = res.body;
+    if (enc === "gzip" || enc === "x-gzip") stream = res.body.pipe(zlib.createGunzip());
+    else if (enc === "deflate") stream = res.body.pipe(zlib.createInflate());
+    else if (enc === "br") stream = res.body.pipe(zlib.createBrotliDecompress());
     let received = 0;
-    const chunks: Uint8Array[] = [];
-    while (reader) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      received += value.length;
-      if (received > maxBytes) { await reader.cancel(); break; }
-      chunks.push(value);
+    const chunks: Buffer[] = [];
+    const deadline = setTimeout(() => res.body.destroy(new Error("The site took too long to answer.")), timeoutMs);
+    try {
+      for await (const chunk of stream) {
+        const b = chunk as Buffer;
+        received += b.length;
+        if (received > maxBytes) { res.body.destroy(); break; }
+        chunks.push(b);
+      }
+    } catch (err) {
+      if (chunks.length === 0) throw err;
+    } finally {
+      clearTimeout(deadline);
     }
-    return { url: u.toString(), status: res.status, contentType: res.headers.get("content-type") ?? "", text: Buffer.concat(chunks).toString("utf8") };
+    const ct = res.headers["content-type"];
+    return { url: u.toString(), status: res.status, contentType: typeof ct === "string" ? ct : "", text: Buffer.concat(chunks).toString("utf8") };
   }
   throw new Error("Too many redirects.");
 }
