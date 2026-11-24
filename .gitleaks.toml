@@ -1,0 +1,30 @@
+# Secret scanning rules for AOE Hub (used by the pre-commit hook and CI).
+# Starts from gitleaks' own default rules and adds a few AOE Hub specific ones.
+# Never put a real secret in this file, not even in an allowlist.
+
+title = "AOE Hub gitleaks config"
+
+[extend]
+useDefault = true
+
+# Supabase keys are JWTs; the anon key is public by design but is still kept
+# out of git (it lives in .env.local / the host's settings).
+[[rules]]
+id = "supabase-jwt"
+description = "Supabase anon or service-role key (JWT)"
+regex = '''eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}'''
+keywords = ["eyj"]
+
+[[rules]]
+id = "postgres-url-with-password"
+description = "Database connection string with a password"
+regex = '''postgres(?:ql)?://[^:\s/]+:[^@\s]{6,}@[^\s'"]+'''
+keywords = ["postgres://", "postgresql://"]
+
+[allowlist]
+description = "Example and documentation files hold variable NAMES only"
+paths = [
+  '''(^|/)\.env\.example$''',
+  '''(^|/)package-lock\.json$''',
+  '''(^|/)scanner/package-lock\.json$''',
+]

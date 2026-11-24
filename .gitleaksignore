@@ -1,0 +1,5 @@
+# Reviewed false positives (fingerprint = commit:file:rule:line). No secret values here.
+# KEY_CHARS in the old HTML prototypes is a 31-letter alphabet used to make
+# random codes in the browser demo, not a key.
+0cbd9f4e9f5750e6c9672741103639e83860e239:hub-prototype2.html:generic-api-key:3266
+a9a5763649c6d06c5299442ed2459fa8f079aa1d:hub-prototype1.html:generic-api-key:3206

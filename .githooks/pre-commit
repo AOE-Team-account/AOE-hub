@@ -1,0 +1,24 @@
+#!/bin/sh
+# AOE Hub pre-commit check: stops a commit that would add a secret, a .env
+# file or one of Clara's private working documents.
+# Turn on once per clone:   git config core.hooksPath .githooks
+# Needs the gitleaks program: https://github.com/gitleaks/gitleaks/releases
+set -eu
+
+# 1) Files that must never be committed (private notes, real settings, dumps).
+blocked=$(git diff --cached --name-only --diff-filter=ACMR | grep -E \
+  '(^|/)\.env($|\.)|(^|/)RECOVERY\.md$|(^|/)MARKETPLACE-UPDATE\.md$|^hub-prototype[0-9]*\.html$|^AOEhub .*\.md$|^policy-review/|(^|/)\._|\.(pem|key|p12|pfx|sql\.gz|dump|backup)$|(^|/)backup.*\.(sql|zip|gz)$' \
+  | grep -v -E '(^|/)\.env\.example$' || true)
+if [ -n "$blocked" ]; then
+  echo "pre-commit: these files must not be committed:" >&2
+  echo "$blocked" | sed 's/^/  - /' >&2
+  exit 1
+fi
+
+# 2) Secret scan of the staged changes.
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks is not installed, so the secret check cannot run." >&2
+  echo "Install it from https://github.com/gitleaks/gitleaks/releases (or skip once with --no-verify if you are sure)." >&2
+  exit 1
+fi
+gitleaks git --pre-commit --staged --redact --no-banner --config .gitleaks.toml

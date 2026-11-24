@@ -47,3 +47,11 @@ next-env.d.ts
 /hub-prototype2.html
 /AOEhub *.md
 /policy-review/
+
+# macOS copy leftovers (AppleDouble files)
+._*
+
+# database dumps and backups never belong in git
+*.dump
+*.sql.gz
+*.age

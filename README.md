@@ -98,6 +98,22 @@ Once the secrets exist, the workflow runs automatically at 09:00 UTC daily, or y
 
 **Known limits:** the rate limiter is per server process (a speed bump, not a guarantee); very large libraries would want the index sync made incremental instead of re-reading every post each run.
 
+## Keeping secrets out of git
+
+The repository is public, so **keys, passwords and member data must never be committed**. They live in `.env.local` (on your computer) and in the host's settings, and member data lives in Supabase.
+
+Two checks guard this:
+
+1. **Before each commit** (on your computer): `.githooks/pre-commit` refuses `.env` files, private working documents (`RECOVERY.md`, `AOEhub *.md`, prototypes), database dumps and key files, then runs [gitleaks](https://github.com/gitleaks/gitleaks) on the staged changes. Turn it on once per clone:
+   ```sh
+   # install gitleaks first (macOS: brew install gitleaks), then:
+   git config core.hooksPath .githooks
+   ```
+   (If you already use the [pre-commit](https://pre-commit.com) tool, `.pre-commit-config.yaml` runs the same gitleaks check.)
+2. **On GitHub**: `.github/workflows/secret-scan.yml` scans every push with the same rules (`.gitleaks.toml`).
+
+Reviewed false alarms are listed by fingerprint (never by value) in `.gitleaksignore`. To scan the whole history by hand: `gitleaks git --redact .`
+
 ## Getting started
 
 ```bash

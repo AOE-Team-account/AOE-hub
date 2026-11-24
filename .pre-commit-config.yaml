@@ -1,0 +1,8 @@
+# Optional: the same secret check through the pre-commit framework (https://pre-commit.com).
+#   pip install pre-commit && pre-commit install
+# The plain git hook in .githooks/pre-commit does the same without extra tools.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
