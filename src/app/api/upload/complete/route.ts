@@ -1,7 +1,7 @@
 import { NextResponse, after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
-import { finishMultipart, deleteStaged, readSealed, sealStaged, abortMultipart } from "@/lib/storage/staging";
+import { finishMultipart, deleteStaged, readSealed, sealStaged, abortMultipart, UPLOAD_LINK_MAX_SECONDS } from "@/lib/storage/staging";
 import { GameZipError } from "@/lib/games";
 import { checkGameZip } from "@/lib/games-unpack";
 import { runScan } from "@/lib/scanner/run";
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     const assetId = typeof w.assetId === "string" ? w.assetId : "";
     const { data: asset } = await svc
       .from("file_assets")
-      .select("id, file_post_id, label, size_bytes, staging_key, multipart_upload_id, scan_status, original_name")
+      .select("id, file_post_id, label, size_bytes, staging_key, multipart_upload_id, scan_status, original_name, created_at")
       .eq("id", assetId)
       .maybeSingle();
     if (!asset || asset.file_post_id !== postId || asset.scan_status !== "uploading" || !asset.staging_key) {
@@ -62,6 +62,14 @@ export async function POST(request: Request) {
       await svc.rpc("refund_upload_allowance", { p_user: user.id, p_files: 1, p_bytes: Number(asset.size_bytes ?? 0) });
       results.push({ assetId, status: "failed", code, error: message });
     };
+
+    // Upload links last at most UPLOAD_LINK_MAX_SECONDS (AOE-INF-11). A "complete" that comes
+    // later than that (plus a little slack) is refused: whatever is in staging was not sent
+    // through a link handed out for this upload session.
+    if (Date.now() - new Date(asset.created_at as string).getTime() > (UPLOAD_LINK_MAX_SECONDS + 30 * 60) * 1000) {
+      await fail("expired", "This upload took too long. Please upload the file again.");
+      continue;
+    }
 
     try {
       if (asset.multipart_upload_id) {

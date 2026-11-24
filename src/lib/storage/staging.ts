@@ -35,6 +35,12 @@ export const PART_SIZE_BYTES = 64 * 1024 * 1024;
 // published: complete seals the file under a new key no link points at (sealStaged).
 const SINGLE_URL_LIFETIME_SECONDS = 30 * 60;
 const PART_URL_LIFETIME_SECONDS = 3 * 60 * 60;
+/** The longest any upload link lives. "complete" is refused after this (+30 min slack). */
+export const UPLOAD_LINK_MAX_SECONDS = Math.max(SINGLE_URL_LIFETIME_SECONDS, PART_URL_LIFETIME_SECONDS);
+// Leftovers in this bucket (an original key re-sent through a still-valid link after
+// "complete" sealed it, sealed copies of uploads that never finished scanning, half-done
+// multipart uploads) are removed by the bucket's lifecycle rule, a setting in Cloudflare,
+// not code: see docs/r2-staging-lifecycle.md (AOE-INF-11).
 
 export async function presignSinglePut(key: string, contentType: string): Promise<string> {
   return getSignedUrl(client, new PutObjectCommand({ Bucket, Key: key, ContentType: contentType }), { expiresIn: SINGLE_URL_LIFETIME_SECONDS });
